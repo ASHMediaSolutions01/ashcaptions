@@ -1,10 +1,17 @@
 """FastAPI application factory for the ASH Captions control page.
 
-This module owns the HTTP surface only. The job queue and the language
-catalogue are injected (see `interfaces.py`) so this module never imports
-`ash_captions.engine`, `ash_captions.languages`, or any storage/pipeline
-code directly -- that keeps it testable with fakes and keeps ownership of
-those modules with whoever builds them.
+This module owns the HTTP surface for jobs, languages, and the SSE stream
+only. Caption styling (spec 7A) and in-app updates (spec 11.4) live in
+`routes_styles.py`/`routes_updates.py` -- separate routers built with this
+module's dependency getters and mounted below, so this file stays a slim
+application factory rather than growing without bound as features are
+added. The job queue and the language catalogue are injected (see
+`interfaces.py`) so this module never imports `ash_captions.engine`,
+`ash_captions.languages`, or any storage/pipeline code directly -- that
+keeps it testable with fakes and keeps ownership of those modules with
+whoever builds them. `ash_captions.styles`/`ash_captions.app.updater` are
+never imported here either, for the same reason -- see `styles_adapter.py`/
+`preview_adapter.py`/`update_adapter.py`, the modules that are allowed to.
 
 Binding: this app must only ever be served on 127.0.0.1. It is a
 single-user, offline, LAN-invisible tool (spec §4.4, §5) -- there is no auth
@@ -20,7 +27,7 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi import Form
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,29 +37,14 @@ from .interfaces import (
     JobNotRetryableError,
     JobQueue,
     LanguageCatalogueProvider,
-    PreviewNotFoundError,
     PreviewRenderer,
-    StyleIsShippedError,
-    StyleNotFoundError,
     StyleProvider,
-    StyleValidationFailedError,
     UpdateApplier,
-    UpdateApplyNotFoundError,
 )
-from .models import (
-    ALLOWED_VIDEO_EXTENSIONS,
-    Job,
-    JobOptions,
-    JobPathRequest,
-    JobStatus,
-    Language,
-    PreviewJob,
-    PreviewRequest,
-    PreviewStatus,
-    StyleSummary,
-    UpdateApplyJob,
-    UpdateAvailable,
-)
+from .models import ALLOWED_VIDEO_EXTENSIONS, Job, JobOptions, JobPathRequest, Language
+from .routes_styles import build_styles_router
+from .routes_updates import build_update_router
+from .validation import validate_local_path
 
 STATIC_DIR = Path(__file__).parent / "static"
 DEFAULT_INCOMING_DIR = Path(r"C:\AshCaptions\web_uploads")
@@ -89,8 +81,8 @@ def create_app(
     which sets `app.state.update_state` itself, after this returns, to
     whatever `ash_captions.app.updater.check_for_update_in_background`
     populates -- this function does not touch that attribute at all, and
-    the routes below treat its absence (e.g. in a test that never sets it)
-    as a normal "no update" outcome, not an error.
+    `routes_updates.py` treats its absence (e.g. in a test that never sets
+    it) as a normal "no update" outcome, not an error.
     """
     app = FastAPI(title="ASH Captions")
     app.state.queue = queue
@@ -120,6 +112,9 @@ def create_app(
     # from "/" below (not through this mount) so the control page works at
     # the bare root URL.
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    app.include_router(build_styles_router(get_style_provider, get_preview_renderer))
+    app.include_router(build_update_router(get_queue, get_update_applier))
 
     @app.get("/")
     async def index() -> FileResponse:
@@ -158,7 +153,7 @@ def create_app(
             body.burn_in,
             body.translate_to_english,
         )
-        path = _validate_local_path(body.path)
+        path = validate_local_path(body.path)
         return queue.submit(path, options)
 
     @app.post("/api/jobs", response_model=Job, status_code=201)
@@ -216,137 +211,6 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
         except JobNotRetryableError:
             raise HTTPException(status_code=409, detail=f"Job {job_id!r} is not in a retryable state.")
-
-    # --- Caption styling (spec 7A) ------------------------------------------
-
-    @app.get("/api/styles", response_model=list[StyleSummary])
-    async def list_styles(
-        style_provider: StyleProvider = Depends(get_style_provider),
-    ) -> list[StyleSummary]:
-        return style_provider.list_styles()
-
-    @app.get("/api/styles/{name}", response_model=StyleSummary)
-    async def get_style(
-        name: str,
-        shipped_only: bool = False,
-        style_provider: StyleProvider = Depends(get_style_provider),
-    ) -> StyleSummary:
-        try:
-            return style_provider.get_style(name, shipped_only=shipped_only)
-        except StyleNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Style {name!r} not found.")
-
-    @app.put("/api/styles/{name}", response_model=StyleSummary)
-    async def save_style(
-        name: str,
-        definition: dict = Body(...),
-        style_provider: StyleProvider = Depends(get_style_provider),
-    ) -> StyleSummary:
-        try:
-            return style_provider.save_style(name, definition)
-        except StyleValidationFailedError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-
-    @app.delete("/api/styles/{name}", status_code=204)
-    async def delete_style(
-        name: str,
-        style_provider: StyleProvider = Depends(get_style_provider),
-    ) -> Response:
-        try:
-            style_provider.delete_style(name)
-        except StyleIsShippedError:
-            raise HTTPException(
-                status_code=409, detail=f"{name!r} is a built-in style and can't be deleted."
-            )
-        except StyleNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Style {name!r} not found.")
-        return Response(status_code=204)
-
-    @app.get("/api/fonts", response_model=list[str])
-    async def list_fonts(style_provider: StyleProvider = Depends(get_style_provider)) -> list[str]:
-        return style_provider.list_fonts()
-
-    @app.post("/api/styles/preview", response_model=PreviewJob, status_code=202)
-    async def submit_preview(
-        body: PreviewRequest,
-        preview_renderer: PreviewRenderer = Depends(get_preview_renderer),
-    ) -> PreviewJob:
-        """Kicks off a ~3s styled preview render (spec 7A.3) and returns a
-        job handle immediately -- rendering takes real seconds, so the
-        browser polls GET /api/styles/preview/{id} rather than this route
-        blocking."""
-        video_path = _validate_local_path(body.video_path)
-        try:
-            return preview_renderer.submit_preview(video_path, body.start_seconds, body.style)
-        except StyleValidationFailedError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-
-    @app.get("/api/styles/preview/{job_id}", response_model=PreviewJob)
-    async def get_preview(
-        job_id: str,
-        preview_renderer: PreviewRenderer = Depends(get_preview_renderer),
-    ) -> PreviewJob:
-        try:
-            return preview_renderer.get_preview(job_id)
-        except PreviewNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Preview job {job_id!r} not found.")
-
-    @app.get("/api/styles/preview/{job_id}/clip")
-    async def get_preview_clip(
-        job_id: str,
-        preview_renderer: PreviewRenderer = Depends(get_preview_renderer),
-    ) -> FileResponse:
-        try:
-            job = preview_renderer.get_preview(job_id)
-        except PreviewNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Preview job {job_id!r} not found.")
-        if job.status != PreviewStatus.DONE or not job.clip_path:
-            raise HTTPException(status_code=409, detail=f"Preview job {job_id!r} isn't ready yet.")
-        return FileResponse(job.clip_path, media_type="video/mp4")
-
-    # --- In-app updates (spec 11.4) -----------------------------------------
-
-    @app.get("/api/update", response_model=UpdateAvailable | None)
-    async def get_update(request: Request, queue: JobQueue = Depends(get_queue)) -> UpdateAvailable | None:
-        info = _current_update_info(request)
-        if info is None:
-            return None
-        return UpdateAvailable(
-            version=info.version,
-            notes=info.notes,
-            size_bytes=info.size_bytes,
-            blocked_reason=_update_blocked_reason(queue),
-        )
-
-    @app.post("/api/update/apply", response_model=UpdateApplyJob, status_code=202)
-    async def submit_update_apply(
-        request: Request,
-        queue: JobQueue = Depends(get_queue),
-        update_applier: UpdateApplier = Depends(get_update_applier),
-    ) -> UpdateApplyJob:
-        """The click IS the consent -- no confirmation dialog here or in the
-        frontend (a second "are you sure?" just trains people to click
-        through unread). Applying restarts the app; the control page says
-        so beside the button, not this route."""
-        info = _current_update_info(request)
-        if info is None:
-            raise HTTPException(status_code=404, detail="No update is currently available.")
-
-        blocked_reason = _update_blocked_reason(queue)
-        if blocked_reason is not None:
-            raise HTTPException(status_code=409, detail=blocked_reason)
-
-        return update_applier.submit_apply(info)
-
-    @app.get("/api/update/apply/{job_id}", response_model=UpdateApplyJob)
-    async def get_update_apply(
-        job_id: str,
-        update_applier: UpdateApplier = Depends(get_update_applier),
-    ) -> UpdateApplyJob:
-        try:
-            return update_applier.get_apply_status(job_id)
-        except UpdateApplyNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Update job {job_id!r} not found.")
 
     @app.get("/api/events")
     async def events(request: Request, queue: JobQueue = Depends(get_queue)) -> StreamingResponse:
@@ -411,38 +275,6 @@ def _default_update_applier() -> UpdateApplier:
     return UpdaterAdapter()
 
 
-def _current_update_info(request: Request):
-    """Whatever the last background check found -- structurally an
-    `app.updater.UpdateInfo`, or None for "no update" (or "nobody has
-    checked yet", which looks identical and is fine to treat the same way).
-
-    Reads `request.app.state.update_state` via getattr rather than a
-    dependency-injected getter (unlike queue/catalogue/style_provider/
-    preview_renderer/update_applier above) because that attribute isn't set
-    by `create_app()` at all -- `app/__main__.py` sets it directly on the
-    FastAPI app object it gets back, after construction (see
-    `create_app()`'s own docstring on this). A test -- or any other caller
-    of `create_app()` that never sets it -- gets a normal "no update"
-    result here, not an AttributeError.
-    """
-    state = getattr(request.app.state, "update_state", None)
-    if state is None:
-        return None
-    return state.get()
-
-
-def _update_blocked_reason(queue: JobQueue) -> str | None:
-    """Non-None while applying an update should be refused because a
-    caption job is running (`app.updater.apply_update`'s own module-level
-    guard refuses this too; checking here as well lets the control page
-    disable its Update button proactively -- spec: "so the editor
-    understands rather than clicks and gets rejected" -- instead of only
-    finding out after a click)."""
-    if any(job.status == JobStatus.RUNNING for job in queue.list_jobs()):
-        return "A caption job is still running. Try again when the queue is clear."
-    return None
-
-
 def _validate_options(
     catalogue: LanguageCatalogueProvider,
     style_provider: StyleProvider,
@@ -500,46 +332,6 @@ def _validate_upload(file: UploadFile) -> None:
 def _safe_filename(filename: str) -> str:
     """Strip any path components so a crafted filename can't escape incoming_dir."""
     return Path(filename).name
-
-
-def _clean_path_string(raw: str) -> str:
-    """Strip whitespace and a pair of surrounding quotes.
-
-    Windows Explorer's "Copy as path" wraps the result in double quotes
-    (`"D:\\clip.mp4"`); pasted verbatim that would otherwise fail the
-    exists() check and be the #1 support question.
-    """
-    cleaned = raw.strip()
-    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ("'", '"'):
-        cleaned = cleaned[1:-1]
-    return cleaned.strip()
-
-
-def _validate_local_path(raw_path: str) -> Path:
-    cleaned = _clean_path_string(raw_path)
-    if not cleaned:
-        raise HTTPException(status_code=400, detail="No file path provided.")
-
-    path = Path(cleaned)
-    if not path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Can't find {cleaned!r}. Check the path and try again.",
-        )
-    if not path.is_file():
-        raise HTTPException(status_code=400, detail=f"{cleaned!r} is not a file.")
-    if path.suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type {path.suffix!r}. Expected a video file.",
-        )
-    try:
-        with path.open("rb"):
-            pass
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=f"Can't read {cleaned!r}: {exc.strerror or exc}.")
-
-    return path
 
 
 def run_server(app: FastAPI, host: str = "127.0.0.1", port: int = 8765) -> None:
