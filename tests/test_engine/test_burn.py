@@ -82,6 +82,47 @@ def test_build_burn_command_escapes_colons_and_backslashes_in_subtitle_path():
     assert vf == r"ass='C\:/Users/editor/out dir/subs.ass'"
 
 
+def test_build_burn_command_omits_fontsdir_by_default(tmp_path):
+    args = build_burn_command(
+        tmp_path / "in.mp4", tmp_path / "subs.ass", tmp_path / "out.mp4", ffmpeg_path=tmp_path / "ffmpeg.exe"
+    )
+    vf = args[args.index("-vf") + 1]
+    assert "fontsdir" not in vf
+
+
+def test_build_burn_command_with_fontsdir_none_is_byte_identical_to_omitting_it(tmp_path):
+    with_none = build_burn_command(
+        "C:/videos/in.mp4", r"C:\subs\out.ass", "C:/videos/out.mp4", ffmpeg_path="bin/ffmpeg.exe", fontsdir=None
+    )
+    without_param = build_burn_command(
+        "C:/videos/in.mp4", r"C:\subs\out.ass", "C:/videos/out.mp4", ffmpeg_path="bin/ffmpeg.exe"
+    )
+    assert with_none == without_param
+
+
+def test_build_burn_command_emits_fontsdir_in_the_ass_filter():
+    args = build_burn_command(
+        "C:/videos/in.mp4",
+        "C:/videos/subs.ass",
+        "C:/videos/out.mp4",
+        ffmpeg_path="bin/ffmpeg.exe",
+        fontsdir=r"C:\AshCaptions\assets\fonts",
+    )
+    vf = args[args.index("-vf") + 1]
+    assert vf.startswith("ass='C\\:/videos/subs.ass':fontsdir='")
+    assert "AshCaptions/assets/fonts" in vf
+
+
+def test_build_burn_command_escapes_colons_and_backslashes_in_fontsdir():
+    args = build_burn_command(
+        "in.mp4", "subs.ass", "out.mp4", ffmpeg_path="ffmpeg.exe", fontsdir=r"C:\Program Files\Ash Captions\fonts"
+    )
+    vf = args[args.index("-vf") + 1]
+    assert vf == (
+        r"ass='subs.ass':fontsdir='C\:/Program Files/Ash Captions/fonts'"
+    )
+
+
 def test_build_burn_command_reports_progress_via_stdout_pipe(tmp_path):
     args = build_burn_command(
         tmp_path / "in.mp4", tmp_path / "subs.ass", tmp_path / "out.mp4", ffmpeg_path=tmp_path / "ffmpeg.exe"
@@ -174,6 +215,29 @@ def test_burn_captions_reports_progress_and_returns_output_path(tmp_path):
     assert progress_updates == [25.0, 50.0]
     mock_popen.assert_called_once()
     assert output.parent.is_dir()
+
+
+def test_burn_captions_threads_fontsdir_into_the_command(tmp_path):
+    video = tmp_path / "in.mp4"
+    video.write_bytes(b"fake")
+    ass = tmp_path / "subs.ass"
+    ass.write_text("[Script Info]")
+    fonts_dir = tmp_path / "assets" / "fonts"
+
+    fake_process = _make_fake_process([], returncode=0)
+
+    with patch("ash_captions.engine.burn.subprocess.Popen", return_value=fake_process) as mock_popen, patch(
+        "ash_captions.engine.burn.detect_nvenc", return_value=False
+    ):
+        burn_captions(
+            video, ass, tmp_path / "out.mp4", duration_seconds=10.0, ffmpeg_path=tmp_path / "ffmpeg.exe",
+            fontsdir=fonts_dir,
+        )
+
+    called_args = mock_popen.call_args[0][0]
+    vf = called_args[called_args.index("-vf") + 1]
+    assert "fontsdir=" in vf
+    assert "fonts" in vf
 
 
 def test_burn_captions_auto_detects_nvenc(tmp_path):

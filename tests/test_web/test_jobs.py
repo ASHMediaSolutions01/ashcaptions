@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from ash_captions.web.models import JobStatus
 
+from .fakes import default_style_definition
+
 VIDEO_BYTES = b"not-a-real-video-but-good-enough-for-a-content-check"
 
 
@@ -78,6 +80,19 @@ class TestSubmitJob:
     def test_rejects_unknown_preset(self, client):
         res = _submit(client, data={"preset": "FANCY"})
         assert res.status_code == 400
+
+    def test_accepts_any_style_from_the_live_style_list(self, client, fake_style_provider):
+        """Regression guard: `preset` must be validated against the live
+        style list (spec 7A), not a hardcoded CLEAN/POP pair -- otherwise
+        every shipped look beyond those two, and every style an editor
+        saves through the style editor, becomes unsubmittable even though
+        the renderer already understands it."""
+        fake_style_provider.save_style("NEON GLOW", default_style_definition("NEON GLOW"))
+
+        res = _submit(client, data={"preset": "NEON GLOW"})
+
+        assert res.status_code == 201
+        assert res.json()["options"]["preset"] == "NEON GLOW"
 
     def test_rejects_non_video_extension(self, client):
         res = _submit(client, files={"file": ("notes.txt", b"hello", "text/plain")})

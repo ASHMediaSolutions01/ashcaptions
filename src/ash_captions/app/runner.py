@@ -219,19 +219,19 @@ def build_run_job(
                 def on_burn_progress(pct: float, start=start, end=end) -> None:
                     report(round(start + (end - start) * (pct / 100)))
 
-                # NOT WIRED YET: engine.burn_captions()/build_burn_command()
-                # take no fontsdir parameter, so a bundled (non-Windows-
-                # installed) font silently falls back to a default face on
-                # burn-in -- defeating the point of bundling fonts at all.
-                # The value to pass, once engine adds support, is
-                # `styles.fontsdir_arg()`. Flagged to the engine owner
-                # rather than reached into from here.
+                # Points libass at the bundled font directory (spec 7A.4) so
+                # a style's font resolves identically on all six machines
+                # without being installed into Windows -- without this, a
+                # bundled-but-not-installed font silently falls back to a
+                # default face on burn-in, defeating the point of bundling
+                # fonts at all.
                 engine.burn_captions(
                     video_path,
                     output_dir / f"{stem}.ass",
                     output_dir / f"{stem}.captioned.mp4",
                     duration_seconds=duration,
                     ffmpeg_path=resolved_ffmpeg,
+                    fontsdir=styles.fontsdir_arg(),
                     on_progress=on_burn_progress,
                 )
                 report(end)

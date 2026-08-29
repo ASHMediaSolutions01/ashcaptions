@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from ash_captions import engine, languages
+from ash_captions import engine, languages, styles
 from ash_captions.app.runner import _postprocess_segments, _postprocess_words, _progress_budget, build_run_job
 from ash_captions.config import Settings
 from ash_captions.pipeline.db import JobOptions, JobStore
@@ -177,9 +177,10 @@ class TestRunJobOutputs:
         transcriber = FakeTranscriber(_result(["hello", "there", "friend", "how", "are", "you"]))
         run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
 
-        captured_progress: list[float] = []
-
-        def fake_burn_captions(video_path, ass_path, output_path, *, duration_seconds, ffmpeg_path=None, on_progress=None, use_nvenc=None):
+        def fake_burn_captions(
+            video_path, ass_path, output_path, *,
+            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None, use_nvenc=None,
+        ):
             Path(output_path).write_bytes(b"fake mp4")
             if on_progress is not None:
                 on_progress(0.0)
@@ -197,6 +198,38 @@ class TestRunJobOutputs:
         # *inside* the burn stage's slice of the bar, not reset to 0.
         burn_stage_reports = progress[-2:]
         assert burn_stage_reports[0] > 0
+
+    def test_burn_passes_the_bundled_fontsdir_to_burn_captions(
+        self, tmp_path: Path, store: JobStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without this, a bundled-but-not-Windows-installed font silently
+        falls back to a default face on burn-in, defeating the point of
+        bundling fonts at all (spec 7A.4)."""
+        settings = make_settings(tmp_path)
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        output_dir = settings.out_dir / "clip"
+
+        job = make_job(store, video, output_dir, burn=True)
+        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+
+        received: dict = {}
+
+        def fake_burn_captions(
+            video_path, ass_path, output_path, *,
+            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None, use_nvenc=None,
+        ):
+            received["fontsdir"] = fontsdir
+            Path(output_path).write_bytes(b"fake mp4")
+            return Path(output_path)
+
+        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
+
+        run_job(job, lambda _p: None)
+
+        assert received["fontsdir"] == styles.fontsdir_arg()
 
 
 class TestStyleWiring:

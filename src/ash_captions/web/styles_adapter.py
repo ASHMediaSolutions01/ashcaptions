@@ -67,12 +67,3 @@ class StylesPackageAdapter:
 
     def list_fonts(self) -> list[str]:
         return list(list_font_families())
-
-
-# `get_style(shipped_only=True)` needs `list_styles()` to see *only* the
-# shipped directory. Passing a path that can never exist as `user_dir`
-# reuses that public function rather than reaching into `styles.library`'s
-# private `_load_directory`.
-from pathlib import Path  # noqa: E402 - kept near its one use
-
-_NO_USER_DIR = Path("__ash_captions_no_user_styles__")

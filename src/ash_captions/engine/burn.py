@@ -7,6 +7,12 @@ parsing ffmpeg's ``-progress`` output into a percentage; that requires
 knowing the video's total duration up front, which this module does not
 probe itself -- the caller supplies it (e.g. from an earlier ffprobe call
 or from the transcription result).
+
+Bundled fonts (spec 7A.4) only resolve if libass is told where to find
+them: both ``build_burn_command`` and ``burn_captions`` take an optional
+``fontsdir``, which the caller supplies (typically
+``ash_captions.styles.fontsdir_arg()``) -- this module doesn't assume it,
+to keep the engine package decoupled from the styles package.
 """
 from __future__ import annotations
 
@@ -56,13 +62,26 @@ def build_burn_command(
     *,
     ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH,
     use_nvenc: bool = False,
+    fontsdir: Path | str | None = None,
 ) -> list[str]:
-    """Construct the ffmpeg argv that burns ``ass_path`` into ``video_path``."""
+    """Construct the ffmpeg argv that burns ``ass_path`` into ``video_path``.
+
+    ``fontsdir`` points libass at the bundled font directory (spec 7A.4:
+    ``ash_captions.styles.fontsdir_arg()``) so a style referencing one of
+    the ~24 bundled faces actually resolves to it, instead of falling
+    back to whatever's installed system-wide -- silently, since libass
+    substitutes rather than erroring. Left ``None`` (the default), the
+    filter is unchanged from before this parameter existed, byte for
+    byte: this module doesn't assume a fonts directory, and it's the
+    caller's job to pass one (see ``ash_captions.styles.fontsdir_arg``).
+    """
     video_path = Path(video_path)
     ass_path = Path(ass_path)
     output_path = Path(output_path)
 
     subtitle_filter = f"ass='{_escape_path_for_filtergraph(ass_path)}'"
+    if fontsdir is not None:
+        subtitle_filter += f":fontsdir='{_escape_path_for_filtergraph(Path(fontsdir))}'"
     video_codec = ["-c:v", "h264_nvenc"] if use_nvenc else ["-c:v", "libx264"]
 
     return [
@@ -117,6 +136,7 @@ def burn_captions(
     duration_seconds: float,
     ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH,
     use_nvenc: bool | None = None,
+    fontsdir: Path | str | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Burn ``ass_path``'s captions into ``video_path``, writing an MP4.
@@ -128,6 +148,10 @@ def burn_captions(
             probe it itself.
         use_nvenc: force NVENC on (True) or off (False); ``None`` (default)
             auto-detects via ``detect_nvenc()``.
+        fontsdir: directory libass should search for bundled fonts (spec
+            7A.4) -- see ``build_burn_command``. ``None`` (the default)
+            omits it entirely, unchanged from before this parameter
+            existed.
         on_progress: called with a 0-100 float as ffmpeg reports progress.
 
     Raises:
@@ -149,7 +173,12 @@ def burn_captions(
         use_nvenc = detect_nvenc()
 
     args = build_burn_command(
-        video_path, ass_path, output_path, ffmpeg_path=ffmpeg_path, use_nvenc=use_nvenc
+        video_path,
+        ass_path,
+        output_path,
+        ffmpeg_path=ffmpeg_path,
+        use_nvenc=use_nvenc,
+        fontsdir=fontsdir,
     )
 
     try:

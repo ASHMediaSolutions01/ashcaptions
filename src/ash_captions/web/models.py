@@ -141,9 +141,15 @@ class PreviewStatus(str, Enum):
 class PreviewJob(BaseModel):
     """A style preview render, polled from the browser while it runs --
     rendering a ~3s clip takes real seconds (transcription + two ffmpeg
-    passes), so this is job-shaped rather than a blocking response."""
+    passes), so this is job-shaped rather than a blocking response.
+
+    `phase` is a finer-grained status than `status` alone while `status`
+    is "running" -- "transcribing" or "rendering" -- so the editor sees
+    real progress instead of a silent multi-second wait (spec 7A.3).
+    """
 
     id: str
     status: PreviewStatus
+    phase: str | None = None
     error: str | None = None
     clip_path: str | None = None

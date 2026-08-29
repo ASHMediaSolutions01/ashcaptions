@@ -33,7 +33,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from ash_captions.engine import Transcriber, TranscriptionError, WhisperTranscriber, build_cards
+from ash_captions.engine import Card, Transcriber, TranscriptionError, WhisperTranscriber, build_cards
 from ash_captions.styles import (
     DEFAULT_PREVIEW_DURATION_SECONDS,
     StyleValidationError,
@@ -116,6 +116,15 @@ class InProcessPreviewRenderer:
         self._lock = threading.Lock()
         self._jobs: dict[str, PreviewJob] = {}
 
+        # Keyed by (video_path, start_seconds): an editor flips through
+        # styles at the same timestamp far more than they change the
+        # timestamp itself, and transcription -- not rendering -- is the
+        # slow, re-doable-for-nothing part of a preview. Re-using it across
+        # style changes at the same spot is the single biggest thing that
+        # makes flipping through styles feel fast (team-lead's note).
+        self._cache_lock = threading.Lock()
+        self._transcription_cache: dict[tuple[str, float], tuple[Card, ...]] = {}
+
     def submit_preview(self, video_path: Path, start_seconds: float, style: dict[str, Any]) -> PreviewJob:
         try:
             validated_style = validate_style_dict(style)
@@ -150,18 +159,14 @@ class InProcessPreviewRenderer:
             self._jobs[job_id] = self._jobs[job_id].model_copy(update=fields)
 
     def _run_job(self, job_id: str, video_path: Path, start_seconds: float, style: Any) -> None:
-        self._set(job_id, status=PreviewStatus.RUNNING)
         job_dir = self._work_dir / job_id
         duration_seconds = DEFAULT_PREVIEW_DURATION_SECONDS
         try:
             job_dir.mkdir(parents=True, exist_ok=True)
 
-            wav_path = job_dir / "window.wav"
-            self._extract_window_audio(video_path, wav_path, start_seconds, duration_seconds, self._ffmpeg_path)
+            cards = self._cards_for_window(job_id, video_path, start_seconds, duration_seconds)
 
-            result = self._transcriber.transcribe(wav_path)
-            cards = build_cards(list(result.words))
-
+            self._set(job_id, status=PreviewStatus.RUNNING, phase="rendering")
             ass_path = job_dir / "preview.ass"
             write_ass(cards, ass_path, style)
 
@@ -176,10 +181,31 @@ class InProcessPreviewRenderer:
             )
             self._run_ffmpeg(command)
 
-            self._set(job_id, status=PreviewStatus.DONE, clip_path=str(clip_path))
+            self._set(job_id, status=PreviewStatus.DONE, phase=None, clip_path=str(clip_path))
         except TranscriptionError as exc:
             logger.warning("preview %s: transcription failed: %s", job_id, exc)
-            self._set(job_id, status=PreviewStatus.FAILED, error=str(exc))
+            self._set(job_id, status=PreviewStatus.FAILED, phase=None, error=str(exc))
         except Exception as exc:  # noqa: BLE001 - any failure must reach the browser as a status, never crash the thread
             logger.warning("preview %s: failed: %s", job_id, exc)
-            self._set(job_id, status=PreviewStatus.FAILED, error=str(exc))
+            self._set(job_id, status=PreviewStatus.FAILED, phase=None, error=str(exc))
+
+    def _cards_for_window(
+        self, job_id: str, video_path: Path, start_seconds: float, duration_seconds: float
+    ) -> tuple[Card, ...]:
+        cache_key = (str(video_path), round(start_seconds, 3))
+        with self._cache_lock:
+            cached = self._transcription_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        self._set(job_id, status=PreviewStatus.RUNNING, phase="transcribing")
+        job_dir = self._work_dir / job_id
+        wav_path = job_dir / "window.wav"
+        self._extract_window_audio(video_path, wav_path, start_seconds, duration_seconds, self._ffmpeg_path)
+
+        result = self._transcriber.transcribe(wav_path)
+        cards = tuple(build_cards(list(result.words)))
+
+        with self._cache_lock:
+            self._transcription_cache[cache_key] = cards
+        return cards

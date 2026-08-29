@@ -264,7 +264,7 @@
     if (previewPollTimer) { clearInterval(previewPollTimer); previewPollTimer = null; }
     previewOutput.hidden = true;
     renderBtn.disabled = true;
-    setPreviewStatus("Rendering your preview… this takes a few seconds.", "busy");
+    setPreviewStatus("Starting…", "busy");
 
     try {
       const res = await fetch("/api/styles/preview", {
@@ -283,6 +283,12 @@
       renderBtn.disabled = false;
     }
   });
+
+  function phaseMessage(phase) {
+    if (phase === "transcribing") return "Listening to your video…";
+    if (phase === "rendering") return "Rendering your preview…";
+    return "Working on your preview…";
+  }
 
   function pollPreview(jobId) {
     previewPollTimer = setInterval(async () => {
@@ -313,7 +319,7 @@
         renderBtn.disabled = false;
         setPreviewStatus(job.error || "The preview failed to render.", "err");
       } else {
-        setPreviewStatus("Rendering your preview… this takes a few seconds.", "busy");
+        setPreviewStatus(phaseMessage(job.phase), "busy");
       }
     }, 800);
   }
