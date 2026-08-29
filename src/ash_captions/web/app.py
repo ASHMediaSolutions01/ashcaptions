@@ -31,12 +31,14 @@ from .models import (
     ALLOWED_VIDEO_EXTENSIONS,
     Job,
     JobOptions,
+    JobPathRequest,
     Language,
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
 DEFAULT_INCOMING_DIR = Path(r"C:\AshCaptions\web_uploads")
 DEFAULT_SSE_POLL_INTERVAL = 1.0  # seconds; how often we re-check request.is_disconnected()
+UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MiB
 
 
 def create_app(
@@ -84,6 +86,21 @@ def create_app(
     async def list_jobs(queue: JobQueue = Depends(get_queue)) -> list[Job]:
         return queue.list_jobs()
 
+    @app.post("/api/jobs/by-path", response_model=Job, status_code=201)
+    async def submit_job_by_path(
+        body: JobPathRequest,
+        queue: JobQueue = Depends(get_queue),
+        catalogue: LanguageCatalogueProvider = Depends(get_catalogue),
+    ) -> Job:
+        """Primary submission route. The footage is already on this machine
+        (spec §4.4), so this reads it in place -- no copy, no upload, works
+        for a multi-GB 4K file exactly as fast as a small one."""
+        options = _validate_options(
+            catalogue, body.language, body.dialect, body.preset, body.burn_in, body.translate_to_english
+        )
+        path = _validate_local_path(body.path)
+        return queue.submit(path, options)
+
     @app.post("/api/jobs", response_model=Job, status_code=201)
     async def submit_job(
         request: Request,
@@ -96,6 +113,11 @@ def create_app(
         queue: JobQueue = Depends(get_queue),
         catalogue: LanguageCatalogueProvider = Depends(get_catalogue),
     ) -> Job:
+        """Secondary submission route -- an actual byte upload. Kept for cases
+        where the footage isn't reachable by a local path (e.g. a network
+        share the service account can't see). Prefer /api/jobs/by-path:
+        this route copies the whole file to `incoming_dir` first, which is
+        slow and wastes disk for the multi-GB files editors work with."""
         options = _validate_options(catalogue, language, dialect, preset, burn_in, translate_to_english)
         _validate_upload(file)
 
@@ -107,13 +129,19 @@ def create_app(
         job_dir.mkdir(parents=True, exist_ok=True)
         dest = job_dir / _safe_filename(file.filename)
 
-        contents = await file.read()
-        if not contents:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-        dest.write_bytes(contents)
+        # Stream to disk in chunks -- never hold the whole file in memory.
+        # Editors routinely work with multi-GB 4K files; `await file.read()`
+        # with no size arg reads the entire upload into RAM and would OOM.
+        total_bytes = 0
+        with dest.open("wb") as out:
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                out.write(chunk)
+                total_bytes += len(chunk)
 
-        if not dest.exists():
-            raise HTTPException(status_code=500, detail="Failed to save uploaded file.")
+        if total_bytes == 0:
+            dest.unlink(missing_ok=True)
+            job_dir.rmdir()
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
         return queue.submit(dest, options)
 
@@ -216,6 +244,46 @@ def _validate_upload(file: UploadFile) -> None:
 def _safe_filename(filename: str) -> str:
     """Strip any path components so a crafted filename can't escape incoming_dir."""
     return Path(filename).name
+
+
+def _clean_path_string(raw: str) -> str:
+    """Strip whitespace and a pair of surrounding quotes.
+
+    Windows Explorer's "Copy as path" wraps the result in double quotes
+    (`"D:\\clip.mp4"`); pasted verbatim that would otherwise fail the
+    exists() check and be the #1 support question.
+    """
+    cleaned = raw.strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ("'", '"'):
+        cleaned = cleaned[1:-1]
+    return cleaned.strip()
+
+
+def _validate_local_path(raw_path: str) -> Path:
+    cleaned = _clean_path_string(raw_path)
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="No file path provided.")
+
+    path = Path(cleaned)
+    if not path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can't find {cleaned!r}. Check the path and try again.",
+        )
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"{cleaned!r} is not a file.")
+    if path.suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type {path.suffix!r}. Expected a video file.",
+        )
+    try:
+        with path.open("rb"):
+            pass
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"Can't read {cleaned!r}: {exc.strerror or exc}.")
+
+    return path
 
 
 def run_server(app: FastAPI, host: str = "127.0.0.1", port: int = 8765) -> None:

@@ -47,18 +47,21 @@ class JobOptions(BaseModel):
     translate_to_english: bool = False
 
 
-class JobCreateRequest(BaseModel):
-    """Body of POST /api/jobs.
+class JobPathRequest(BaseModel):
+    """Body of POST /api/jobs/by-path -- the primary submission route.
 
-    `file_path` is a path already on local disk (the browser cannot hand us a
-    real filesystem path from a file picker for security reasons, so the
-    control page uploads the file first -- see `app.py` -- and this model is
-    also usable directly by anything that already has a path, such as the
-    folder watcher's own submission code path).
+    The footage already lives on this machine (spec §4.4: one editor, one
+    PC), so the normal path is "point at the file", not "upload a copy of
+    it to yourself". `path` may be wrapped in quotes (Windows Explorer's
+    "Copy as path" does this); `app.py` strips them before validating.
     """
 
-    file_path: str
-    options: JobOptions
+    path: str
+    language: str = Field(..., min_length=1)
+    dialect: str | None = None
+    preset: str
+    burn_in: bool = False
+    translate_to_english: bool = False
 
 
 class Job(BaseModel):

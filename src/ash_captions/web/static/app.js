@@ -1,6 +1,8 @@
 (function () {
   "use strict";
 
+  const pathInput = document.getElementById("path-input");
+  const uploadDetails = document.getElementById("upload-details");
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("file-input");
   const chooseBtn = document.getElementById("choose-btn");
@@ -18,7 +20,8 @@
   const emptyQueue = document.getElementById("empty-queue");
 
   let languages = [];
-  let selectedFile = null;
+  // { type: "path", value: "D:\...\clip.mp4" } or { type: "upload", value: File }
+  let selectedSource = null;
 
   // ---- Language / dialect dropdowns ----
 
@@ -62,19 +65,46 @@
   languageSelect.addEventListener("change", renderDialects);
 
   // ---- File selection ----
+  // Two ways in: paste a path to a file already on this PC (primary -- no
+  // copy, works instantly on multi-GB footage), or upload a copy (secondary,
+  // tucked behind the "Or upload a copy instead" disclosure).
 
-  function showOptionsFor(file) {
-    selectedFile = file;
+  function baseName(path) {
+    const parts = path.split(/[\\/]/);
+    return parts[parts.length - 1] || path;
+  }
+
+  function showOptionsForPath(path) {
+    selectedSource = { type: "path", value: path };
+    selectedFileEl.textContent = baseName(path);
+    optionsForm.classList.add("visible");
+    submitError.style.display = "none";
+  }
+
+  function showOptionsForUpload(file) {
+    selectedSource = { type: "upload", value: file };
     selectedFileEl.textContent = file.name;
     optionsForm.classList.add("visible");
     submitError.style.display = "none";
   }
 
   function resetSelection() {
-    selectedFile = null;
+    selectedSource = null;
+    pathInput.value = "";
     fileInput.value = "";
+    uploadDetails.open = false;
     optionsForm.classList.remove("visible");
   }
+
+  pathInput.addEventListener("input", () => {
+    const value = pathInput.value.trim();
+    if (value) {
+      showOptionsForPath(value);
+    } else if (selectedSource && selectedSource.type === "path") {
+      optionsForm.classList.remove("visible");
+      selectedSource = null;
+    }
+  });
 
   chooseBtn.addEventListener("click", () => fileInput.click());
   dropzone.addEventListener("click", (e) => {
@@ -82,7 +112,7 @@
     fileInput.click();
   });
   fileInput.addEventListener("change", () => {
-    if (fileInput.files && fileInput.files[0]) showOptionsFor(fileInput.files[0]);
+    if (fileInput.files && fileInput.files[0]) showOptionsForUpload(fileInput.files[0]);
   });
 
   ["dragenter", "dragover"].forEach((evt) =>
@@ -99,7 +129,7 @@
   );
   dropzone.addEventListener("drop", (e) => {
     const file = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (file) showOptionsFor(file);
+    if (file) showOptionsForUpload(file);
   });
 
   cancelBtn.addEventListener("click", resetSelection);
@@ -107,20 +137,13 @@
   // ---- Submit ----
 
   startBtn.addEventListener("click", async () => {
-    if (!selectedFile) return;
+    if (!selectedSource) return;
     startBtn.disabled = true;
     submitError.style.display = "none";
 
-    const form = new FormData();
-    form.append("file", selectedFile);
-    form.append("language", languageSelect.value);
-    if (dialectSelect.value) form.append("dialect", dialectSelect.value);
-    form.append("preset", presetSelect.value);
-    form.append("burn_in", burnInCheck.checked ? "true" : "false");
-    form.append("translate_to_english", translateCheck.checked ? "true" : "false");
-
     try {
-      const res = await fetch("/api/jobs", { method: "POST", body: form });
+      const res =
+        selectedSource.type === "path" ? await submitByPath() : await submitByUpload();
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || "Could not start this job.");
@@ -134,6 +157,32 @@
       startBtn.disabled = false;
     }
   });
+
+  function submitByPath() {
+    return fetch("/api/jobs/by-path", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: selectedSource.value,
+        language: languageSelect.value,
+        dialect: dialectSelect.value || null,
+        preset: presetSelect.value,
+        burn_in: burnInCheck.checked,
+        translate_to_english: translateCheck.checked,
+      }),
+    });
+  }
+
+  function submitByUpload() {
+    const form = new FormData();
+    form.append("file", selectedSource.value);
+    form.append("language", languageSelect.value);
+    if (dialectSelect.value) form.append("dialect", dialectSelect.value);
+    form.append("preset", presetSelect.value);
+    form.append("burn_in", burnInCheck.checked ? "true" : "false");
+    form.append("translate_to_english", translateCheck.checked ? "true" : "false");
+    return fetch("/api/jobs", { method: "POST", body: form });
+  }
 
   // ---- Queue rendering ----
 

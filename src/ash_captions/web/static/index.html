@@ -15,12 +15,21 @@
 
 <main>
   <section class="card">
-    <div id="dropzone">
-      <div class="big">Drop a video here</div>
-      <p>or</p>
-      <button type="button" class="btn" id="choose-btn">Choose a file</button>
-      <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.mxf,.avi,.webm,.m4v">
+    <div class="field">
+      <label for="path-input">Video file location</label>
+      <input type="text" id="path-input" placeholder="D:\Projects\client\clip.mp4" autocomplete="off">
+      <p class="hint">In File Explorer: Shift + right-click the file, choose "Copy as path", then paste it here.</p>
     </div>
+
+    <details id="upload-details">
+      <summary>Or upload a copy instead (slower for large files)</summary>
+      <div id="dropzone">
+        <div class="big">Drop a video here</div>
+        <p>or</p>
+        <button type="button" class="btn" id="choose-btn">Choose a file</button>
+        <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.mxf,.avi,.webm,.m4v">
+      </div>
+    </details>
 
     <div id="options-form">
       <div id="selected-file"></div>

@@ -51,6 +51,42 @@ main {
   padding: 24px;
 }
 
+/* Path input (primary submission field) */
+.hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+input[type="text"] {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 16px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+}
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Upload fallback, tucked behind a disclosure */
+#upload-details {
+  margin-top: 18px;
+}
+#upload-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  list-style: none;
+}
+#upload-details summary::-webkit-details-marker { display: none; }
+#upload-details summary:hover { color: var(--accent-dark); }
+#upload-details[open] summary { margin-bottom: 14px; }
+
 /* Drop zone */
 #dropzone {
   border: 2px dashed var(--line);

@@ -87,6 +87,17 @@ class TestSubmitJob:
         res = _submit(client, files={"file": ("clip.mp4", b"", "video/mp4")})
         assert res.status_code == 400
 
+    def test_upload_spanning_multiple_chunks_is_written_intact(self, client, app):
+        # Exercises the streaming write path across an internal chunk
+        # boundary (app.py writes in 1 MiB chunks) rather than materialising
+        # the whole upload in memory.
+        big = (b"0123456789" * 100) * 2500  # 2.5 MB, not a multiple of the chunk size
+        res = _submit(client, files={"file": ("big.mp4", big, "video/mp4")})
+        assert res.status_code == 201
+        saved = list(app.state.incoming_dir.glob("*/big.mp4"))
+        assert len(saved) == 1
+        assert saved[0].read_bytes() == big
+
 
 class TestListJobs:
     def test_empty_queue(self, client):

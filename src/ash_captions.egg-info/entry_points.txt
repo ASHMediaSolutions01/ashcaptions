@@ -1,0 +1,2 @@
+[console_scripts]
+ash-captions = ash_captions.__main__:main
