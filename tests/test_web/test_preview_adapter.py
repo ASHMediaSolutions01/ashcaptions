@@ -4,6 +4,7 @@ and transcription caching (spec 7A.3) -- with `transcriber`/
 model, and no real filesystem rendering happen here."""
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -110,6 +111,7 @@ def test_repeated_preview_at_same_video_and_timestamp_reuses_transcription(tmp_p
     that feel slow for no reason."""
     renderer, transcriber = _make_renderer(tmp_path)
     video = tmp_path / "clip.mp4"
+    video.write_bytes(b"real video bytes")
 
     job1 = renderer.submit_preview(video, 2.0, default_style_definition("POP"))
     _wait_until_finished(renderer, job1.id)
@@ -124,11 +126,53 @@ def test_repeated_preview_at_same_video_and_timestamp_reuses_transcription(tmp_p
 def test_different_timestamp_does_not_reuse_transcription(tmp_path):
     renderer, transcriber = _make_renderer(tmp_path)
     video = tmp_path / "clip.mp4"
+    video.write_bytes(b"real video bytes")
 
     _wait_until_finished(renderer, renderer.submit_preview(video, 2.0, default_style_definition("POP")).id)
     _wait_until_finished(renderer, renderer.submit_preview(video, 9.0, default_style_definition("POP")).id)
 
     assert len(transcriber.calls) == 2
+
+
+def test_reexporting_the_video_at_the_same_path_invalidates_the_cache(tmp_path):
+    """A stale transcript would be worse than a slow one: if the editor
+    re-exports over the same path, the cache must not serve the old words."""
+    renderer, transcriber = _make_renderer(tmp_path)
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"first export")
+    original_mtime = video.stat().st_mtime
+
+    _wait_until_finished(renderer, renderer.submit_preview(video, 2.0, default_style_definition("POP")).id)
+
+    # Force a distinguishable mtime -- some filesystems have coarse mtime
+    # resolution, so nudge it forward explicitly rather than relying on
+    # real wall-clock time passing between writes.
+    video.write_bytes(b"re-exported, different content")
+    os.utime(video, (original_mtime + 5, original_mtime + 5))
+
+    _wait_until_finished(renderer, renderer.submit_preview(video, 2.0, default_style_definition("POP")).id)
+
+    assert len(transcriber.calls) == 2  # the re-export was not served from cache
+
+
+def test_transcription_cache_is_bounded(tmp_path):
+    """Bounded LRU: exploring many distinct timestamps in one long session
+    must not grow the cache without limit."""
+    from ash_captions.web.preview_adapter import MAX_TRANSCRIPTION_CACHE_ENTRIES
+
+    renderer, transcriber = _make_renderer(tmp_path)
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"real video bytes")
+
+    for i in range(MAX_TRANSCRIPTION_CACHE_ENTRIES + 5):
+        _wait_until_finished(renderer, renderer.submit_preview(video, float(i), default_style_definition("POP")).id)
+
+    assert len(renderer._transcription_cache) == MAX_TRANSCRIPTION_CACHE_ENTRIES
+
+    # The earliest timestamps were evicted -- revisiting one re-transcribes.
+    calls_before = len(transcriber.calls)
+    _wait_until_finished(renderer, renderer.submit_preview(video, 0.0, default_style_definition("POP")).id)
+    assert len(transcriber.calls) == calls_before + 1
 
 
 def test_get_unknown_preview_raises(tmp_path):

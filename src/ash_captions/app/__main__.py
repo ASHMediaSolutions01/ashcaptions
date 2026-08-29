@@ -20,6 +20,7 @@ import webbrowser
 from pathlib import Path
 from typing import IO
 
+from ash_captions import styles
 from ash_captions.config import MAX_PORT_PROBES, Settings
 from ash_captions.pipeline import JobWorker, Watcher
 from ash_captions.pipeline.db import JobStore

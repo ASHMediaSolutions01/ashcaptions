@@ -30,6 +30,7 @@ import subprocess
 import tempfile
 import threading
 import uuid
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable
 
@@ -48,6 +49,15 @@ from .models import PreviewJob, PreviewStatus
 logger = logging.getLogger(__name__)
 
 DEFAULT_FFMPEG_PATH = Path("bin/ffmpeg.exe")
+
+# Small and bounded on purpose: this only needs to survive an editor flipping
+# through the ~8 shipped styles (plus a few of their own) at one timestamp
+# before they move to a different moment in the video -- not to hold a whole
+# session's worth of exploration.
+MAX_TRANSCRIPTION_CACHE_ENTRIES = 32
+
+# (video_path, video_mtime, start_seconds, duration_seconds) -> built cards.
+CacheKey = tuple[str, float, float, float]
 
 # Extracts just the preview window as 16kHz mono PCM (what WhisperTranscriber
 # wants). Signature: (video_path, out_wav_path, start_seconds, duration_seconds, ffmpeg_path).
@@ -116,14 +126,17 @@ class InProcessPreviewRenderer:
         self._lock = threading.Lock()
         self._jobs: dict[str, PreviewJob] = {}
 
-        # Keyed by (video_path, start_seconds): an editor flips through
-        # styles at the same timestamp far more than they change the
-        # timestamp itself, and transcription -- not rendering -- is the
-        # slow, re-doable-for-nothing part of a preview. Re-using it across
-        # style changes at the same spot is the single biggest thing that
-        # makes flipping through styles feel fast (team-lead's note).
+        # An editor flips through styles at the same timestamp far more than
+        # they change the timestamp itself, and transcription -- not
+        # rendering -- is the slow, re-doable-for-nothing part of a preview.
+        # Re-using it across style changes at the same spot is the single
+        # biggest thing that makes flipping through styles feel fast.
+        # Bounded LRU (see MAX_TRANSCRIPTION_CACHE_ENTRIES) so a long
+        # session doesn't grow this without limit; keying on the video's
+        # mtime alongside its path means re-exporting to the same path
+        # can never serve a stale transcript -- it's just a fresh miss.
         self._cache_lock = threading.Lock()
-        self._transcription_cache: dict[tuple[str, float], tuple[Card, ...]] = {}
+        self._transcription_cache: OrderedDict[CacheKey, tuple[Card, ...]] = OrderedDict()
 
     def submit_preview(self, video_path: Path, start_seconds: float, style: dict[str, Any]) -> PreviewJob:
         try:
@@ -189,14 +202,26 @@ class InProcessPreviewRenderer:
             logger.warning("preview %s: failed: %s", job_id, exc)
             self._set(job_id, status=PreviewStatus.FAILED, phase=None, error=str(exc))
 
+    def _cache_key(self, video_path: Path, start_seconds: float, duration_seconds: float) -> CacheKey | None:
+        """None means "don't cache this" -- e.g. the file vanished between
+        HTTP-boundary validation and this background thread running. That's
+        not an error worth failing the preview over; it just always misses."""
+        try:
+            mtime = video_path.stat().st_mtime
+        except OSError:
+            return None
+        return (str(video_path), mtime, round(start_seconds, 3), round(duration_seconds, 3))
+
     def _cards_for_window(
         self, job_id: str, video_path: Path, start_seconds: float, duration_seconds: float
     ) -> tuple[Card, ...]:
-        cache_key = (str(video_path), round(start_seconds, 3))
-        with self._cache_lock:
-            cached = self._transcription_cache.get(cache_key)
-        if cached is not None:
-            return cached
+        cache_key = self._cache_key(video_path, start_seconds, duration_seconds)
+        if cache_key is not None:
+            with self._cache_lock:
+                cached = self._transcription_cache.get(cache_key)
+                if cached is not None:
+                    self._transcription_cache.move_to_end(cache_key)  # LRU: mark most-recently-used
+                    return cached
 
         self._set(job_id, status=PreviewStatus.RUNNING, phase="transcribing")
         job_dir = self._work_dir / job_id
@@ -206,6 +231,10 @@ class InProcessPreviewRenderer:
         result = self._transcriber.transcribe(wav_path)
         cards = tuple(build_cards(list(result.words)))
 
-        with self._cache_lock:
-            self._transcription_cache[cache_key] = cards
+        if cache_key is not None:
+            with self._cache_lock:
+                self._transcription_cache[cache_key] = cards
+                self._transcription_cache.move_to_end(cache_key)
+                while len(self._transcription_cache) > MAX_TRANSCRIPTION_CACHE_ENTRIES:
+                    self._transcription_cache.popitem(last=False)  # evict least-recently-used
         return cards
