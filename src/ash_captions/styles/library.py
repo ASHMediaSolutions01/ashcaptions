@@ -33,6 +33,8 @@ __all__ = [
     "list_styles",
     "resolve_style",
     "save_user_style",
+    "delete_user_style",
+    "is_shipped_style",
     "DEFAULT_STYLE",
 ]
 
@@ -111,6 +113,40 @@ def save_user_style(style: Style, *, user_dir: Path | None = None) -> Path:
     path = directory / filename
     path.write_text(json.dumps(style.to_dict(), indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def delete_user_style(name: str, *, user_dir: Path | None = None) -> bool:
+    """Delete a saved user style by name (spec 7A.3's editor needs this
+    to let an editor remove their own look). Only ever touches the user
+    directory -- a shipped style can never be deleted this way, so
+    ``is_shipped_style`` stays reliable. Returns True if a file was
+    removed, False if no user style with that name existed (not an
+    error: deleting something already gone is a no-op)."""
+    directory = user_dir or user_styles_dir()
+    if not directory.is_dir():
+        return False
+    for path in directory.glob("*.json"):
+        try:
+            style = load_style_file(path)
+        except (StyleValidationError, OSError, json.JSONDecodeError, KeyError, TypeError):
+            continue
+        if style.name == name:
+            path.unlink()
+            return True
+    return False
+
+
+def is_shipped_style(name: str, *, shipped_dir: Path | None = None) -> bool:
+    """True if ``name`` belongs to one of the built-in looks shipped in
+    ``styles/`` -- regardless of whether a user override of the same name
+    also exists. Lets the editor grey out "delete" for a built-in style
+    (a user "delete" on a shipped name should only remove their
+    override, if any, reverting to the shipped look -- see
+    ``delete_user_style``)."""
+    for style in _load_directory(shipped_dir or shipped_styles_dir()):
+        if style.name == name:
+            return True
+    return False
 
 
 def _load_directory(directory: Path) -> list[Style]:

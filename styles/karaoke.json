@@ -1,0 +1,18 @@
+{
+  "name": "KARAOKE",
+  "font": "Poppins",
+  "size": 70,
+  "uppercase": false,
+  "letter_spacing": 0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FF3D7F",
+    "outline": "#000000",
+    "shadow": "#00000090",
+    "box": "#00000000"
+  },
+  "active_word": { "effect": "karaoke", "scale": 1.0, "box": false },
+  "entrance": { "effect": "fade", "duration_ms": 80 },
+  "exit": { "effect": "fade", "duration_ms": 80 },
+  "layout": { "position": "bottom", "max_words": 4, "margin_l": 80, "margin_r": 80, "margin_v": 120 }
+}

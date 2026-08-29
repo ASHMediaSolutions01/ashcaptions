@@ -1,0 +1,18 @@
+{
+  "name": "COMIC",
+  "font": "Bangers",
+  "size": 92,
+  "uppercase": true,
+  "letter_spacing": 1.0,
+  "colors": {
+    "text": "#FFF200",
+    "active": "#FF1E1E",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": { "effect": "shake", "scale": 1.2, "box": false },
+  "entrance": { "effect": "fade", "duration_ms": 60 },
+  "exit": { "effect": "none", "duration_ms": 0 },
+  "layout": { "position": "bottom", "max_words": 3, "margin_l": 60, "margin_r": 60, "margin_v": 130 }
+}

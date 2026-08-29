@@ -24,7 +24,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..styles.render import DEFAULT_PLAY_RES as _STYLE_DEFAULT_PLAY_RES
 from ..styles.render import render_ass as _render_ass_styled
 from ..styles.render import write_ass as _write_ass_styled
 from ..styles.schema import Style

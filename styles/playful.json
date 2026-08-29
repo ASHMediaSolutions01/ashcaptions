@@ -1,0 +1,18 @@
+{
+  "name": "PLAYFUL",
+  "font": "Baloo 2",
+  "size": 74,
+  "uppercase": false,
+  "letter_spacing": 0,
+  "colors": {
+    "text": "#3A2E39",
+    "active": "#FF6F91",
+    "outline": "#FFFFFF",
+    "shadow": "#00000040",
+    "box": "#FFF3B0"
+  },
+  "active_word": { "effect": "scale_box", "scale": 1.1, "box": true },
+  "entrance": { "effect": "rise", "duration_ms": 160 },
+  "exit": { "effect": "fade", "duration_ms": 100 },
+  "layout": { "position": "bottom", "max_words": 3, "margin_l": 80, "margin_r": 80, "margin_v": 140 }
+}

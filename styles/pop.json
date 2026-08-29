@@ -1,0 +1,18 @@
+{
+  "name": "POP",
+  "font": "Montserrat ExtraBold",
+  "size": 88,
+  "uppercase": true,
+  "letter_spacing": 0.5,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#111111",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#00E28A"
+  },
+  "active_word": { "effect": "scale_box", "scale": 1.12, "box": true },
+  "entrance": { "effect": "rise", "duration_ms": 140 },
+  "exit": { "effect": "none", "duration_ms": 0 },
+  "layout": { "position": "bottom", "max_words": 3, "margin_l": 60, "margin_r": 60, "margin_v": 160 }
+}

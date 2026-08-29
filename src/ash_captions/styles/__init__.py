@@ -16,6 +16,8 @@ Public interface -- other packages should import from here:
 from .fonts import download_fonts, fontsdir_arg, is_font_bundled, list_font_families
 from .library import (
     DEFAULT_STYLE,
+    delete_user_style,
+    is_shipped_style,
     list_styles,
     load_style_file,
     resolve_style,
@@ -41,6 +43,8 @@ __all__ = [
     "validate_style_dict",
     "load_style_file",
     "save_user_style",
+    "delete_user_style",
+    "is_shipped_style",
     "shipped_styles_dir",
     "user_styles_dir",
     "render_ass",

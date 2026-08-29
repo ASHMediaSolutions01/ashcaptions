@@ -1,0 +1,18 @@
+{
+  "name": "NEON GLOW",
+  "font": "Space Grotesk",
+  "size": 76,
+  "uppercase": true,
+  "letter_spacing": 1.0,
+  "colors": {
+    "text": "#E8FBFF",
+    "active": "#39FFE3",
+    "outline": "#0B1622",
+    "shadow": "#39FFE388",
+    "box": "#00000000"
+  },
+  "active_word": { "effect": "glow", "scale": 1.08, "box": false },
+  "entrance": { "effect": "fade", "duration_ms": 160 },
+  "exit": { "effect": "fade", "duration_ms": 160 },
+  "layout": { "position": "center", "max_words": 3, "margin_l": 90, "margin_r": 90, "margin_v": 0 }
+}

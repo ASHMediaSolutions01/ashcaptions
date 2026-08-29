@@ -1,0 +1,18 @@
+{
+  "name": "HYPE",
+  "font": "Anton",
+  "size": 120,
+  "uppercase": true,
+  "letter_spacing": 0.5,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FFCC00",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": { "effect": "shake", "scale": 1.25, "box": false },
+  "entrance": { "effect": "rise", "duration_ms": 120 },
+  "exit": { "effect": "rise", "duration_ms": 120 },
+  "layout": { "position": "center", "max_words": 2, "margin_l": 60, "margin_r": 60, "margin_v": 0 }
+}

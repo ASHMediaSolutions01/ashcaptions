@@ -272,11 +272,34 @@ def _leading_override(
     tags: list[str] = []
     if style.letter_spacing:
         tags.append(f"\\fsp{_num(style.letter_spacing)}")
-    if is_first:
-        tags.append(_entrance_tag(style, x, y))
-    if is_last:
-        tags.append(_exit_tag(style, x, y, event_ms))
+
+    entrance_tag = _entrance_tag(style, x, y) if is_first else ""
+    exit_tag = _exit_tag(style, x, y, event_ms) if is_last else ""
+
+    if entrance_tag and exit_tag and _tag_kind(entrance_tag) == _tag_kind(exit_tag):
+        # A single event carries both entrance and exit -- a one-word
+        # card, or a karaoke card (one event per card, not per word). Two
+        # \fad or two \move tags on the same line don't compose in
+        # libass; the second one silently wins and the first is lost.
+        # \fad(t1,t2) already fades in *and* out in one call, so merge
+        # those into one tag; two \move effects can't merge the same way,
+        # so entrance wins and the exit motion is dropped for that event.
+        if _tag_kind(entrance_tag) == "fad":
+            entrance_ms = style.entrance.duration_ms if style.entrance.effect == "fade" else 0
+            exit_ms = min(style.exit.duration_ms, event_ms) if style.exit.effect == "fade" else 0
+            tags.append(f"\\fad({entrance_ms},{exit_ms})")
+        else:
+            tags.append(entrance_tag)
+    else:
+        if entrance_tag:
+            tags.append(entrance_tag)
+        if exit_tag:
+            tags.append(exit_tag)
     return "".join(t for t in tags if t)
+
+
+def _tag_kind(tag: str) -> str:
+    return "fad" if tag.startswith("\\fad(") else "move"
 
 
 def _entrance_tag(style: Style, x: float, y: float) -> str:
@@ -353,8 +376,8 @@ def _ass_header(style: Style, base_name: str, box_name: str, width: int, height:
         name=box_name,
         font=style.font,
         size=style.size,
-        primary=style.colors.text,
-        secondary=style.colors.text,
+        primary=style.colors.active,
+        secondary=style.colors.active,
         outline_colour=style.colors.box,
         back_colour=style.colors.box,
         border_style=3,
