@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 import release
@@ -40,18 +41,18 @@ def test_release_tag():
 
 def test_artifact_download_url():
     url = release.artifact_download_url(
-        repo="AshMediaSolutions/ash-captions-releases", tag="v0.4.0", filename="AshCaptions-0.4.0-win64.zip"
+        repo="ASHMediaSolutions01/ashcaptions-releases", tag="v0.4.0", filename="AshCaptions-0.4.0-win64.zip"
     )
     assert url == (
-        "https://github.com/AshMediaSolutions/ash-captions-releases/"
+        "https://github.com/ASHMediaSolutions01/ashcaptions-releases/"
         "releases/download/v0.4.0/AshCaptions-0.4.0-win64.zip"
     )
 
 
 def test_manifest_stable_url():
-    url = release.manifest_stable_url(repo="AshMediaSolutions/ash-captions-releases")
+    url = release.manifest_stable_url(repo="ASHMediaSolutions01/ashcaptions-releases")
     assert url == (
-        "https://github.com/AshMediaSolutions/ash-captions-releases/"
+        "https://github.com/ASHMediaSolutions01/ashcaptions-releases/"
         "releases/latest/download/manifest.json"
     )
     # Crucially: no tag/version in this URL -- it must always resolve to
@@ -66,14 +67,14 @@ def test_build_release_manifest(tmp_path):
     build_info = _fake_build_info(tmp_path)
     manifest = release.build_release_manifest(
         build_info,
-        repo="AshMediaSolutions/ash-captions-releases",
+        repo="ASHMediaSolutions01/ashcaptions-releases",
         channel="stable",
         min_supported_version="0.1.0",
         notes="notes",
     )
     assert manifest["version"] == "0.4.0"
     assert manifest["artifact"]["url"] == (
-        "https://github.com/AshMediaSolutions/ash-captions-releases/"
+        "https://github.com/ASHMediaSolutions01/ashcaptions-releases/"
         "releases/download/v0.4.0/AshCaptions-0.4.0-win64.zip"
     )
     assert manifest["artifact"]["sha256"] == build_info["sha256"]
@@ -191,12 +192,25 @@ def test_publish_release_missing_artifact(tmp_path, monkeypatch):
         release.publish_release(repo="o/r", dist_dir=tmp_path)
 
 
-def test_parse_args_requires_repo():
-    with pytest.raises(SystemExit):
-        release.parse_args([])
+def test_parse_args_defaults_to_real_releases_repo():
+    """A plain `scripts/release.py` with no flags must resolve to the real
+    public artifacts repo, not 404 against a placeholder."""
+    args = release.parse_args([])
+    assert args.repo == "ASHMediaSolutions01/ashcaptions-releases"
+    assert args.repo == release.DEFAULT_RELEASES_REPO
 
 
-def test_parse_args_ok():
+def test_parse_args_repo_override():
     args = release.parse_args(["--repo", "o/r"])
     assert args.repo == "o/r"
     assert args.channel == "stable"
+
+
+def test_install_ps1_default_manifest_repo_matches_release_py():
+    """installer/install.ps1's zero-argument download target and
+    release.py's DEFAULT_RELEASES_REPO must name the same repo -- a drift
+    here means a fresh install 404s even though publishing still works."""
+    install_ps1 = Path(__file__).resolve().parents[2] / "installer" / "install.ps1"
+    text = install_ps1.read_text(encoding="utf-8")
+    assert release.DEFAULT_RELEASES_REPO in text
+    assert release.manifest_stable_url(repo=release.DEFAULT_RELEASES_REPO) in text

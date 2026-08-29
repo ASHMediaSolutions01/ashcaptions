@@ -68,10 +68,14 @@ def test_check_only_reports_plan_without_side_effects(tmp_path):
 
 
 def test_check_only_default_manifest_url_is_set():
+    """A zero-argument install must resolve against the real public artifacts
+    repo, not a placeholder org -- see scripts/release.py's DEFAULT_RELEASES_REPO."""
     result = _run("-CheckOnly")
     payload = json.loads(result.stdout)
-    assert payload["manifest_url"].startswith("https://github.com/")
-    assert payload["manifest_url"].endswith("manifest.json")
+    assert payload["manifest_url"] == (
+        "https://github.com/ASHMediaSolutions01/ashcaptions-releases/"
+        "releases/latest/download/manifest.json"
+    )
 
 
 @pytest.fixture

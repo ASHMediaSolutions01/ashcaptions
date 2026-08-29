@@ -112,14 +112,19 @@ was the single failure mode called out by name in the packaging brief.
 ### 4. Publish
 
 ```powershell
-.venv\Scripts\python.exe scripts\release.py --repo <org>/ash-captions-releases
+.venv\Scripts\python.exe scripts\release.py
 ```
+
+`--repo` defaults to `ASHMediaSolutions01/ashcaptions-releases` (the real,
+current public artifacts repo) so this needs no flags for the normal case;
+pass `--repo <owner>/<name>` to override if the repo is ever renamed or
+moved.
 
 Uploads the zip and a signed-looking (hash-verified, not cryptographically
 signed -- see "Known gaps" below) `manifest.json` as GitHub Release assets
-on the tag `v<version>`, to the **public** `ash-captions-releases` repo.
-Re-running against a version you already published re-uploads with
-`--clobber` instead of failing on "tag already exists".
+on the tag `v<version>`, to that **public** repo. Re-running against a
+version you already published re-uploads with `--clobber` instead of
+failing on "tag already exists".
 
 Never pass a token to this script or set one in its environment for it to
 read -- it shells out to `gh`, which uses its own stored login
@@ -168,7 +173,7 @@ The **stable URL** an updater should poll is tag-independent, always the
 newest publish:
 
 ```
-https://github.com/<owner>/ash-captions-releases/releases/latest/download/manifest.json
+https://github.com/ASHMediaSolutions01/ashcaptions-releases/releases/latest/download/manifest.json
 ```
 
 That file's `artifact.url` then points at the immutable, version-tagged
@@ -184,7 +189,7 @@ exactly the one this manifest said, not a guess.
   "build_date": "2026-08-29T14:32:00+00:00",
   "artifact": {
     "filename": "AshCaptions-0.4.0-win64.zip",
-    "url": "https://github.com/<owner>/ash-captions-releases/releases/download/v0.4.0/AshCaptions-0.4.0-win64.zip",
+    "url": "https://github.com/ASHMediaSolutions01/ashcaptions-releases/releases/download/v0.4.0/AshCaptions-0.4.0-win64.zip",
     "sha256": "<64 hex chars>",
     "size_bytes": 1234567890
   },
@@ -195,46 +200,78 @@ exactly the one this manifest said, not a guess.
 
 **Consumption contract for the app-side updater:**
 
-1. `GET` the stable manifest URL above.
+1. On launch (and/or on whatever interval the app decides -- outside this
+   doc's scope), `GET` the stable manifest URL above. This is a **check**,
+   nothing more.
 2. Reject the manifest if `schema_version` isn't one you understand
    (`pkgtools.manifest.validate_manifest` / `read_manifest` do this).
 3. Compare `manifest["version"]` against the running version with the same
    numeric-tuple comparison `pkgtools.manifest.compare_versions()` /
    `is_newer()` implement -- **not** a string comparison (`"0.10.0" <
    "0.9.0"` lexicographically, but 0.10.0 is newer).
-4. If newer, download `artifact.url`, then verify both `size_bytes` and
-   `sha256` before replacing anything running (`verify_artifact_against_manifest()`
-   is the exact check to mirror). Never unpack an artifact that fails this
-   check.
-5. Unpack over the existing `onedir` install the same way
-   `installer/install.ps1`'s `Install-Bundle` does (robocopy `/MIR` from a
-   freshly-extracted copy, not an in-place overwrite of a running exe).
+4. If newer, **tell the editor an update is available and stop.** Do not
+   download, verify, or apply anything yet -- see "Updates require an
+   explicit click" immediately below for why this line is load-bearing, not
+   optional polish.
+5. Only once the editor clicks to accept: download `artifact.url`, verify
+   both `size_bytes` and `sha256` against the manifest before touching
+   anything running (`verify_artifact_against_manifest()` is the exact check
+   to mirror -- never unpack an artifact that fails it), then unpack over the
+   existing `onedir` install the same way `installer/install.ps1`'s
+   `Install-Bundle` does (robocopy `/MIR` from a freshly-extracted copy, not
+   an in-place overwrite of a running exe).
 
-### Known gaps in this manifest (flagging honestly, not hiding them)
+### Updates require an explicit click. Never auto-apply unattended.
 
-- **Not cryptographically signed.** The spec (section 11.4) calls out
-  `tufup` (TUF-based signed updates) as the intended mechanism. What's
-  implemented here is sha256 integrity verification against a manifest
-  served over HTTPS from GitHub -- real protection against a corrupted or
-  truncated download, and against tampering *unless* an attacker can also
-  modify the GitHub release itself. A `tufup` migration would sit on top of
-  this same manifest shape (it already has the fields TUF metadata wraps)
-  without a schema break, and is worth doing before this updater
-  auto-applies updates unattended on six machines with no human reviewing
-  each one. Flagging this as a real gap, not a resolved one.
-- **`min_supported_version` is advisory only** here -- nothing in this
-  package enforces it. It exists so the updater can refuse to serve an
-  update to a version too old to understand the new manifest, if that ever
-  becomes necessary.
+This is a deliberate decision, made with the reasoning recorded here on
+purpose -- not a corner cut and hoped nobody would ask.
+
+The spec (section 11.4) floats `tufup` (TUF-based signed updates) as the
+intended mechanism. We are **not** implementing it. Real signing means real
+key management: an offline root key, a rotation plan, somewhere safe to keep
+it, someone who knows how to use it under pressure. A six-person studio will
+not maintain that -- and an unmaintained or lost signing key is *worse* than
+no signing, because it manufactures the appearance of a guarantee nobody is
+actually upholding.
+
+The threat signing exists to stop is a compromised release repo silently
+pushing code onto six machines with no human in the loop. **Removing the
+"unattended" removes most of that risk for a fraction of the cost.** A
+malicious or corrupted release can still get published, but it cannot
+install itself -- an editor has to see "update available" and choose to
+accept it, which is also just... normal software behavior editors already
+understand, unlike a signing failure they'd have no way to interpret.
+
+What this repo actually ships, so the app-side owner knows exactly what
+they're building on:
+
+- The app may **check** for an update on launch and **tell** the editor one
+  exists. It must **never** download-and-apply without the editor clicking
+  to accept.
+- sha256 (and size) from the manifest is still verified before applying --
+  that part is unconditional and does not get weaker because signing is
+  absent. It protects against a corrupted/truncated download and against
+  tampering unless an attacker can also modify the GitHub release itself --
+  real protection, just not a cryptographic guarantee back to an offline
+  root key.
+- If a `tufup` migration ever happens, it sits on top of this same manifest
+  shape (the fields TUF metadata wraps are already here) without a schema
+  break. Worth revisiting if this ever moves toward unattended auto-apply --
+  which, per the above, is not the plan.
+
+`min_supported_version` is advisory only here -- nothing in this package
+enforces it. It exists so the updater can refuse to serve an update to a
+version too old to understand the new manifest, if that ever becomes
+necessary.
 
 ---
 
 ## Two-repo model (spec section 11.4)
 
-- **`ash-captions`** (this repo, private) -- source. Never contains client
-  data, glossaries, or secrets.
-- **`ash-captions-releases`** (public) -- built artifacts and
-  `manifest.json` only. No source, no secrets, nothing an attacker gains
+- **`ASHMediaSolutions01/ashcaptions`** (this repo, private) -- source. Never
+  contains client data, glossaries, or secrets.
+- **`ASHMediaSolutions01/ashcaptions-releases`** (public) -- built artifacts
+  and `manifest.json` only. No source, no secrets, nothing an attacker gains
   anything from. Because it's public, `install.ps1` and the app-side updater
   hit **unauthenticated** URLs -- there is no token to put on six PCs, and
   therefore none to leak, rotate, or forget to revoke when someone leaves.

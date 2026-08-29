@@ -1,15 +1,15 @@
-"""Publish a built artifact to the public `ash-captions-releases` repo.
+"""Publish a built artifact to the public `ashcaptions-releases` repo.
 
 Run on Ghazi's build machine only, after `build.py`:
 
-    .venv/Scripts/python.exe scripts/release.py --repo <owner>/ash-captions-releases
+    .venv/Scripts/python.exe scripts/release.py --repo ASHMediaSolutions01/ashcaptions-releases
 
 Two-repo design (spec section 11.4): source lives in the private
-`ash-captions` repo and never leaves it. Built artifacts and the version
-manifest go to a *separate public* repo containing no source and no secrets,
-so `installer/install.ps1` and the in-app updater can hit plain
-unauthenticated GitHub Release URLs -- there is no token to distribute or
-rotate across six PCs, because there is nothing there worth protecting.
+`ASHMediaSolutions01/ashcaptions` repo and never leaves it. Built artifacts
+and the version manifest go to a *separate public* repo containing no source
+and no secrets, so `installer/install.ps1` and the in-app updater can hit
+plain unauthenticated GitHub Release URLs -- there is no token to distribute
+or rotate across six PCs, because there is nothing there worth protecting.
 
 This script never reads, writes, or logs an auth token. Publishing is done
 entirely through the `gh` CLI's own stored authentication (`gh auth login`,
@@ -21,12 +21,17 @@ The manifest schema this writes -- and the app-side updater must read -- is
 documented in full in docs/INSTALL.md. In short: the *stable*, tag-independent
 URL
 
-    https://github.com/<owner>/ash-captions-releases/releases/latest/download/manifest.json
+    https://github.com/ASHMediaSolutions01/ashcaptions-releases/releases/latest/download/manifest.json
 
 always resolves to the newest published manifest.json, whose embedded
 `artifact.url` then points at that release's immutable, version-tagged asset.
 The updater never needs to enumerate releases or parse tags -- it polls one
 URL.
+
+`--repo` defaults to that real repo (see `DEFAULT_RELEASES_REPO` below) so a
+plain `scripts/release.py` with no flags does the right thing -- but stays
+overridable, since a hardcoded-only value would be wrong the day the repo
+ever moves.
 """
 
 from __future__ import annotations
@@ -173,12 +178,18 @@ def publish_release(
     return manifest_path
 
 
+DEFAULT_RELEASES_REPO = "ASHMediaSolutions01/ashcaptions-releases"
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--repo",
-        required=True,
-        help="owner/ash-captions-releases -- the PUBLIC artifacts repo, not the source repo.",
+        default=DEFAULT_RELEASES_REPO,
+        help=(
+            f"owner/ashcaptions-releases -- the PUBLIC artifacts repo, not the source "
+            f"repo. Defaults to {DEFAULT_RELEASES_REPO}; override if that ever changes."
+        ),
     )
     parser.add_argument("--dist-dir", type=Path, default=DEFAULT_DIST_DIR)
     parser.add_argument("--channel", default="stable")

@@ -68,12 +68,10 @@ $InDir = Join-Path $DataRoot 'in'
 $OutDir = Join-Path $DataRoot 'out'
 $GlossaryDir = Join-Path $DataRoot 'glossaries'
 
-# TODO(Ghazi): confirm the real org/repo before first rollout -- the design
-# spec (section 11.4) fixes the *pattern* (public releases repo, unauthenticated
-# URLs) but not the exact GitHub org name, which was not decided at time of
-# writing. `scripts/release.py --repo <org>/ash-captions-releases` prints the
-# exact manifest URL its own release publishes; paste that here once known.
-$DefaultManifestUrl = 'https://github.com/AshMediaSolutions/ash-captions-releases/releases/latest/download/manifest.json'
+# The public artifacts repo (spec section 11.4: no source, no secrets, so this
+# URL needs no auth). Matches scripts/release.py's DEFAULT_RELEASES_REPO --
+# keep the two in sync if this repo is ever renamed or moved.
+$DefaultManifestUrl = 'https://github.com/ASHMediaSolutions01/ashcaptions-releases/releases/latest/download/manifest.json'
 if (-not $ManifestUrl) { $ManifestUrl = $DefaultManifestUrl }
 
 # --- small helpers -------------------------------------------------------
