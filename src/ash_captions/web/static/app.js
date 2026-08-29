@@ -23,6 +23,25 @@
   // { type: "path", value: "D:\...\clip.mp4" } or { type: "upload", value: File }
   let selectedSource = null;
 
+  // ---- Caption style dropdown (spec 7A) ----
+  // Populated from the same style library the style editor manages, so a
+  // custom look designed there shows up here too -- not a hardcoded pair.
+
+  async function loadPresets() {
+    const res = await fetch("/api/styles");
+    const styles = await res.json();
+    presetSelect.innerHTML = "";
+    for (const style of styles) {
+      const opt = document.createElement("option");
+      opt.value = style.name;
+      opt.textContent = style.shipped ? style.name : `${style.name} (custom)`;
+      presetSelect.appendChild(opt);
+    }
+    // POP is the short-form default (spec 6); fall back to the first style.
+    const pop = styles.find((s) => s.name === "POP");
+    presetSelect.value = pop ? pop.name : (styles[0] && styles[0].name);
+  }
+
   // ---- Language / dialect dropdowns ----
 
   function renderDialects() {
@@ -280,6 +299,7 @@
   // ---- Boot ----
 
   loadLanguages();
+  loadPresets();
   refreshJobs();
   connectEvents();
 })();

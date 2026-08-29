@@ -36,6 +36,15 @@ header p {
   color: var(--muted);
   font-size: 15px;
 }
+.style-editor-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.style-editor-link:hover { text-decoration: underline; }
 main {
   max-width: 900px;
   margin: 0 auto;

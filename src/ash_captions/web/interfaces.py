@@ -10,9 +10,9 @@ is injected into `create_app()`. Tests inject fakes; production wiring
 from __future__ import annotations
 
 from pathlib import Path
-from typing import AsyncIterator, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Protocol, runtime_checkable
 
-from .models import Job, JobOptions, Language
+from .models import Job, JobOptions, Language, PreviewJob, StyleSummary
 
 
 class JobNotFoundError(Exception):
@@ -74,4 +74,97 @@ class LanguageCatalogueProvider(Protocol):
 
     def list_languages(self) -> list[Language]:
         """Return every supported language with its dialect presets."""
+        ...
+
+
+# --- Caption styling (spec 7A) ----------------------------------------------
+#
+# The web layer never imports `ash_captions.styles` or `ash_captions.engine`
+# directly here either -- same reasoning as the queue/catalogue above. The
+# real implementations (`web.styles_adapter.StylesPackageAdapter`,
+# `web.preview_adapter.InProcessPreviewRenderer`) are the ones allowed to
+# depend on those packages; `create_app()` constructs them by default so
+# production wiring needs no changes, but tests inject fakes instead.
+
+
+class StyleNotFoundError(Exception):
+    """Raised by a StyleProvider when a style name is neither shipped nor
+    a saved user style."""
+
+
+class StyleValidationFailedError(Exception):
+    """Raised by a StyleProvider when a style definition fails validation.
+    `str(exc)` names the exact field at fault (e.g. "font: 'Comic Sans MS'
+    is not a bundled font") so the web layer can return it verbatim in a
+    400 response, never a 500."""
+
+
+class StyleIsShippedError(Exception):
+    """Raised by StyleProvider.delete_style() when asked to delete one of
+    the built-in looks -- the shipped library must never be destroyable
+    from the editor (spec 7A.2)."""
+
+
+class PreviewNotFoundError(Exception):
+    """Raised by PreviewRenderer.get_preview() when job_id does not exist."""
+
+
+@runtime_checkable
+class StyleProvider(Protocol):
+    """What the style editor needs from the caption styling system (spec
+    7A). Implemented over `ash_captions.styles` -- see `styles_adapter.py`.
+    """
+
+    def list_styles(self) -> list[StyleSummary]:
+        """Every available style, shipped + user, for the style picker."""
+        ...
+
+    def get_style(self, name: str, *, shipped_only: bool = False) -> StyleSummary:
+        """One style's full definition. Raises StyleNotFoundError.
+
+        `shipped_only=True` bypasses any user override of `name` -- what
+        the "reset to shipped" editor action fetches when a shipped look
+        has been edited and saved under its own name.
+        """
+        ...
+
+    def save_style(self, name: str, definition: dict[str, Any]) -> StyleSummary:
+        """Validate `definition` and save it as a user style keyed by
+        `name` (overriding a shipped style of the same name, per spec
+        7A.2) -- the URL path segment is always the identity, regardless
+        of any "name" field inside `definition`. Raises
+        StyleValidationFailedError with a field-named message on bad input.
+        """
+        ...
+
+    def delete_style(self, name: str) -> None:
+        """Delete a user style. Raises StyleIsShippedError if `name` is one
+        of the built-in looks, StyleNotFoundError if no user style exists
+        under that name."""
+        ...
+
+    def list_fonts(self) -> list[str]:
+        """Every bundled font family, for the font dropdown (spec 7A.4)."""
+        ...
+
+
+@runtime_checkable
+class PreviewRenderer(Protocol):
+    """Renders the style editor's live ~3s preview (spec 7A.3).
+
+    Rendering costs real wall-clock time (a short transcription plus two
+    ffmpeg passes), so this is job-shaped rather than a blocking call:
+    `submit_preview` returns immediately with a `pending`/`running` job,
+    and the browser polls `get_preview` for its status -- mirroring how
+    `JobQueue` itself never blocks a request on real engine work.
+    """
+
+    def submit_preview(self, video_path: Path, start_seconds: float, style: dict[str, Any]) -> PreviewJob:
+        """Start rendering a preview clip of `video_path` at `start_seconds`
+        with `style` (an in-progress edit) burned in. Raises
+        StyleValidationFailedError if `style` doesn't validate."""
+        ...
+
+    def get_preview(self, job_id: str) -> PreviewJob:
+        """Current status of a preview job. Raises PreviewNotFoundError."""
         ...

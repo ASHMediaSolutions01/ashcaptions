@@ -20,19 +20,33 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi import Form
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .interfaces import JobNotFoundError, JobNotRetryableError, JobQueue, LanguageCatalogueProvider
+from .interfaces import (
+    JobNotFoundError,
+    JobNotRetryableError,
+    JobQueue,
+    LanguageCatalogueProvider,
+    PreviewNotFoundError,
+    PreviewRenderer,
+    StyleIsShippedError,
+    StyleNotFoundError,
+    StyleProvider,
+    StyleValidationFailedError,
+)
 from .models import (
-    ALLOWED_PRESETS,
     ALLOWED_VIDEO_EXTENSIONS,
     Job,
     JobOptions,
     JobPathRequest,
     Language,
+    PreviewJob,
+    PreviewRequest,
+    PreviewStatus,
+    StyleSummary,
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -45,6 +59,8 @@ def create_app(
     queue: JobQueue,
     catalogue: LanguageCatalogueProvider,
     *,
+    style_provider: StyleProvider | None = None,
+    preview_renderer: PreviewRenderer | None = None,
     incoming_dir: Path | None = None,
     sse_poll_interval: float = DEFAULT_SSE_POLL_INTERVAL,
 ) -> FastAPI:
@@ -54,10 +70,18 @@ def create_app(
     written before being handed to `queue.submit()`. It is deliberately a
     directory distinct from the watch folder (`C:\\AshCaptions\\in\\`) so an
     upload is never picked up a second time by the folder watcher.
+
+    `style_provider`/`preview_renderer` default to real implementations
+    backed by `ash_captions.styles`/`ash_captions.engine` (see
+    `styles_adapter.py`/`preview_adapter.py`) so production callers don't
+    need to change to get the style editor (spec 7A) working -- tests
+    inject fakes instead, same as `queue`/`catalogue`.
     """
     app = FastAPI(title="ASH Captions")
     app.state.queue = queue
     app.state.catalogue = catalogue
+    app.state.style_provider = style_provider or _default_style_provider()
+    app.state.preview_renderer = preview_renderer or _default_preview_renderer()
     app.state.incoming_dir = incoming_dir or DEFAULT_INCOMING_DIR
     app.state.sse_poll_interval = sse_poll_interval
 
@@ -67,6 +91,12 @@ def create_app(
     def get_catalogue(request: Request) -> LanguageCatalogueProvider:
         return request.app.state.catalogue
 
+    def get_style_provider(request: Request) -> StyleProvider:
+        return request.app.state.style_provider
+
+    def get_preview_renderer(request: Request) -> PreviewRenderer:
+        return request.app.state.preview_renderer
+
     # Serves style.css and app.js alongside the page. index.html is served
     # from "/" below (not through this mount) so the control page works at
     # the bare root URL.
@@ -75,6 +105,10 @@ def create_app(
     @app.get("/")
     async def index() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/style-editor")
+    async def style_editor_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "style_editor.html")
 
     @app.get("/api/languages", response_model=list[Language])
     async def list_languages(
@@ -91,12 +125,19 @@ def create_app(
         body: JobPathRequest,
         queue: JobQueue = Depends(get_queue),
         catalogue: LanguageCatalogueProvider = Depends(get_catalogue),
+        style_provider: StyleProvider = Depends(get_style_provider),
     ) -> Job:
         """Primary submission route. The footage is already on this machine
         (spec §4.4), so this reads it in place -- no copy, no upload, works
         for a multi-GB 4K file exactly as fast as a small one."""
         options = _validate_options(
-            catalogue, body.language, body.dialect, body.preset, body.burn_in, body.translate_to_english
+            catalogue,
+            style_provider,
+            body.language,
+            body.dialect,
+            body.preset,
+            body.burn_in,
+            body.translate_to_english,
         )
         path = _validate_local_path(body.path)
         return queue.submit(path, options)
@@ -112,13 +153,16 @@ def create_app(
         translate_to_english: bool = Form(False),
         queue: JobQueue = Depends(get_queue),
         catalogue: LanguageCatalogueProvider = Depends(get_catalogue),
+        style_provider: StyleProvider = Depends(get_style_provider),
     ) -> Job:
         """Secondary submission route -- an actual byte upload. Kept for cases
         where the footage isn't reachable by a local path (e.g. a network
         share the service account can't see). Prefer /api/jobs/by-path:
         this route copies the whole file to `incoming_dir` first, which is
         slow and wastes disk for the multi-GB files editors work with."""
-        options = _validate_options(catalogue, language, dialect, preset, burn_in, translate_to_english)
+        options = _validate_options(
+            catalogue, style_provider, language, dialect, preset, burn_in, translate_to_english
+        )
         _validate_upload(file)
 
         # Each upload gets its own subdirectory so the on-disk filename can
@@ -153,6 +197,93 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
         except JobNotRetryableError:
             raise HTTPException(status_code=409, detail=f"Job {job_id!r} is not in a retryable state.")
+
+    # --- Caption styling (spec 7A) ------------------------------------------
+
+    @app.get("/api/styles", response_model=list[StyleSummary])
+    async def list_styles(
+        style_provider: StyleProvider = Depends(get_style_provider),
+    ) -> list[StyleSummary]:
+        return style_provider.list_styles()
+
+    @app.get("/api/styles/{name}", response_model=StyleSummary)
+    async def get_style(
+        name: str,
+        shipped_only: bool = False,
+        style_provider: StyleProvider = Depends(get_style_provider),
+    ) -> StyleSummary:
+        try:
+            return style_provider.get_style(name, shipped_only=shipped_only)
+        except StyleNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Style {name!r} not found.")
+
+    @app.put("/api/styles/{name}", response_model=StyleSummary)
+    async def save_style(
+        name: str,
+        definition: dict = Body(...),
+        style_provider: StyleProvider = Depends(get_style_provider),
+    ) -> StyleSummary:
+        try:
+            return style_provider.save_style(name, definition)
+        except StyleValidationFailedError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.delete("/api/styles/{name}", status_code=204)
+    async def delete_style(
+        name: str,
+        style_provider: StyleProvider = Depends(get_style_provider),
+    ) -> Response:
+        try:
+            style_provider.delete_style(name)
+        except StyleIsShippedError:
+            raise HTTPException(
+                status_code=409, detail=f"{name!r} is a built-in style and can't be deleted."
+            )
+        except StyleNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Style {name!r} not found.")
+        return Response(status_code=204)
+
+    @app.get("/api/fonts", response_model=list[str])
+    async def list_fonts(style_provider: StyleProvider = Depends(get_style_provider)) -> list[str]:
+        return style_provider.list_fonts()
+
+    @app.post("/api/styles/preview", response_model=PreviewJob, status_code=202)
+    async def submit_preview(
+        body: PreviewRequest,
+        preview_renderer: PreviewRenderer = Depends(get_preview_renderer),
+    ) -> PreviewJob:
+        """Kicks off a ~3s styled preview render (spec 7A.3) and returns a
+        job handle immediately -- rendering takes real seconds, so the
+        browser polls GET /api/styles/preview/{id} rather than this route
+        blocking."""
+        video_path = _validate_local_path(body.video_path)
+        try:
+            return preview_renderer.submit_preview(video_path, body.start_seconds, body.style)
+        except StyleValidationFailedError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.get("/api/styles/preview/{job_id}", response_model=PreviewJob)
+    async def get_preview(
+        job_id: str,
+        preview_renderer: PreviewRenderer = Depends(get_preview_renderer),
+    ) -> PreviewJob:
+        try:
+            return preview_renderer.get_preview(job_id)
+        except PreviewNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Preview job {job_id!r} not found.")
+
+    @app.get("/api/styles/preview/{job_id}/clip")
+    async def get_preview_clip(
+        job_id: str,
+        preview_renderer: PreviewRenderer = Depends(get_preview_renderer),
+    ) -> FileResponse:
+        try:
+            job = preview_renderer.get_preview(job_id)
+        except PreviewNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Preview job {job_id!r} not found.")
+        if job.status != PreviewStatus.DONE or not job.clip_path:
+            raise HTTPException(status_code=409, detail=f"Preview job {job_id!r} isn't ready yet.")
+        return FileResponse(job.clip_path, media_type="video/mp4")
 
     @app.get("/api/events")
     async def events(request: Request, queue: JobQueue = Depends(get_queue)) -> StreamingResponse:
@@ -196,8 +327,24 @@ def create_app(
     return app
 
 
+def _default_style_provider() -> StyleProvider:
+    """Deferred import so importing `app.py` never requires
+    `ash_captions.styles` to already be constructed -- mirrors `run_server`'s
+    lazy `import uvicorn` below."""
+    from .styles_adapter import StylesPackageAdapter
+
+    return StylesPackageAdapter()
+
+
+def _default_preview_renderer() -> PreviewRenderer:
+    from .preview_adapter import InProcessPreviewRenderer
+
+    return InProcessPreviewRenderer()
+
+
 def _validate_options(
     catalogue: LanguageCatalogueProvider,
+    style_provider: StyleProvider,
     language: str,
     dialect: str | None,
     preset: str,
@@ -217,14 +364,22 @@ def _validate_options(
                 detail=f"Unknown dialect {dialect!r} for language {language!r}.",
             )
 
-    preset_upper = preset.upper()
-    if preset_upper not in ALLOWED_PRESETS:
+    # "preset" is a style name (spec 7A) -- the job form's dropdown lists
+    # every style from GET /api/styles, not just the original CLEAN/POP
+    # pair, so validate against that same live list rather than a static
+    # tuple. Uppercased as a fallback (not tried first) so a shipped name
+    # typed in lowercase (e.g. by an older client, or /api/jobs/by-path
+    # called directly) still resolves, without mangling the exact case of
+    # a mixed-case user style name coming from the dropdown.
+    valid_presets = {style.name for style in style_provider.list_styles()}
+    preset_normalized = preset if preset in valid_presets else preset.upper()
+    if preset_normalized not in valid_presets:
         raise HTTPException(status_code=400, detail=f"Unknown preset {preset!r}.")
 
     return JobOptions(
         language=language,
         dialect=dialect,
-        preset=preset_upper,
+        preset=preset_normalized,
         burn_in=burn_in,
         translate_to_english=translate_to_english,
     )

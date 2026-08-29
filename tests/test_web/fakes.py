@@ -8,10 +8,26 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
-from ash_captions.web.interfaces import JobNotFoundError, JobNotRetryableError
-from ash_captions.web.models import Dialect, Job, JobOptions, JobStatus, Language
+from ash_captions.web.interfaces import (
+    JobNotFoundError,
+    JobNotRetryableError,
+    PreviewNotFoundError,
+    StyleIsShippedError,
+    StyleNotFoundError,
+    StyleValidationFailedError,
+)
+from ash_captions.web.models import (
+    Dialect,
+    Job,
+    JobOptions,
+    JobStatus,
+    Language,
+    PreviewJob,
+    PreviewStatus,
+    StyleSummary,
+)
 
 
 class FakeJobQueue:
@@ -129,3 +145,134 @@ class FakeLanguageCatalogue:
 
     def list_languages(self) -> list[Language]:
         return self._languages
+
+
+def default_style_definition(name: str) -> dict[str, Any]:
+    """A minimal but complete style dict, same shape as
+    `ash_captions.styles.Style.to_dict()` (spec 7A.2)."""
+    return {
+        "name": name,
+        "font": "Inter",
+        "size": 72,
+        "uppercase": False,
+        "letter_spacing": 0.0,
+        "colors": {
+            "text": "#FFFFFF",
+            "active": "#FFD166",
+            "outline": "#000000",
+            "shadow": "#00000090",
+            "box": "#00000000",
+        },
+        "active_word": {"effect": "pop", "scale": 1.12, "box": False},
+        "entrance": {"effect": "fade", "duration_ms": 120},
+        "exit": {"effect": "none", "duration_ms": 0},
+        "layout": {"position": "bottom", "max_words": 4, "margin_l": 80, "margin_r": 80, "margin_v": 120},
+    }
+
+
+DEFAULT_SHIPPED_STYLE_NAMES = ("CLEAN", "POP")
+DEFAULT_BUNDLED_FONTS = ("Inter", "Montserrat", "Anton", "Bebas Neue")
+
+
+class FakeStyleProvider:
+    """Implements the `StyleProvider` protocol in memory. No filesystem, no
+    `ash_captions.styles` import -- validation here is a small, deliberately
+    simplified stand-in for the real schema, just enough to exercise the web
+    layer's error mapping (StyleValidationFailedError -> 400,
+    StyleIsShippedError -> 409, StyleNotFoundError -> 404)."""
+
+    def __init__(
+        self,
+        *,
+        shipped: dict[str, dict[str, Any]] | None = None,
+        fonts: tuple[str, ...] = DEFAULT_BUNDLED_FONTS,
+    ) -> None:
+        self._shipped: dict[str, dict[str, Any]] = shipped if shipped is not None else {
+            name: default_style_definition(name) for name in DEFAULT_SHIPPED_STYLE_NAMES
+        }
+        self._user: dict[str, dict[str, Any]] = {}
+        self._fonts = fonts
+
+    def list_styles(self) -> list[StyleSummary]:
+        merged = {**self._shipped, **self._user}
+        return [
+            StyleSummary(name=name, shipped=name in self._shipped, definition=definition)
+            for name, definition in merged.items()
+        ]
+
+    def get_style(self, name: str, *, shipped_only: bool = False) -> StyleSummary:
+        if shipped_only:
+            definition = self._shipped.get(name)
+        else:
+            definition = self._user.get(name, self._shipped.get(name))
+        if definition is None:
+            raise StyleNotFoundError(name)
+        return StyleSummary(name=name, shipped=name in self._shipped, definition=definition)
+
+    def save_style(self, name: str, definition: dict[str, Any]) -> StyleSummary:
+        payload = dict(definition)
+        payload["name"] = name
+        self._validate(payload)
+        self._user[name] = payload
+        return StyleSummary(name=name, shipped=name in self._shipped, definition=payload)
+
+    def delete_style(self, name: str) -> None:
+        if name in self._shipped:
+            raise StyleIsShippedError(name)
+        if name not in self._user:
+            raise StyleNotFoundError(name)
+        del self._user[name]
+
+    def list_fonts(self) -> list[str]:
+        return list(self._fonts)
+
+    def _validate(self, definition: dict[str, Any]) -> None:
+        if not definition.get("name", "").strip():
+            raise StyleValidationFailedError("name: a non-empty style name is required")
+        font = definition.get("font")
+        if font is not None and font not in self._fonts:
+            raise StyleValidationFailedError(
+                f"font: {font!r} is not a bundled font -- see assets/fonts/manifest.json for the available faces"
+            )
+        size = definition.get("size")
+        if size is not None and not (10 <= size <= 300):
+            raise StyleValidationFailedError(f"size: {size} is out of range (expected 10-300)")
+        active_word = definition.get("active_word") or {}
+        effect = active_word.get("effect")
+        known_effects = {"none", "pop", "box", "scale_box", "karaoke", "shake", "glow"}
+        if effect is not None and effect not in known_effects:
+            raise StyleValidationFailedError(
+                f"active_word.effect: unknown value {effect!r} (expected one of {sorted(known_effects)})"
+            )
+
+
+class FakePreviewRenderer:
+    """Implements the `PreviewRenderer` protocol in memory -- no ffmpeg, no
+    whisper model, no filesystem rendering. Jobs stay `pending` until a test
+    calls `force_status()` to move them along (mirrors
+    `FakeJobQueue.force_status`), so tests can exercise the polling flow
+    deterministically."""
+
+    def __init__(self, *, style_provider: FakeStyleProvider | None = None) -> None:
+        self._style_provider = style_provider
+        self._jobs: dict[str, PreviewJob] = {}
+
+    def submit_preview(self, video_path: Path, start_seconds: float, style: dict[str, Any]) -> PreviewJob:
+        if self._style_provider is not None:
+            self._style_provider._validate(dict(style, name=style.get("name") or "preview"))
+        job = PreviewJob(id=uuid.uuid4().hex, status=PreviewStatus.PENDING)
+        self._jobs[job.id] = job
+        return job
+
+    def get_preview(self, job_id: str) -> PreviewJob:
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise PreviewNotFoundError(job_id)
+        return job
+
+    # Test helper only -- not part of the PreviewRenderer protocol.
+    def force_status(self, job_id: str, status: PreviewStatus, **fields: Any) -> PreviewJob:
+        job = self._jobs[job_id]
+        updated = job.model_copy(update={"status": status, **fields})
+        self._jobs[job_id] = updated
+        return updated

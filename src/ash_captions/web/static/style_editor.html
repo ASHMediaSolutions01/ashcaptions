@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASH Captions - Style Editor</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style_editor.css">
+</head>
+<body>
+
+<header>
+  <h1>Style editor</h1>
+  <p>Pick a look, tweak it, and see it burned into your own footage before you commit to a job.</p>
+  <a class="back-link" href="/">&larr; Back to captioning</a>
+</header>
+
+<main class="editor-main">
+
+  <section class="card picker-card">
+    <h2>Styles</h2>
+    <div id="style-list"></div>
+    <div class="picker-actions">
+      <button type="button" class="btn secondary" id="duplicate-btn">Duplicate</button>
+      <button type="button" class="btn secondary" id="reset-btn" hidden>Reset to shipped</button>
+      <button type="button" class="btn danger" id="delete-btn" hidden>Delete</button>
+    </div>
+  </section>
+
+  <section class="card editor-card">
+    <div class="editor-card-head">
+      <h2 id="editing-name">Editing</h2>
+      <span class="badge" id="editing-badge"></span>
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="font-select">Font</label>
+        <select id="font-select"></select>
+      </div>
+      <div class="field">
+        <label for="size-input">Size</label>
+        <input type="number" id="size-input" min="10" max="300" step="1">
+      </div>
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="spacing-input">Letter spacing</label>
+        <input type="number" id="spacing-input" min="-5" max="30" step="0.5">
+      </div>
+      <div class="field check-field">
+        <label class="check">
+          <input type="checkbox" id="uppercase-check">
+          ALL CAPS
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="group-label">Colours</span>
+      <div class="colour-row">
+        <label class="colour-field"><span>Text</span><input type="color" id="colour-text"></label>
+        <label class="colour-field"><span>Active word</span><input type="color" id="colour-active"></label>
+        <label class="colour-field"><span>Outline</span><input type="color" id="colour-outline"></label>
+        <label class="colour-field"><span>Box</span><input type="color" id="colour-box"></label>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="group-label">Active-word effect</span>
+      <div class="radio-row" id="active-word-effect-group"></div>
+    </div>
+
+    <div class="field">
+      <span class="group-label">Entrance</span>
+      <div class="radio-row" id="entrance-effect-group"></div>
+    </div>
+
+    <div class="field">
+      <span class="group-label">Position</span>
+      <div class="radio-row" id="position-group"></div>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn" id="save-btn">Save</button>
+      <button type="button" class="btn secondary" id="save-as-btn">Save as&hellip;</button>
+    </div>
+    <div id="save-status"></div>
+  </section>
+
+  <section class="card preview-card">
+    <h2>Live preview</h2>
+    <p class="hint">Pick your video, choose a moment with speech in it, and render a real ~3 second clip in this style.</p>
+
+    <div class="field">
+      <label for="preview-path-input">Video file location</label>
+      <input type="text" id="preview-path-input" placeholder="D:\Projects\client\clip.mp4" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="preview-time-input">Start time (seconds)</label>
+      <input type="number" id="preview-time-input" min="0" step="0.5" value="0">
+    </div>
+
+    <button type="button" class="btn" id="render-btn">Render preview</button>
+    <div id="preview-status"></div>
+
+    <div id="preview-output" hidden>
+      <video id="preview-video" controls></video>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/style_editor.js"></script>
+</body>
+</html>

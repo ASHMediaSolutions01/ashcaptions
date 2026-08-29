@@ -10,9 +10,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Superseded by the live style list (spec 7A): `app.py._validate_options`
+# now validates a submitted "preset" against `StyleProvider.list_styles()`
+# rather than this fixed pair. Left in place in case anything outside this
+# package still imports it.
 ALLOWED_PRESETS = ("CLEAN", "POP")
 
 # Extensions accepted at the API boundary. This is a coarse, fast check --
@@ -95,3 +100,50 @@ class Language(BaseModel):
 
 class LanguageCatalogue(BaseModel):
     languages: list[Language]
+
+
+# --- Caption styling (spec 7A) ---------------------------------------------
+#
+# A style's wire shape is exactly `ash_captions.styles.Style.to_dict()`
+# (spec 7A.2's JSON example): name, font, size, uppercase, letter_spacing,
+# colors, active_word, entrance, exit, layout. The web layer treats that as
+# opaque data it round-trips to the styles package for validation/rendering
+# -- "styles are data" (spec 7A.2) applies here too, so it is modelled as a
+# plain dict rather than re-declared field by field and risking drift from
+# the one real schema in `ash_captions.styles.schema`.
+
+
+class StyleSummary(BaseModel):
+    """One style, as returned by GET /api/styles and GET /api/styles/{name}."""
+
+    name: str
+    shipped: bool = Field(
+        ..., description="True for one of the built-in looks; the editor may edit it but never delete it."
+    )
+    definition: dict[str, Any]
+
+
+class PreviewRequest(BaseModel):
+    """Body of POST /api/styles/preview (spec 7A.3)."""
+
+    video_path: str
+    start_seconds: float = Field(..., ge=0.0)
+    style: dict[str, Any] = Field(..., description="An in-progress style edit, same shape as StyleSummary.definition")
+
+
+class PreviewStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class PreviewJob(BaseModel):
+    """A style preview render, polled from the browser while it runs --
+    rendering a ~3s clip takes real seconds (transcription + two ffmpeg
+    passes), so this is job-shaped rather than a blocking response."""
+
+    id: str
+    status: PreviewStatus
+    error: str | None = None
+    clip_path: str | None = None
