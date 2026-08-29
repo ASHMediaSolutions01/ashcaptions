@@ -19,3 +19,7 @@ models/
 .venv/
 dist/
 build/
+
+# Ruflo/claude-flow runtime state — machine-local, not source
+.claude-flow/
+.swarm/
