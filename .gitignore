@@ -1,0 +1,21 @@
+# Ruflo local secrets and runtime data
+.env
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+# ASH Captions — never commit client data or heavy artifacts
+in/
+out/
+*.mp4
+*.mov
+*.mkv
+*.mxf
+glossaries/
+models/
+*.log
+.venv/
+dist/
+build/
