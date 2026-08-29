@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASH Captions</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>ASH Captions</h1>
+  <p>Drop in a video, pick your options, and get captions back.</p>
+</header>
+
+<main>
+  <section class="card">
+    <div id="dropzone">
+      <div class="big">Drop a video here</div>
+      <p>or</p>
+      <button type="button" class="btn" id="choose-btn">Choose a file</button>
+      <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.mxf,.avi,.webm,.m4v">
+    </div>
+
+    <div id="options-form">
+      <div id="selected-file"></div>
+
+      <div class="field-grid">
+        <div class="field">
+          <label for="language-select">Language</label>
+          <select id="language-select"></select>
+        </div>
+        <div class="field">
+          <label for="dialect-select">Dialect</label>
+          <select id="dialect-select"></select>
+        </div>
+      </div>
+
+      <div class="field-grid">
+        <div class="field">
+          <label for="preset-select">Caption style</label>
+          <select id="preset-select">
+            <option value="POP">POP - short-form, word-by-word</option>
+            <option value="CLEAN">CLEAN - simple, client-safe</option>
+          </select>
+        </div>
+        <div></div>
+      </div>
+
+      <div class="checks">
+        <label class="check">
+          <input type="checkbox" id="burn-in-check">
+          Burn captions into the video
+        </label>
+        <label class="check">
+          <input type="checkbox" id="translate-check">
+          Also translate to English
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn" id="start-btn">Start captioning</button>
+        <button type="button" class="btn secondary" id="cancel-btn">Choose a different file</button>
+      </div>
+      <div id="submit-error"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Queue</h2>
+    <div id="empty-queue">No jobs yet. Drop a video above to get started.</div>
+    <div id="job-list"></div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

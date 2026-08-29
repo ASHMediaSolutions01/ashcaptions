@@ -1,0 +1,64 @@
+"""The captioning engine: audio extraction, transcription, caption rules,
+output writers, and optional burn-in.
+
+Public interface -- other packages should import from here rather than
+reaching into submodules directly, so the internal layout can shift
+without breaking callers:
+
+    from ash_captions.engine import (
+        extract_audio, AudioExtractionError,
+        Word, Segment, TranscriptionResult, Transcriber, WhisperTranscriber, TranscriptionError,
+        Card, build_cards,
+        render_srt, write_srt, render_ass, write_ass, render_txt, write_txt, AssPreset, CLEAN, POP,
+        detect_nvenc, build_burn_command, burn_captions, BurnInError,
+    )
+"""
+from .audio import AudioExtractionError, DEFAULT_FFMPEG_PATH, extract_audio
+from .burn import BurnInError, build_burn_command, burn_captions, detect_nvenc
+from .rules import Card, build_cards
+from .transcribe import (
+    Segment,
+    Transcriber,
+    TranscriptionError,
+    TranscriptionResult,
+    WhisperTranscriber,
+    Word,
+)
+from .writers import (
+    CLEAN,
+    POP,
+    AssPreset,
+    render_ass,
+    render_srt,
+    render_txt,
+    write_ass,
+    write_srt,
+    write_txt,
+)
+
+__all__ = [
+    "extract_audio",
+    "AudioExtractionError",
+    "DEFAULT_FFMPEG_PATH",
+    "Word",
+    "Segment",
+    "TranscriptionResult",
+    "Transcriber",
+    "WhisperTranscriber",
+    "TranscriptionError",
+    "Card",
+    "build_cards",
+    "render_srt",
+    "write_srt",
+    "render_ass",
+    "write_ass",
+    "render_txt",
+    "write_txt",
+    "AssPreset",
+    "CLEAN",
+    "POP",
+    "detect_nvenc",
+    "build_burn_command",
+    "burn_captions",
+    "BurnInError",
+]
