@@ -9,6 +9,7 @@ sleeps for real.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -213,3 +214,68 @@ class TestWatcherLifecycle:
                 watcher.start()
         finally:
             watcher.stop(timeout=2.0)
+
+    def test_repeated_start_stop_cycles_do_not_leak_or_crash(self, tmp_path: Path) -> None:
+        """Regression test: starts and stops a real watchdog Observer 20
+        times in this one process. This is the scenario that surfaced an
+        intermittent native access violation on Windows (see
+        test_concurrent_stop_calls_are_safe below for the actual race that
+        caused it) -- repeating the cycle here guards against any
+        regression in ordinary sequential use, not just the racy case.
+        """
+        for i in range(20):
+            watch_dir = tmp_path / f"in{i}"
+            watcher, _ready = TestWatcherPollOnce().make_watcher(
+                watch_dir, check_interval=0.01
+            )
+            watcher.start()
+            assert watcher._thread is not None
+            assert watcher._thread.is_alive()
+            watcher.stop(timeout=2.0)
+            assert watcher._thread is None
+            assert watcher._observer is None
+
+    def test_concurrent_stop_calls_are_safe(self, tmp_path: Path) -> None:
+        """Regression test for the actual bug: stop() had a TOCTOU race --
+        two threads could both read self._observer as non-None before
+        either cleared it, so both ended up calling .stop()/.join() on the
+        same watchdog Observer (and, transitively, closing the same native
+        Windows directory handle more than once). Reproduced directly
+        against the pre-fix code: concurrent stop() calls raised
+        AttributeError (a second caller finding self._observer already set
+        to None mid-call) and are the most plausible cause of the
+        intermittent access violation seen in full-suite runs, since a
+        double-close of a native handle is exactly the kind of race that
+        surfaces as a crash rather than a clean Python exception.
+
+        Runs enough cycles, with enough concurrent stoppers and real
+        filesystem activity (so the watchdog dispatcher thread is actually
+        busy during teardown), to make the original race reproduce
+        reliably if it ever comes back.
+        """
+        errors: list[BaseException] = []
+
+        def call_stop(watcher: Watcher) -> None:
+            try:
+                watcher.stop(timeout=3.0)
+            except BaseException as exc:  # noqa: BLE001 - capture for the assertion below
+                errors.append(exc)
+
+        for i in range(20):
+            watch_dir = tmp_path / f"race{i}"
+            watcher, _ready = TestWatcherPollOnce().make_watcher(
+                watch_dir, check_interval=0.01
+            )
+            watcher.start()
+            touch(watch_dir / "clip.mp4", b"a" * 1000)  # real fs event mid-teardown
+
+            stoppers = [threading.Thread(target=call_stop, args=(watcher,)) for _ in range(8)]
+            for t in stoppers:
+                t.start()
+            for t in stoppers:
+                t.join(timeout=5.0)
+
+            assert watcher._observer is None
+            assert watcher._thread is None
+
+        assert errors == []

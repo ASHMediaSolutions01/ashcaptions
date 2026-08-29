@@ -217,6 +217,28 @@ class JobStore:
                 (JobStatus.FAILED.value, error_text, _now_iso(), job_id),
             )
 
+    def requeue(self, job_id: int) -> None:
+        """Reset a single job back to ``pending`` (the control page's retry button).
+
+        Unlike ``reset_stale_running``, this targets exactly one job and
+        works regardless of its current status -- retrying a ``failed`` job
+        is the expected case, but a ``done`` job can be requeued too (e.g.
+        to re-run it after a glossary change); it is simply reset the same
+        way. Raises ``KeyError`` if no job with that id exists, so a caller
+        can distinguish "reset" from "nothing happened".
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE jobs
+                SET status = ?, progress = 0, error = NULL, started_at = NULL, finished_at = NULL
+                WHERE id = ?
+                """,
+                (JobStatus.PENDING.value, job_id),
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"no job with id {job_id}")
+
     def reset_stale_running(self) -> list[int]:
         """Crash recovery: reset every ``running`` job back to ``pending``.
 

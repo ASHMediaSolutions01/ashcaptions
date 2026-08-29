@@ -156,6 +156,56 @@ def test_reset_stale_running_is_idempotent_when_nothing_stuck(store: JobStore) -
     assert store.reset_stale_running() == []
 
 
+def test_requeue_resets_a_failed_job(store: JobStore) -> None:
+    job_id = store.insert_job("a.mp4", "out/a", make_options())
+    store.mark_running(job_id)
+    store.mark_progress(job_id, 30)
+    store.mark_failed(job_id, "ffmpeg exploded")
+
+    store.requeue(job_id)
+
+    job = store.get_job(job_id)
+    assert job is not None
+    assert job.status == JobStatus.PENDING
+    assert job.progress == 0
+    assert job.error is None
+    assert job.started_at is None
+    assert job.finished_at is None
+
+
+def test_requeue_resets_a_done_job(store: JobStore) -> None:
+    """Requeuing works regardless of current status -- including 'done',
+    e.g. to re-run a job after a glossary change."""
+    job_id = store.insert_job("a.mp4", "out/a", make_options())
+    store.mark_running(job_id)
+    store.mark_done(job_id)
+
+    store.requeue(job_id)
+
+    job = store.get_job(job_id)
+    assert job is not None
+    assert job.status == JobStatus.PENDING
+    assert job.progress == 0
+    assert job.finished_at is None
+
+
+def test_requeue_only_affects_the_target_job(store: JobStore) -> None:
+    target = store.insert_job("a.mp4", "out/a", make_options())
+    other = store.insert_job("b.mp4", "out/b", make_options())
+    store.mark_running(target)
+    store.mark_failed(target, "boom")
+    store.mark_running(other)
+
+    store.requeue(target)
+
+    assert store.get_job(other).status == JobStatus.RUNNING  # type: ignore[union-attr]
+
+
+def test_requeue_unknown_id_raises_key_error(store: JobStore) -> None:
+    with pytest.raises(KeyError):
+        store.requeue(999)
+
+
 def test_wal_mode_enabled(store: JobStore, tmp_path: Path) -> None:
     import sqlite3
 

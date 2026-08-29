@@ -204,31 +204,59 @@ class Watcher:
 
     def start(self) -> None:
         """Start the watchdog observer and the polling/stability thread."""
-        if self._thread is not None and self._thread.is_alive():
-            raise RuntimeError("Watcher is already running")
+        with self._lifecycle_lock:
+            if self._thread is not None and self._thread.is_alive():
+                raise RuntimeError("Watcher is already running")
 
-        handler = _WakeOnAnyEvent(self._wake_event)
-        self._observer = Observer()
-        self._observer.schedule(handler, str(self.watch_dir), recursive=False)
-        self._observer.start()
+            self._stop_event.clear()
+            self._wake_event.clear()
 
-        self._stop_event.clear()
-        self._thread = threading.Thread(
-            target=self._loop, name="ash-captions-watcher", daemon=True
-        )
-        self._thread.start()
+            observer = Observer()
+            try:
+                observer.schedule(
+                    _WakeOnAnyEvent(self._wake_event), str(self.watch_dir), recursive=False
+                )
+                observer.start()
+            except Exception:
+                # Don't leave a half-started observer registered if
+                # scheduling or starting it failed partway through.
+                observer.stop()
+                raise
+
+            thread = threading.Thread(
+                target=self._loop, name="ash-captions-watcher", daemon=True
+            )
+            # Only now, with both pieces successfully created, publish them
+            # -- stop() (from any thread) can only ever see a fully-formed
+            # observer/thread pair, never a half-built one.
+            self._observer = observer
+            self._thread = thread
+            thread.start()
 
     def stop(self, timeout: float | None = 5.0) -> None:
-        """Stop the observer and the polling thread."""
+        """Stop the observer and the polling thread.
+
+        Idempotent and safe to call from any thread, any number of times,
+        including when the watcher was never started. The lock+swap below
+        ensures at most one caller ever ends up holding a given
+        observer/thread pair to tear down: whichever call acquires the lock
+        first atomically claims them and nulls the fields, so a second,
+        concurrent call (or a later, sequential one) sees ``None`` and
+        returns immediately instead of touching an Observer another thread
+        is already stopping.
+        """
+        with self._lifecycle_lock:
+            observer, self._observer = self._observer, None
+            thread, self._thread = self._thread, None
+
         self._stop_event.set()
         self._wake_event.set()
-        if self._observer is not None:
-            self._observer.stop()
-            self._observer.join(timeout=timeout)
-            self._observer = None
-        if self._thread is not None:
-            self._thread.join(timeout=timeout)
-            self._thread = None
+
+        if observer is not None:
+            observer.stop()
+            observer.join(timeout=timeout)
+        if thread is not None:
+            thread.join(timeout=timeout)
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():
