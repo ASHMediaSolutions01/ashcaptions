@@ -1,0 +1,334 @@
+"""The style model (spec 7A.2).
+
+A style is data -- a JSON file in ``styles/`` -- never a branch in the
+renderer. This module defines exactly what a valid style looks like and
+validates one eagerly, at load time, with an error that says precisely
+what was wrong. A bad style file must never crash a job (spec 7A.4): the
+caller is expected to catch ``StyleValidationError`` and fall back to
+the default style -- see ``library.resolve_style``.
+
+Field reference (spec 7A.2's example, extended per the fields the style
+editor needs to expose -- spec 7A.3):
+
+    {
+      "name": "POP BOLD",
+      "font": "Montserrat ExtraBold", "size": 78, "uppercase": true,
+      "letter_spacing": 1.5,
+      "colors": {"text": "#FFFFFF", "active": "#00E28A",
+                 "outline": "#000000", "shadow": "#00000090",
+                 "box": "#00000000"},
+      "active_word": {"effect": "scale_box", "scale": 1.18, "box": true},
+      "entrance": {"effect": "rise", "duration_ms": 140},
+      "exit": {"effect": "fade", "duration_ms": 100},
+      "layout": {"position": "center", "max_words": 3,
+                 "margin_l": 60, "margin_r": 60, "margin_v": 120}
+    }
+
+Every field has a default, so a minimal ``{"name": "MY STYLE"}`` is a
+valid (if plain) style -- useful for the style editor building one up
+incrementally.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field, fields
+from typing import Any
+
+from .fonts import is_font_bundled
+
+# ---------------------------------------------------------------------------
+# errors
+# ---------------------------------------------------------------------------
+
+
+class StyleValidationError(ValueError):
+    """A style file or dict failed validation.
+
+    Always carries a message naming exactly which field was wrong and
+    why -- spec 7A.4 requires this for a missing font specifically, and
+    the same standard is applied to every other field so a mistake in
+    the style editor (spec 7A.3) is actionable, not a generic reject.
+    """
+
+
+# ---------------------------------------------------------------------------
+# enums (as plain string sets -- effects are values the renderer branches
+# on, never style names; see engine/render.py)
+# ---------------------------------------------------------------------------
+
+ACTIVE_WORD_EFFECTS = frozenset({"none", "pop", "box", "scale_box", "karaoke", "shake", "glow"})
+TRANSITION_EFFECTS = frozenset({"none", "fade", "rise", "slide"})
+POSITIONS = frozenset({"bottom", "center", "top", "lower_third"})
+
+_HEX_COLOUR_RE = re.compile(r"^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
+
+_MIN_SIZE, _MAX_SIZE = 10, 300
+_MIN_SCALE, _MAX_SCALE = 0.5, 3.0
+_MIN_LETTER_SPACING, _MAX_LETTER_SPACING = -5.0, 30.0
+_MIN_DURATION_MS, _MAX_DURATION_MS = 0, 2000
+_MIN_MAX_WORDS, _MAX_MAX_WORDS = 1, 8
+_MIN_MARGIN, _MAX_MARGIN = 0, 2000
+
+
+def _require_hex_colour(path: str, value: Any) -> str:
+    if not isinstance(value, str) or not _HEX_COLOUR_RE.match(value):
+        raise StyleValidationError(
+            f"{path}: {value!r} is not a valid hex colour "
+            "(expected '#RRGGBB' or '#RRGGBBAA')"
+        )
+    return value
+
+
+def _require_number(path: str, value: Any, *, lo: float, hi: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise StyleValidationError(f"{path}: {value!r} is not a number")
+    if not (lo <= value <= hi):
+        raise StyleValidationError(f"{path}: {value} is out of range (expected {lo}-{hi})")
+    return value
+
+
+def _require_bool(path: str, value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise StyleValidationError(f"{path}: {value!r} is not true/false")
+    return value
+
+
+def _require_choice(path: str, value: Any, choices: frozenset[str]) -> str:
+    if not isinstance(value, str) or value not in choices:
+        raise StyleValidationError(
+            f"{path}: unknown value {value!r} (expected one of {sorted(choices)})"
+        )
+    return value
+
+
+def _require_dict(path: str, value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise StyleValidationError(f"{path}: expected an object, got {type(value).__name__}")
+    return value
+
+
+def _reject_unknown_keys(path: str, data: dict, allowed: set[str]) -> None:
+    unknown = set(data) - allowed
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise StyleValidationError(f"{path}: unknown field(s) {names}")
+
+
+# ---------------------------------------------------------------------------
+# sub-models
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Colors:
+    text: str = "#FFFFFF"
+    active: str = "#FFD166"
+    outline: str = "#000000"
+    shadow: str = "#00000090"
+    box: str = "#00000000"
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Colors":
+        _reject_unknown_keys("colors", data, {"text", "active", "outline", "shadow", "box"})
+        defaults = cls()
+        kwargs = {}
+        for name in ("text", "active", "outline", "shadow", "box"):
+            value = data.get(name, getattr(defaults, name))
+            kwargs[name] = _require_hex_colour(f"colors.{name}", value)
+        return cls(**kwargs)
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveWord:
+    effect: str = "pop"
+    scale: float = 1.12
+    box: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ActiveWord":
+        _reject_unknown_keys("active_word", data, {"effect", "scale", "box"})
+        defaults = cls()
+        effect = _require_choice(
+            "active_word.effect", data.get("effect", defaults.effect), ACTIVE_WORD_EFFECTS
+        )
+        scale = _require_number(
+            "active_word.scale", data.get("scale", defaults.scale), lo=_MIN_SCALE, hi=_MAX_SCALE
+        )
+        box = _require_bool("active_word.box", data.get("box", defaults.box))
+        return cls(effect=effect, scale=float(scale), box=box)
+
+
+@dataclass(frozen=True, slots=True)
+class Transition:
+    """Shared shape for ``entrance`` and ``exit``."""
+
+    effect: str = "fade"
+    duration_ms: int = 120
+
+    @classmethod
+    def from_dict(cls, path: str, data: dict, *, default_effect: str, default_duration_ms: int) -> "Transition":
+        _reject_unknown_keys(path, data, {"effect", "duration_ms"})
+        effect = _require_choice(
+            f"{path}.effect", data.get("effect", default_effect), TRANSITION_EFFECTS
+        )
+        duration_ms = _require_number(
+            f"{path}.duration_ms",
+            data.get("duration_ms", default_duration_ms),
+            lo=_MIN_DURATION_MS,
+            hi=_MAX_DURATION_MS,
+        )
+        return cls(effect=effect, duration_ms=int(duration_ms))
+
+
+@dataclass(frozen=True, slots=True)
+class Layout:
+    position: str = "bottom"
+    max_words: int = 4
+    margin_l: int = 80
+    margin_r: int = 80
+    margin_v: int = 120
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Layout":
+        _reject_unknown_keys(
+            "layout", data, {"position", "max_words", "margin_l", "margin_r", "margin_v"}
+        )
+        defaults = cls()
+        position = _require_choice("layout.position", data.get("position", defaults.position), POSITIONS)
+        max_words = _require_number(
+            "layout.max_words",
+            data.get("max_words", defaults.max_words),
+            lo=_MIN_MAX_WORDS,
+            hi=_MAX_MAX_WORDS,
+        )
+        margin_l = _require_number(
+            "layout.margin_l", data.get("margin_l", defaults.margin_l), lo=_MIN_MARGIN, hi=_MAX_MARGIN
+        )
+        margin_r = _require_number(
+            "layout.margin_r", data.get("margin_r", defaults.margin_r), lo=_MIN_MARGIN, hi=_MAX_MARGIN
+        )
+        margin_v = _require_number(
+            "layout.margin_v", data.get("margin_v", defaults.margin_v), lo=_MIN_MARGIN, hi=_MAX_MARGIN
+        )
+        return cls(
+            position=position,
+            max_words=int(max_words),
+            margin_l=int(margin_l),
+            margin_r=int(margin_r),
+            margin_v=int(margin_v),
+        )
+
+
+# ---------------------------------------------------------------------------
+# the style itself
+# ---------------------------------------------------------------------------
+
+_TOP_LEVEL_FIELDS = {
+    "name",
+    "font",
+    "size",
+    "uppercase",
+    "letter_spacing",
+    "colors",
+    "active_word",
+    "entrance",
+    "exit",
+    "layout",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class Style:
+    name: str
+    font: str = "Inter"
+    size: int = 72
+    uppercase: bool = False
+    letter_spacing: float = 0.0
+    colors: Colors = field(default_factory=Colors)
+    active_word: ActiveWord = field(default_factory=ActiveWord)
+    entrance: Transition = field(default_factory=lambda: Transition(effect="fade", duration_ms=120))
+    exit: Transition = field(default_factory=lambda: Transition(effect="none", duration_ms=0))
+    layout: Layout = field(default_factory=Layout)
+
+    @classmethod
+    def from_dict(cls, data: dict, *, check_font: bool = True) -> "Style":
+        """Build and validate a ``Style`` from parsed JSON.
+
+        Raises ``StyleValidationError`` naming the exact field at fault --
+        including, per spec 7A.4, the font name itself when it is not in
+        the bundled manifest. ``check_font=False`` is for tests of the
+        rest of the schema that don't want a manifest dependency; real
+        callers (``library.py``) always leave it on.
+        """
+        data = _require_dict("style", data)
+        _reject_unknown_keys("style", data, _TOP_LEVEL_FIELDS)
+
+        if "name" not in data or not isinstance(data["name"], str) or not data["name"].strip():
+            raise StyleValidationError("name: a non-empty style name is required")
+        name = data["name"]
+
+        defaults = cls(name=name)
+
+        font = data.get("font", defaults.font)
+        if not isinstance(font, str) or not font.strip():
+            raise StyleValidationError(f"font: {font!r} is not a valid font name")
+        if check_font and not is_font_bundled(font):
+            raise StyleValidationError(
+                f"font: {font!r} is not a bundled font -- see assets/fonts/manifest.json "
+                "for the available faces"
+            )
+
+        size = _require_number("size", data.get("size", defaults.size), lo=_MIN_SIZE, hi=_MAX_SIZE)
+        uppercase = _require_bool("uppercase", data.get("uppercase", defaults.uppercase))
+        letter_spacing = _require_number(
+            "letter_spacing",
+            data.get("letter_spacing", defaults.letter_spacing),
+            lo=_MIN_LETTER_SPACING,
+            hi=_MAX_LETTER_SPACING,
+        )
+
+        colors = Colors.from_dict(_require_dict("colors", data.get("colors", {})))
+        active_word = ActiveWord.from_dict(_require_dict("active_word", data.get("active_word", {})))
+        entrance = Transition.from_dict(
+            "entrance", _require_dict("entrance", data.get("entrance", {})),
+            default_effect=defaults.entrance.effect,
+            default_duration_ms=defaults.entrance.duration_ms,
+        )
+        exit_ = Transition.from_dict(
+            "exit", _require_dict("exit", data.get("exit", {})),
+            default_effect=defaults.exit.effect,
+            default_duration_ms=defaults.exit.duration_ms,
+        )
+        layout = Layout.from_dict(_require_dict("layout", data.get("layout", {})))
+
+        return cls(
+            name=name,
+            font=font,
+            size=int(size),
+            uppercase=uppercase,
+            letter_spacing=float(letter_spacing),
+            colors=colors,
+            active_word=active_word,
+            entrance=entrance,
+            exit=exit_,
+            layout=layout,
+        )
+
+    def to_dict(self) -> dict:
+        """Round-trip back to the JSON shape ``from_dict`` accepts --
+        used by the style editor (spec 7A.3) to save an edited style."""
+        return {
+            "name": self.name,
+            "font": self.font,
+            "size": self.size,
+            "uppercase": self.uppercase,
+            "letter_spacing": self.letter_spacing,
+            "colors": {f.name: getattr(self.colors, f.name) for f in fields(Colors)},
+            "active_word": {f.name: getattr(self.active_word, f.name) for f in fields(ActiveWord)},
+            "entrance": {f.name: getattr(self.entrance, f.name) for f in fields(Transition)},
+            "exit": {f.name: getattr(self.exit, f.name) for f in fields(Transition)},
+            "layout": {f.name: getattr(self.layout, f.name) for f in fields(Layout)},
+        }
+
+
+DEFAULT_STYLE = Style(name="CLEAN")
