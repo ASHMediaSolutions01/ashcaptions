@@ -466,12 +466,21 @@ private. This is the pattern to use.
 *(Fallback if artifacts must also be private: a fine-grained, repo-scoped,
 read-only, expiring PAT on each machine. Avoid if possible.)*
 
-Update mechanism: **tufup** (maintained successor to the archived PyUpdater,
-built on python-tuf) gives signed updates and works with PyInstaller onedir.
-Signing is worth having when auto-pulling onto unattended machines.
+Update mechanism: artifacts carry a **sha256 recorded in the manifest**, verified
+before an update is applied.
 
-First install is a double-click **Inno Setup** installer. Zero terminal, zero
-PATH, zero Python exposed.
+**Not yet implemented: cryptographic signing.** The research recommended
+**tufup** (maintained successor to the archived PyUpdater, built on python-tuf),
+and that remains the right answer before updates auto-apply unattended. sha256
+protects against a corrupted download; it does not protect against a compromised
+release repo. Tracked as a known gap in `docs/INSTALL.md` rather than claimed as
+security we do not have. Decide before enabling unattended auto-update.
+
+First install is **`installer/install.ps1`, wrapped in `Install-AshCaptions.bat`**
+so an editor double-clicks one file. Per-user, no admin rights. This replaces the
+Inno Setup approach earlier drafts named: PowerShell needs no extra build
+toolchain, and the installer is a script we can read and change in the same repo
+as everything else. Zero terminal, zero PATH, zero Python exposed to the editor.
 
 **Expect SmartScreen and antivirus warnings on first run** — the exe is unsigned.
 Six editors, six "Windows protected your PC" dialogs. Plan for it on rollout day.
