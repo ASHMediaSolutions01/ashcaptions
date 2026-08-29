@@ -14,10 +14,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-# Superseded by the live style list (spec 7A): `app.py._validate_options`
-# now validates a submitted "preset" against `StyleProvider.list_styles()`
-# rather than this fixed pair. Left in place in case anything outside this
-# package still imports it.
+# DEAD CONSTANT -- not read by anything in this package. `app.py`'s job
+# submission routes used to check a preset against this fixed pair; they now
+# validate against the live style list instead (`StyleProvider.list_styles()`,
+# spec 7A), so every shipped look and every editor-saved style is accepted,
+# not just CLEAN/POP. Left defined only in case something outside this
+# package still imports the name -- do not use it for validation again.
 ALLOWED_PRESETS = ("CLEAN", "POP")
 
 # Extensions accepted at the API boundary. This is a coarse, fast check --

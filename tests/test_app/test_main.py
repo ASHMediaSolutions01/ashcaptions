@@ -11,17 +11,23 @@ from pathlib import Path
 
 import pytest
 
+from ash_captions import engine, styles
 from ash_captions.app.__main__ import (
     _acquire_single_instance_lock,
     _enqueue_watch_file,
     _find_open_port,
     _parse_args,
+    _validate_default_preset,
     _warn_already_running,
     build_application,
 )
 from ash_captions.app.adapter import QueueAdapter
+from ash_captions.app.runner import build_run_job
 from ash_captions.config import Settings
+from ash_captions.pipeline.db import JobStore
 from ash_captions.web.models import JobStatus
+
+from .test_runner import FakeTranscriber, _result
 
 
 class TestParseArgs:
@@ -119,6 +125,30 @@ class TestWarnAlreadyRunning:
         _warn_already_running()  # must not raise even if the message box itself fails
 
 
+class TestValidateDefaultPreset:
+    """Diagnostic-only startup check: a bad `default_preset` must never
+    block startup (resolve_style() already handles that at job time), but
+    it should be logged loudly rather than silently degrading every
+    watch-folder job to the default style unnoticed.
+    """
+
+    def test_a_real_shipped_style_logs_nothing(self, caplog: pytest.LogCaptureFixture) -> None:
+        settings = Settings(default_preset="POP")
+        with caplog.at_level("WARNING", logger="ash_captions.app"):
+            _validate_default_preset(settings)
+        assert caplog.records == []
+
+    def test_an_unknown_style_name_logs_a_clear_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        settings = Settings(default_preset="TOTALLY-MADE-UP-STYLE")
+        with caplog.at_level("WARNING", logger="ash_captions.app"):
+            _validate_default_preset(settings)
+
+        assert len(caplog.records) == 1
+        message = caplog.records[0].getMessage()
+        assert "TOTALLY-MADE-UP-STYLE" in message
+        assert styles.DEFAULT_STYLE.name in message
+
+
 def make_settings(tmp_path: Path) -> Settings:
     return Settings(
         in_dir=tmp_path / "in",
@@ -204,6 +234,53 @@ class TestEnqueueWatchFile:
 
         # Must not raise -- a bad drop must never kill the watcher thread.
         _enqueue_watch_file(adapter, settings, settings.in_dir / "clip.mp4")
+
+    def test_default_preset_resolves_through_the_real_style_system_end_to_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """spec section 6's "80% path": a file dropped in `in\\` with zero
+        UI interaction must get the *configured default* style, resolved
+        through the same real ``styles.resolve_style()`` a browser
+        submission uses -- not a style hardcoded in this test, and not a
+        silent fallback because the wiring between ``_enqueue_watch_file``
+        and ``runner.build_run_job`` broke. Most jobs never touch the API
+        at all, so if this path is broken, most jobs are broken.
+        """
+        # No real ffmpeg needed -- FakeTranscriber never reads the audio
+        # file, extraction just needs to not blow up.
+        monkeypatch.setattr(engine, "extract_audio", lambda video_path, output_path, **kw: Path(output_path))
+
+        settings = make_settings(tmp_path)
+        settings.ensure_dirs()
+        store = JobStore(settings.db_path)
+        adapter = QueueAdapter(store, out_dir=settings.out_dir)
+
+        video = settings.in_dir / "clip.mp4"
+        video.write_bytes(b"fake video")
+
+        # Exactly what pipeline.Watcher's on_ready callback does for a
+        # file that just stabilised.
+        _enqueue_watch_file(adapter, settings, video)
+
+        jobs = store.list_jobs()
+        assert len(jobs) == 1
+        job = jobs[0]
+        assert job.options.preset == settings.default_preset
+
+        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+        run_job(job, lambda _p: None)
+
+        ass_content = (Path(job.output_dir) / "clip.ass").read_text(encoding="utf-8")
+        # The default style's real, ASS-safe name (commas/spaces stripped,
+        # same transform render.py applies -- see styles/render.py's
+        # _safe_style_name) must appear in the Style line. If
+        # resolve_style() ever silently fell back (a typo'd or renamed
+        # default_preset), this would say DEFAULT_STYLE.name ("CLEAN")
+        # instead -- caught here, not in a client's delivery.
+        resolved = styles.resolve_style(settings.default_preset)
+        safe_name = resolved.name.replace(",", "").replace(" ", "_") or "STYLE"
+        assert f"Style: {safe_name}," in ass_content
 
 
 class TestBuildApplication:

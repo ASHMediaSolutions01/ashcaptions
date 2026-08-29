@@ -143,6 +143,28 @@ def _enqueue_watch_file(adapter: QueueAdapter, settings: Settings, path: Path) -
         logger.exception("Failed to enqueue watch-folder file %s", path)
 
 
+def _validate_default_preset(settings: Settings) -> None:
+    """Diagnostic only -- never blocks startup.
+
+    ``styles.resolve_style()`` already falls back to the default style for
+    an unknown name (spec 7A.4), so a bad ``default_preset`` can't fail a
+    job. But that fallback firing for the *configured default* -- the
+    style every watch-folder job uses (spec section 6's 80% path) -- would
+    otherwise go unnoticed until a client sees plain CLEAN captions
+    instead of whatever look was actually configured. A settings typo or a
+    renamed style file should show up in the log the moment the app
+    starts, not get discovered downstream.
+    """
+    if settings.default_preset not in styles.list_styles():
+        logger.warning(
+            "Settings.default_preset %r does not match any shipped or user "
+            "style; every watch-folder job will silently fall back to %r "
+            "until this is fixed.",
+            settings.default_preset,
+            styles.DEFAULT_STYLE.name,
+        )
+
+
 def build_application(settings: Settings):
     """Construct every component, wired together, without starting any of
     them. Split out from ``main()`` so tests (and any future embedding)
@@ -150,6 +172,7 @@ def build_application(settings: Settings):
     server.
     """
     settings.ensure_dirs()
+    _validate_default_preset(settings)
 
     store = JobStore(settings.db_path)
     adapter = QueueAdapter(store, out_dir=settings.out_dir)

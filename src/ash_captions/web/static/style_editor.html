@@ -57,6 +57,15 @@
       </div>
     </div>
 
+    <!-- Deliberately not exposed here: colors.shadow and the "exit"
+         transition (schema fields ash_captions.styles.Style has, but the
+         brief for this page only asked for text/active/outline/box colours
+         and an active-word/entrance/position set of radio groups). Both are
+         still preserved round-trip -- loaded from whichever style is
+         selected and sent back unchanged on Save -- see style_editor.js's
+         applyDraftToForm()/saveAs(). This is an intentional scope cut for
+         a first pass, not an oversight; add matching fields here if the
+         studio wants shadow/exit control from the editor UI. -->
     <div class="field">
       <span class="group-label">Colours</span>
       <div class="colour-row">

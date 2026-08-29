@@ -144,6 +144,14 @@
     hideSaveStatus();
   }
 
+  // `draft` is the full style dict (schema fields: name, font, size,
+  // uppercase, letter_spacing, colors, active_word, entrance, exit,
+  // layout). `applyDraftToForm()`/the field bindings below only touch
+  // colors.text/active/outline/box and active_word/entrance/layout.position
+  // -- `colors.shadow` and `exit` are deliberately not wired to any input
+  // (see the HTML comment above the colour row for why); they stay
+  // whatever the selected style had and round-trip unchanged through
+  // saveAs()'s JSON.stringify(draft).
   function applyDraftToForm() {
     fontSelect.value = draft.font;
     sizeInput.value = draft.size;
