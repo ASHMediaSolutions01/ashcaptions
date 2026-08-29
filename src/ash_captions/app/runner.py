@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
-from ash_captions import engine, languages
+from ash_captions import engine, languages, styles
 from ash_captions.config import Settings, find_binary
 from ash_captions.pipeline.db import Job
 
@@ -27,7 +27,12 @@ from .catalogue import dialect_preset_id
 
 RunJob = Callable[[Job, Callable[[int], None]], None]
 
-_PRESETS = {"CLEAN": engine.CLEAN, "POP": engine.POP}
+# engine.rules.build_cards()'s own default for its `min_words` floor --
+# not re-exported from engine, so mirrored here as the ceiling
+# `style.layout.max_words` is clamped against (see run_job): a style
+# asking for 1- or 2-word cards (e.g. HYPE) must not have that request
+# undone by a `min_words` floor higher than the style's own max.
+_DEFAULT_MIN_WORDS_PER_CARD = 3
 
 # Base weights for the progress bar. Transcription dominates real runtime
 # (spec section 9: "timing quality is the feature"), so it must dominate
@@ -152,6 +157,12 @@ def build_run_job(
         preset_id = dialect_preset_id(job.options.language, job.options.dialect)
         resolved = languages.resolve(job.options.language, preset_id)
         client_glossary_path = settings.glossary_dir / "glossary.txt"
+        # Never raises -- an unknown or invalid style name falls back to
+        # styles.DEFAULT_STYLE (spec 7A.4), so a bad/renamed style can
+        # never fail a job.
+        style = styles.resolve_style(job.options.preset)
+        card_max_words = style.layout.max_words
+        card_min_words = min(_DEFAULT_MIN_WORDS_PER_CARD, card_max_words)
 
         budget = _progress_budget(translate=job.options.translate, burn=job.options.burn)
         model = get_transcriber()
@@ -187,14 +198,13 @@ def build_run_job(
             report(budget["postprocess"][1])
 
             report(budget["cards_and_write"][0])
-            cards = engine.build_cards(words)
-            preset = _PRESETS[job.options.preset]
+            cards = engine.build_cards(words, max_words=card_max_words, min_words=card_min_words)
             engine.write_srt(cards, output_dir / f"{stem}.srt")
-            engine.write_ass(cards, output_dir / f"{stem}.ass", preset)
+            engine.write_ass(cards, output_dir / f"{stem}.ass", style)
             engine.write_txt(segments, output_dir / f"{stem}.txt")
             if translation is not None:
                 en_words = _postprocess_words(translation.words, resolved, client_glossary_path)
-                en_cards = engine.build_cards(en_words)
+                en_cards = engine.build_cards(en_words, max_words=card_max_words, min_words=card_min_words)
                 engine.write_srt(en_cards, output_dir / f"{stem}.en.srt")
             report(budget["cards_and_write"][1])
 
@@ -209,6 +219,13 @@ def build_run_job(
                 def on_burn_progress(pct: float, start=start, end=end) -> None:
                     report(round(start + (end - start) * (pct / 100)))
 
+                # NOT WIRED YET: engine.burn_captions()/build_burn_command()
+                # take no fontsdir parameter, so a bundled (non-Windows-
+                # installed) font silently falls back to a default face on
+                # burn-in -- defeating the point of bundling fonts at all.
+                # The value to pass, once engine adds support, is
+                # `styles.fontsdir_arg()`. Flagged to the engine owner
+                # rather than reached into from here.
                 engine.burn_captions(
                     video_path,
                     output_dir / f"{stem}.ass",

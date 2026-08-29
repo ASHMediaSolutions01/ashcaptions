@@ -199,6 +199,80 @@ class TestRunJobOutputs:
         assert burn_stage_reports[0] > 0
 
 
+class TestStyleWiring:
+    """The whole point of the styling system (spec 7A) is worthless if a
+    job never actually reaches it. These assert the ASS runner.py writes
+    for a non-legacy style contains *that style's* real, distinctive
+    animation tags -- not just that a file exists -- so a regression back
+    to the two static CLEAN/POP presets would fail loudly here rather than
+    silently shipping to a client.
+    """
+
+    def test_hype_style_produces_shake_tags_and_respects_its_max_words(
+        self, tmp_path: Path, store: JobStore
+    ) -> None:
+        settings = make_settings(tmp_path)
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        output_dir = settings.out_dir / "clip"
+
+        # HYPE (styles/hype.json): active_word.effect="shake", layout.max_words=2.
+        job = make_job(store, video, output_dir, preset="HYPE")
+        transcriber = FakeTranscriber(_result(["one", "two", "three", "four", "five", "six"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+
+        run_job(job, lambda _p: None)
+
+        ass_content = (output_dir / "clip.ass").read_text(encoding="utf-8")
+        assert "\\frz" in ass_content  # shake's rotation tags -- never emitted by the legacy AssPreset renderer
+        assert "HYPE" in ass_content  # the style's own name, not a hardcoded CLEAN/POP
+
+        srt_content = (output_dir / "clip.srt").read_text(encoding="utf-8")
+        # No caption line should show more than HYPE's 2-word cards.
+        text_lines = [
+            line for line in srt_content.splitlines()
+            if line and not line[0].isdigit() and "-->" not in line
+        ]
+        assert text_lines, "expected at least one caption line"
+        assert all(len(line.split()) <= 2 for line in text_lines)
+
+    def test_neon_glow_style_produces_glow_tags(self, tmp_path: Path, store: JobStore) -> None:
+        settings = make_settings(tmp_path)
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        output_dir = settings.out_dir / "clip"
+
+        # NEON GLOW (styles/neon_glow.json): active_word.effect="glow".
+        job = make_job(store, video, output_dir, preset="NEON GLOW")
+        transcriber = FakeTranscriber(_result(["one", "two", "three", "four", "five"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+
+        run_job(job, lambda _p: None)
+
+        ass_content = (output_dir / "clip.ass").read_text(encoding="utf-8")
+        assert "\\blur" in ass_content  # glow's blurred outline tag
+        assert "NEON_GLOW" in ass_content  # style name, space-sanitised for the ASS Style field
+
+    def test_unknown_style_name_falls_back_without_failing_the_job(
+        self, tmp_path: Path, store: JobStore
+    ) -> None:
+        settings = make_settings(tmp_path)
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        output_dir = settings.out_dir / "clip"
+
+        job = make_job(store, video, output_dir, preset="DOES-NOT-EXIST")
+        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+
+        run_job(job, lambda _p: None)  # must not raise
+
+        assert (output_dir / "clip.ass").is_file()
+
+
 class TestInputDeletionRule:
     """The most dangerous line in this package: only ever delete a file
     that came from the watch folder. Tested explicitly on both axes
