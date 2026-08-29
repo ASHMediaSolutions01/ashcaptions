@@ -115,3 +115,16 @@ def test_has_nvidia_gpu_survives_a_broken_driver(
 def test_recommended_model_by_device() -> None:
     assert recommended_model("cuda") == "large-v3"
     assert recommended_model("cpu") == "small"
+
+
+def test_silence_gap_is_tunable_without_a_release(root: Path) -> None:
+    """The 1.5s default is considered, not measured -- it must be settable.
+
+    Too low gives choppy cards; too high lets one card bridge an audible
+    pause. Only real client footage settles it, so it lives in settings.
+    """
+    assert Settings().silence_gap_seconds == 1.5
+
+    tuned = Settings(silence_gap_seconds=0.9)
+    tuned.save()
+    assert Settings.load().silence_gap_seconds == 0.9

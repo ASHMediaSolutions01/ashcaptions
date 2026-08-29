@@ -106,6 +106,15 @@ class Settings:
     default_burn: bool = False
     default_translate: bool = False
 
+    # Editorial timing. A caption card is never allowed to span a gap longer
+    # than this, and a lone word marooned by gaps this size on both sides is
+    # dropped as a voice-activity survivor rather than shown as a phantom
+    # caption. 1.5s is a considered default, not a measured one -- it is here
+    # rather than hardcoded in the engine so it can be tuned against real
+    # client audio without a release. Too low gives choppy cards; too high
+    # lets one card bridge a pause the viewer can hear.
+    silence_gap_seconds: float = 1.5
+
     # Housekeeping
     retention_days: int = 30
     port: int = DEFAULT_PORT
