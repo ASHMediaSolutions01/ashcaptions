@@ -198,13 +198,23 @@ def build_run_job(
             report(budget["postprocess"][1])
 
             report(budget["cards_and_write"][0])
-            cards = engine.build_cards(words, max_words=card_max_words, min_words=card_min_words)
+            cards = engine.build_cards(
+                words,
+                max_words=card_max_words,
+                min_words=card_min_words,
+                silence_gap=settings.silence_gap_seconds,
+            )
             engine.write_srt(cards, output_dir / f"{stem}.srt")
             engine.write_ass(cards, output_dir / f"{stem}.ass", style)
             engine.write_txt(segments, output_dir / f"{stem}.txt")
             if translation is not None:
                 en_words = _postprocess_words(translation.words, resolved, client_glossary_path)
-                en_cards = engine.build_cards(en_words, max_words=card_max_words, min_words=card_min_words)
+                en_cards = engine.build_cards(
+                    en_words,
+                    max_words=card_max_words,
+                    min_words=card_min_words,
+                    silence_gap=settings.silence_gap_seconds,
+                )
                 engine.write_srt(en_cards, output_dir / f"{stem}.en.srt")
             report(budget["cards_and_write"][1])
 

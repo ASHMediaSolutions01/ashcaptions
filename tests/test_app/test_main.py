@@ -6,6 +6,7 @@ wires every component together without starting threads or a real server
 
 from __future__ import annotations
 
+import json
 import socket
 from pathlib import Path
 
@@ -245,10 +246,34 @@ class TestEnqueueWatchFile:
         silent fallback because the wiring between ``_enqueue_watch_file``
         and ``runner.build_run_job`` broke. Most jobs never touch the API
         at all, so if this path is broken, most jobs are broken.
+
+        Hermetic on purpose: this repo's real ``styles/`` directory (and
+        the real, machine-wide ``C:\\AshCaptions\\styles`` user-style
+        directory ``resolve_style()`` also checks) are shared, externally
+        mutable state -- in this project's live, multi-agent workspace,
+        other agents edit files in this same tree while tests run
+        elsewhere. A test's pass/fail must never hinge on that, so this
+        points ``resolve_style()`` at an isolated tmp directory holding a
+        self-contained, minimal ``"POP"`` style (every field but ``name``
+        has a schema default -- see ``styles/schema.py``) for the whole
+        test -- proving the *wiring* end to end without reading the real,
+        shared style files at all.
         """
         # No real ffmpeg needed -- FakeTranscriber never reads the audio
         # file, extraction just needs to not blow up.
         monkeypatch.setattr(engine, "extract_audio", lambda video_path, output_path, **kw: Path(output_path))
+
+        isolated_shipped = tmp_path / "isolated_shipped_styles"
+        isolated_shipped.mkdir()
+        (isolated_shipped / "pop.json").write_text(json.dumps({"name": "POP"}), encoding="utf-8")
+        isolated_user = tmp_path / "isolated_user_styles"  # left non-existent: no user overrides
+
+        real_resolve_style = styles.resolve_style
+        monkeypatch.setattr(
+            styles,
+            "resolve_style",
+            lambda name, **kw: real_resolve_style(name, shipped_dir=isolated_shipped, user_dir=isolated_user),
+        )
 
         settings = make_settings(tmp_path)
         settings.ensure_dirs()
@@ -272,15 +297,14 @@ class TestEnqueueWatchFile:
         run_job(job, lambda _p: None)
 
         ass_content = (Path(job.output_dir) / "clip.ass").read_text(encoding="utf-8")
-        # The default style's real, ASS-safe name (commas/spaces stripped,
-        # same transform render.py applies -- see styles/render.py's
-        # _safe_style_name) must appear in the Style line. If
-        # resolve_style() ever silently fell back (a typo'd or renamed
-        # default_preset), this would say DEFAULT_STYLE.name ("CLEAN")
-        # instead -- caught here, not in a client's delivery.
-        resolved = styles.resolve_style(settings.default_preset)
-        safe_name = resolved.name.replace(",", "").replace(" ", "_") or "STYLE"
-        assert f"Style: {safe_name}," in ass_content
+        # "POP" (the ASS-safe name has no spaces/commas to strip) must
+        # appear in the Style line. If resolve_style() ever silently fell
+        # back (a typo'd or renamed default_preset, or a wiring break
+        # between _enqueue_watch_file and runner.build_run_job), this
+        # would say DEFAULT_STYLE.name ("CLEAN") instead -- caught here,
+        # not in a client's delivery.
+        assert "Style: POP," in ass_content
+        assert "Style: CLEAN," not in ass_content
 
 
 class TestBuildApplication:

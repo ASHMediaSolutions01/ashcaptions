@@ -31,6 +31,7 @@ from .adapter import QueueAdapter
 from .catalogue import LanguageCatalogue
 from .lifecycle import RetentionSweeper, configure_logging
 from .runner import build_run_job
+from .updater import UpdateState, check_for_update_in_background
 
 logger = logging.getLogger("ash_captions.app")
 
@@ -165,6 +166,22 @@ def _validate_default_preset(settings: Settings) -> None:
         )
 
 
+def _current_version() -> str:
+    """The running app's own version, for the update checker to compare
+    the manifest against. Falls back to "0.0.0" (never a crash) if
+    package metadata isn't discoverable -- which just makes every real
+    release look newer, the safe-by-default direction for a check that
+    must never block or misbehave at startup.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("ash-captions")
+    except PackageNotFoundError:
+        logger.warning("Could not determine the running version; update checks may misfire.")
+        return "0.0.0"
+
+
 def build_application(settings: Settings):
     """Construct every component, wired together, without starting any of
     them. Split out from ``main()`` so tests (and any future embedding)
@@ -207,6 +224,14 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("ASH Captions starting (open_browser=%s)", args.open)
 
     app, _adapter, worker, watcher, sweeper = build_application(settings)
+
+    # Exposed on app.state (same pattern as app.state.queue/catalogue) so a
+    # future control-page route can read the last check's result; the tray
+    # menu reads it directly. The check itself never blocks startup and
+    # never blocks on a dead network -- see updater.check_for_update.
+    update_state = UpdateState()
+    app.state.update_state = update_state
+    check_for_update_in_background(_current_version(), update_state)
 
     port = _find_open_port(settings.port, max_probes=MAX_PORT_PROBES)
     url = f"http://127.0.0.1:{port}"

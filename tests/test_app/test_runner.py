@@ -306,6 +306,71 @@ class TestStyleWiring:
         assert (output_dir / "clip.ass").is_file()
 
 
+class TestSilenceGapWiring:
+    """Settings.silence_gap_seconds must reach engine.build_cards() for
+    real, not just get accepted without effect. Proven with an actual
+    behavioural difference, not just "the job still succeeds": a single
+    word isolated by a gap on both sides is dropped as a voice-activity
+    survivor only once that gap meets the *configured* silence threshold
+    (engine.rules._drop_silent_cards) -- so the same transcript produces
+    different output depending on the setting.
+    """
+
+    @staticmethod
+    def _result_with_isolated_word() -> "engine.TranscriptionResult":
+        # "lonely" sits 0.8s clear of its neighbours on both sides.
+        # POP's own layout.max_words is 3, so with the *default* 1.5s gap
+        # nothing forces a break around it and it survives, folded into a
+        # bigger group. With a custom 0.5s gap, 0.8s on both sides clears
+        # the threshold, isolates it as its own one-word card, and
+        # _drop_silent_cards removes it entirely.
+        words = (
+            engine.Word(text="hello", start=0.0, end=0.5),
+            engine.Word(text="there", start=0.5, end=1.0),
+            engine.Word(text="lonely", start=1.8, end=2.3),
+            engine.Word(text="friend", start=3.1, end=3.6),
+            engine.Word(text="again", start=3.6, end=4.1),
+        )
+        segment = engine.Segment(text=" ".join(w.text for w in words), start=0.0, end=4.1, words=words)
+        return engine.TranscriptionResult(segments=(segment,), language="en")
+
+    def test_default_silence_gap_keeps_the_isolated_word(self, tmp_path: Path, store: JobStore) -> None:
+        settings = make_settings(tmp_path)  # silence_gap_seconds defaults to 1.5
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        output_dir = settings.out_dir / "clip"
+
+        job = make_job(store, video, output_dir)
+        transcriber = FakeTranscriber(self._result_with_isolated_word())
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+
+        run_job(job, lambda _p: None)
+
+        srt_content = (output_dir / "clip.srt").read_text(encoding="utf-8")
+        assert "lonely" in srt_content.lower()
+
+    def test_a_tighter_configured_silence_gap_drops_the_isolated_word(
+        self, tmp_path: Path, store: JobStore
+    ) -> None:
+        settings = make_settings(tmp_path)
+        settings.silence_gap_seconds = 0.5  # tighter than the 0.8s gaps around "lonely"
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        output_dir = settings.out_dir / "clip"
+
+        job = make_job(store, video, output_dir)
+        transcriber = FakeTranscriber(self._result_with_isolated_word())
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+
+        run_job(job, lambda _p: None)
+
+        srt_content = (output_dir / "clip.srt").read_text(encoding="utf-8")
+        assert "lonely" not in srt_content.lower()
+        assert "hello" in srt_content.lower()  # the rest of the transcript is unaffected
+
+
 class TestInputDeletionRule:
     """The most dangerous line in this package: only ever delete a file
     that came from the watch folder. Tested explicitly on both axes
