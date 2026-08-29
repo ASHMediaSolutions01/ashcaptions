@@ -23,3 +23,8 @@ build/
 # Ruflo/claude-flow runtime state — machine-local, not source
 .claude-flow/
 .swarm/
+
+# Python bytecode and build output
+__pycache__/
+*.py[cod]
+*.egg-info/
