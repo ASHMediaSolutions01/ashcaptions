@@ -176,10 +176,11 @@ function New-DataDirs {
 }
 
 function New-Shortcut {
-    param([string]$ShortcutPath, [string]$TargetPath, [string]$WorkingDirectory)
+    param([string]$ShortcutPath, [string]$TargetPath, [string]$WorkingDirectory, [string]$Arguments)
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($ShortcutPath)
     $shortcut.TargetPath = $TargetPath
+    $shortcut.Arguments = $Arguments
     $shortcut.WorkingDirectory = $WorkingDirectory
     $shortcut.IconLocation = $TargetPath
     $shortcut.Description = 'ASH Captions'
@@ -190,25 +191,37 @@ function New-Shortcuts {
     # $DesktopDir/$StartMenuProgramsDir default to the real per-user folders;
     # the test suite overrides them so a test run never writes a .lnk onto
     # whichever machine happens to run pytest.
+    #
+    # These shortcuts pass --open: same startup as the logon task (worker +
+    # watcher + server + tray icon) plus opening the control page. The logon
+    # task itself launches with NO arguments -- see Register-LogonTask below
+    # -- so six editors don't get a browser tab popping up on every login;
+    # the shortcut is the one place that's actually wanted.
     param([string]$InstallDir, [string]$DesktopDir, [string]$StartMenuProgramsDir)
     $exePath = Join-Path $InstallDir $ExeName
 
     if (-not $DesktopDir) { $DesktopDir = [Environment]::GetFolderPath('Desktop') }
     New-Item -ItemType Directory -Force -Path $DesktopDir | Out-Null
-    New-Shortcut -ShortcutPath (Join-Path $DesktopDir 'ASH Captions.lnk') -TargetPath $exePath -WorkingDirectory $InstallDir
+    New-Shortcut -ShortcutPath (Join-Path $DesktopDir 'ASH Captions.lnk') -TargetPath $exePath -WorkingDirectory $InstallDir -Arguments '--open'
 
     if (-not $StartMenuProgramsDir) {
         $StartMenuProgramsDir = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs'
     }
     New-Item -ItemType Directory -Force -Path $StartMenuProgramsDir | Out-Null
-    New-Shortcut -ShortcutPath (Join-Path $StartMenuProgramsDir 'ASH Captions.lnk') -TargetPath $exePath -WorkingDirectory $InstallDir
+    New-Shortcut -ShortcutPath (Join-Path $StartMenuProgramsDir 'ASH Captions.lnk') -TargetPath $exePath -WorkingDirectory $InstallDir -Arguments '--open'
 }
 
 function Register-LogonTask {
     <# Per-user, no admin: Register-ScheduledTask with -RunLevel Limited and no
        explicit -User registers into the current user's own task folder and
        does not require an elevation prompt. Left alone if it already exists,
-       so re-running the installer never duplicates it. #>
+       so re-running the installer never duplicates it.
+
+       Deliberately launched with NO arguments (unlike the shortcuts, which
+       pass --open): bare invocation already starts worker + watcher + server
+       + tray icon, just without opening a browser tab. Six editors logging in
+       every morning to an unrequested browser tab would be exactly the kind
+       of thing that gets the tool turned off. #>
     param([string]$InstallDir)
 
     $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue

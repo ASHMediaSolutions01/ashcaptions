@@ -109,12 +109,30 @@ def test_full_install_is_idempotent(fake_bundle, tmp_path):
         assert (desktop_dir / "ASH Captions.lnk").is_file()
         assert (start_menu_dir / "ASH Captions.lnk").is_file()
 
+        # Shortcuts open the control page; the logon task deliberately does
+        # not (see Register-LogonTask's docstring -- six editors do not want
+        # a browser tab appearing on every single login).
+        for lnk in (desktop_dir / "ASH Captions.lnk", start_menu_dir / "ASH Captions.lnk"):
+            args_check = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command",
+                 f"(New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}').Arguments"],
+                capture_output=True, text=True, timeout=30,
+            )
+            assert args_check.stdout.strip() == "--open"
+
         task_check = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command",
              f"(Get-ScheduledTask -TaskName '{task_name}' -ErrorAction SilentlyContinue).TaskName"],
             capture_output=True, text=True, timeout=30,
         )
         assert task_check.stdout.strip() == task_name
+
+        task_action_check = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             f"(Get-ScheduledTask -TaskName '{task_name}').Actions[0].Arguments"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert task_action_check.stdout.strip() == ""  # no --open at logon
 
         # --- second run: must not duplicate the task or break the install ---
         second = _run(*common_args)
