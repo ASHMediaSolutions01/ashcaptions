@@ -10,7 +10,7 @@ is injected into `create_app()`. Tests inject fakes; production wiring
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, AsyncIterator, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Callable, Protocol, runtime_checkable
 
 from .models import Job, JobOptions, Language, PreviewJob, StyleSummary, UpdateApplyJob
 
@@ -200,10 +200,23 @@ class UpdateApplier(Protocol):
     Applying restarts the app once it succeeds.
     """
 
-    def submit_apply(self, update: Any) -> UpdateApplyJob:
+    def submit_apply(self, update: Any, *, has_running_job: Callable[[], bool]) -> UpdateApplyJob:
         """Starts downloading, verifying, and applying `update` (whatever
         `app.state.update_state.get()` returned -- structurally an
-        `app.updater.UpdateInfo`) on a background thread."""
+        `app.updater.UpdateInfo`) on a background thread.
+
+        `has_running_job` is forwarded to `app.updater.apply_update()`'s
+        own required guard -- checked there once before extraction and
+        once more immediately before the detached helper spawns -- and
+        polled again afterward, genuinely unboundedly, before the job is
+        marked done. `apply_update()`'s own docstring is explicit that
+        closing that residual window (a job starting in the instant
+        between its second check and the process actually exiting) is the
+        caller's responsibility, normally via a blocking
+        `JobWorker.stop(timeout=None)`; polling `has_running_job` is the
+        closest equivalent reachable here, since this protocol has no
+        reference to the real `JobWorker` -- see `update_adapter.py`.
+        """
         ...
 
     def get_apply_status(self, job_id: str) -> UpdateApplyJob:

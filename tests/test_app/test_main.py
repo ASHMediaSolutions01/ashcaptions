@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import socket
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -15,9 +17,11 @@ import pytest
 from ash_captions import engine, styles
 from ash_captions.app.__main__ import (
     _acquire_single_instance_lock,
+    _apply_update_shutdown,
     _enqueue_watch_file,
     _find_open_port,
     _parse_args,
+    _shutdown_with_watchdog,
     _validate_default_preset,
     _warn_already_running,
     build_application,
@@ -348,3 +352,193 @@ class TestBuildApplication:
 
         JobStore(settings.db_path).mark_running(int(job.id))
         assert app.state.has_running_job() is True
+
+    def test_wires_an_update_applier_whose_on_applied_is_the_graceful_shutdown(
+        self, tmp_path: Path
+    ) -> None:
+        """create_app() must receive a real UpdaterAdapter, not the crude
+        os._exit(0) default -- that default skips worker.stop() entirely,
+        which is exactly the race this whole feature exists to close."""
+        settings = make_settings(tmp_path)
+        app, _adapter, worker, watcher, sweeper = build_application(settings)
+
+        from ash_captions.web.update_adapter import UpdaterAdapter
+
+        assert isinstance(app.state.update_applier, UpdaterAdapter)
+        # Not the module's own crude default -- a real closure over this
+        # app's actual worker/watcher/sweeper.
+        from ash_captions.web.update_adapter import _default_on_applied
+
+        assert app.state.update_applier._on_applied is not _default_on_applied
+
+
+class TestApplyUpdateShutdown:
+    """The piece that closes the race apply_update()'s has_running_job
+    guard narrows but can't fully close on its own (team-lead's own
+    framing): a job that slips past the guard must still finish for real
+    before the process exits and the detached helper's robocopy proceeds.
+    """
+
+    class FakeWorker:
+        def __init__(self) -> None:
+            self.stop_calls: list[dict] = []
+
+        def stop(self, timeout=5.0) -> None:
+            self.stop_calls.append({"timeout": timeout})
+
+    class FakeStoppable:
+        def __init__(self) -> None:
+            self.stopped = False
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    def test_uses_the_unbounded_stop_not_the_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The exact thing team-lead asked to see proven: this path must
+        call worker.stop(timeout=None), never JobWorker's normal 5s
+        default -- a test with no job actually running would pass either
+        way, so this asserts on the *argument*, not just "didn't crash".
+        """
+        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
+        exits: list[int] = []
+        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
+
+        worker = self.FakeWorker()
+        watcher = self.FakeStoppable()
+        sweeper = self.FakeStoppable()
+        lock_path = tmp_path / "lock"
+        lock = _acquire_single_instance_lock(lock_path)
+
+        _apply_update_shutdown(worker, watcher, sweeper, lock)
+
+        assert worker.stop_calls == [{"timeout": None}]
+        assert watcher.stopped is True
+        assert sweeper.stopped is True
+        assert exits == [0]
+
+    def test_releases_the_single_instance_lock(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
+        monkeypatch.setattr("ash_captions.app.__main__.os._exit", lambda code: None)
+
+        lock_path = tmp_path / "lock"
+        lock = _acquire_single_instance_lock(lock_path)
+        assert lock is not None
+
+        _apply_update_shutdown(self.FakeWorker(), self.FakeStoppable(), self.FakeStoppable(), lock)
+
+        # Released, not just closed from this handle's own point of view --
+        # a second acquire on the same path must now succeed.
+        second = _acquire_single_instance_lock(lock_path)
+        assert second is not None
+        second.close()
+
+    def test_tolerates_no_lock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
+        exits: list[int] = []
+        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
+
+        _apply_update_shutdown(self.FakeWorker(), self.FakeStoppable(), self.FakeStoppable(), None)
+
+        assert exits == [0]
+
+    def test_still_exits_if_teardown_itself_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An update that leaves the app half-shut-down and neither
+        finishing the apply nor able to start again is the worst outcome
+        -- teardown failing must not skip the exit."""
+        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
+        exits: list[int] = []
+        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
+
+        class ExplodingWorker:
+            def stop(self, timeout=5.0) -> None:
+                raise RuntimeError("boom")
+
+        _apply_update_shutdown(ExplodingWorker(), self.FakeStoppable(), self.FakeStoppable(), None)
+
+        assert exits == [0]
+
+
+class TestShutdownWithWatchdog:
+    """POSTMORTEM: an earlier version of `_shutdown_with_watchdog` never
+    cancelled its `threading.Timer`, and the first test below did not
+    monkeypatch `os._exit`. That left a real, armed 5-second timer holding
+    the real `os._exit` running after the test returned "green" -- which
+    fired mid-suite, in whatever unrelated test happened to be running
+    five seconds later, and silently killed the entire pytest process
+    with no traceback, no summary, and a different apparent "stopping
+    point" every run depending purely on wall-clock timing. `test_app` run
+    alone "passed" only because that whole run finished in under 5
+    seconds -- by luck, not correctness. Both fixed below: the function
+    now cancels its timer in a `finally`, and this test asserts that
+    directly (waiting past the timeout and checking `os._exit` was never
+    called) instead of merely checking the call returned, which would
+    pass whether or not the bug existed. `os._exit` is patched in every
+    test in this class now, unconditionally, as a mandatory safety net --
+    no test here may ever hold a live timer over the real one again.
+    """
+
+    def test_returning_normally_cancels_the_watchdog_timer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        exits: list[int] = []
+        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
+
+        calls = []
+        _shutdown_with_watchdog(lambda: calls.append(1), timeout=0.05)
+        assert calls == [1]
+
+        # If the timer were still armed, it would have fired well within
+        # this wait -- proof of cancellation, not just "the call returned".
+        time.sleep(0.3)
+        assert exits == []
+
+    def test_a_raising_shutdown_fn_still_cancels_the_watchdog_timer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The cancel lives in a `finally` specifically so an exception
+        from shutdown_fn can't leave the timer armed either."""
+        exits: list[int] = []
+        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
+
+        def exploding() -> None:
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            _shutdown_with_watchdog(exploding, timeout=0.05)
+
+        time.sleep(0.3)
+        assert exits == []
+
+    def test_forces_exit_if_shutdown_fn_never_returns(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Simulates a genuinely wedged job: shutdown_fn blocks forever.
+        The watchdog's own forced-exit path must still fire on schedule.
+        """
+        exited = threading.Event()
+        exits: list[int] = []
+
+        def fake_exit(code: int) -> None:
+            exits.append(code)
+            exited.set()
+
+        monkeypatch.setattr("ash_captions.app.__main__.os._exit", fake_exit)
+
+        release = threading.Event()
+
+        def wedged_shutdown() -> None:
+            release.wait()  # never returns until this test releases it, below
+
+        watchdog_thread = threading.Thread(
+            target=_shutdown_with_watchdog, args=(wedged_shutdown,), kwargs={"timeout": 0.05}
+        )
+        watchdog_thread.start()
+
+        assert exited.wait(timeout=2), "watchdog did not force-exit on schedule"
+        assert exits == [1]  # the watchdog's forced-exit code, distinct from the graceful path's 0
+
+        release.set()  # let wedged_shutdown return so the background thread can end cleanly
+        watchdog_thread.join(timeout=2)
+        assert not watchdog_thread.is_alive()

@@ -346,9 +346,11 @@ class FakeUpdateApplier:
     def __init__(self) -> None:
         self._jobs: dict[str, UpdateApplyJob] = {}
         self.submitted: list[Any] = []  # the `update` object each submit_apply() call received
+        self.has_running_job_callbacks: list[Any] = []  # the has_running_job each call received
 
-    def submit_apply(self, update: Any) -> UpdateApplyJob:
+    def submit_apply(self, update: Any, *, has_running_job: Any = None) -> UpdateApplyJob:
         self.submitted.append(update)
+        self.has_running_job_callbacks.append(has_running_job)
         job = UpdateApplyJob(id=uuid.uuid4().hex, status=UpdateApplyStatus.PENDING)
         self._jobs[job.id] = job
         return job

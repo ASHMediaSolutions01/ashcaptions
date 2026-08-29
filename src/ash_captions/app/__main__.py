@@ -13,12 +13,14 @@ import argparse
 import ctypes
 import logging
 import msvcrt
+import os
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
-from typing import IO
+from typing import IO, Callable
 
 from ash_captions import styles
 from ash_captions.config import MAX_PORT_PROBES, Settings
@@ -26,6 +28,7 @@ from ash_captions.pipeline import JobWorker, Watcher
 from ash_captions.pipeline.db import JobStatus, JobStore
 from ash_captions.web import create_app, run_server
 from ash_captions.web.models import JobOptions
+from ash_captions.web.update_adapter import UpdaterAdapter
 
 from .adapter import QueueAdapter
 from .catalogue import LanguageCatalogue
@@ -195,11 +198,100 @@ def _has_running_job(store: JobStore) -> bool:
     return bool(store.list_jobs(status=JobStatus.RUNNING))
 
 
-def build_application(settings: Settings):
+# Generous on purpose: this bounds the *graceful* update-apply shutdown
+# path, which deliberately calls JobWorker.stop(timeout=None) so any
+# in-flight job -- one that slipped past apply_update()'s has_running_job
+# checks -- finishes for real rather than getting cut off mid-transcode.
+# 15 minutes comfortably covers any realistic single job for this tool
+# (short-form video captioning, not feature-length) while staying safely
+# under updater._HELPER_WAIT_DEADLINE_SECONDS (20 minutes) -- the detached
+# PS1 helper's own last-resort deadline for a Python process wedged badly
+# enough that even this timer can't fire. Under normal circumstances this
+# one fires first, if it ever needs to fire at all.
+UPDATE_SHUTDOWN_WATCHDOG_SECONDS = 15 * 60
+
+
+def _shutdown_with_watchdog(shutdown_fn: Callable[[], None], *, timeout: float) -> None:
+    """Run ``shutdown_fn`` with a last-resort forced exit if it never
+    returns. An update that leaves the app wedged and un-restartable is
+    worse than one that exits abruptly after a very generous wait --
+    see ``UPDATE_SHUTDOWN_WATCHDOG_SECONDS``.
+
+    The watchdog timer is cancelled in a ``finally`` the moment
+    ``shutdown_fn`` returns (or raises) -- this is not optional
+    housekeeping. A live, uncancelled ``threading.Timer`` holding a real
+    ``os._exit`` call is a timer bomb: in the real path ``shutdown_fn``
+    (``_apply_update_shutdown``) itself calls ``os._exit()`` at the end, so
+    an uncancelled timer looked harmless there -- the process was already
+    gone before it could matter. But this function's own contract allows
+    ``shutdown_fn`` to simply return instead, and anything that does would
+    leave a live timer armed to kill a perfectly healthy process
+    ``timeout`` seconds later, from *outside* the call that created it,
+    with exit code 1 and nothing in the logs to explain why. (This
+    happened for real, here, in this project's own test suite -- see the
+    fixed version of ``TestShutdownWithWatchdog`` for the postmortem.)
+    """
+    watchdog = threading.Timer(timeout, lambda: os._exit(1))
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        shutdown_fn()
+    finally:
+        watchdog.cancel()
+
+
+def _apply_update_shutdown(
+    worker: JobWorker, watcher: Watcher, sweeper: RetentionSweeper, lock: IO[str] | None
+) -> None:
+    """The graceful half of applying an update (spec 11.4) -- passed as
+    ``UpdaterAdapter(on_applied=...)`` so ``apply_update()``'s detached
+    helper only ever robocopies over a cleanly-stopped app, never one
+    frozen mid-transcode.
+
+    Deliberately different from a normal Quit: ``worker.stop(timeout=None)``
+    blocks for real until any in-flight job finishes (``JobWorker.stop``'s
+    own 5s default is correct for a normal Quit, where an editor wants the
+    app to close promptly -- it stays untouched; this path just doesn't
+    use it). Wrapped in ``_shutdown_with_watchdog`` so a genuinely wedged
+    job still can't leave the app hung forever. Always ends the process
+    itself, on every path -- a teardown error must not leave a half-shut-
+    down app sitting there instead of either finishing the update or
+    plainly failing to start again.
+    """
+
+    def _teardown_and_exit() -> None:
+        try:
+            logger.info(
+                "Shutting down for update apply (waiting for any in-flight job to finish)..."
+            )
+            watcher.stop()
+            worker.stop(timeout=None)
+            sweeper.stop()
+            if lock is not None:
+                lock.close()
+        except Exception:  # noqa: BLE001 - still exit even if teardown itself misbehaves
+            logger.exception("Error during update-apply shutdown; exiting anyway")
+        finally:
+            # A moment for the "apply status: done" HTTP response the
+            # editor's click is waiting on to actually reach the browser
+            # before the server that would serve it disappears.
+            time.sleep(1.5)
+            os._exit(0)
+
+    _shutdown_with_watchdog(_teardown_and_exit, timeout=UPDATE_SHUTDOWN_WATCHDOG_SECONDS)
+
+
+def build_application(settings: Settings, *, lock: IO[str] | None = None):
     """Construct every component, wired together, without starting any of
     them. Split out from ``main()`` so tests (and any future embedding)
     can assemble the app without a real browser, tray icon, or uvicorn
     server.
+
+    ``lock`` is the single-instance lock ``main()`` already holds by the
+    time it calls this (see ``_acquire_single_instance_lock``) -- passed
+    through only so the update-apply shutdown path can release it as part
+    of its own teardown; a test that never applies an update can safely
+    omit it.
     """
     settings.ensure_dirs()
     _validate_default_preset(settings)
@@ -214,7 +306,10 @@ def build_application(settings: Settings):
         on_ready=lambda path: _enqueue_watch_file(adapter, settings, path),
     )
     sweeper = RetentionSweeper(settings.out_dir, retention_days=settings.retention_days)
-    app = create_app(adapter, catalogue)
+    update_applier = UpdaterAdapter(
+        on_applied=lambda: _apply_update_shutdown(worker, watcher, sweeper, lock)
+    )
+    app = create_app(adapter, catalogue, update_applier=update_applier)
     app.state.has_running_job = lambda: _has_running_job(store)
 
     return app, adapter, worker, watcher, sweeper
@@ -237,7 +332,7 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info("ASH Captions starting (open_browser=%s)", args.open)
 
-    app, _adapter, worker, watcher, sweeper = build_application(settings)
+    app, _adapter, worker, watcher, sweeper = build_application(settings, lock=lock)
 
     # Exposed on app.state (same pattern as app.state.queue/catalogue) so a
     # future control-page route can read the last check's result; the tray

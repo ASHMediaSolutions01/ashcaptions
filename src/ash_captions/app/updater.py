@@ -286,7 +286,22 @@ def download_and_verify_update(
 # verify everything up to that point (extraction, script content, the
 # arguments handed to it) without it.
 
-_APPLY_HELPER_TEMPLATE = """
+# The wait-for-exit deadline below is deliberately long (20 minutes), and
+# deliberately NOT the thing that bounds how long an in-flight job gets to
+# finish. This is a short-form captioning tool, but nothing stops a large
+# 4K file or a slow CPU-only burn-in from legitimately running well past a
+# naive "30 seconds ought to be enough" guess -- an earlier version of this
+# template used exactly that 30s figure, which would have force-killed a
+# perfectly healthy, still-running job every time, defeating the entire
+# point of apply_update()'s has_running_job guard and an unbounded
+# `worker.stop(timeout=None)`. The real, tight bound lives in the Python
+# process itself (see app/__main__.py's shutdown watchdog, generously
+# shorter than this); this deadline is a last-resort backstop only for the
+# case where that process is wedged badly enough that even its own
+# watchdog timer can't fire -- not the normal exit path.
+_HELPER_WAIT_DEADLINE_SECONDS = 20 * 60
+
+_APPLY_HELPER_TEMPLATE = f"""
 param(
     [Parameter(Mandatory=$true)][int]$ParentProcessId,
     [Parameter(Mandatory=$true)][string]$SourceDir,
@@ -294,16 +309,16 @@ param(
     [Parameter(Mandatory=$true)][string]$ExeName
 )
 
-$deadline = (Get-Date).AddSeconds(30)
-while ((Get-Process -Id $ParentProcessId -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+$deadline = (Get-Date).AddSeconds({_HELPER_WAIT_DEADLINE_SECONDS})
+while ((Get-Process -Id $ParentProcessId -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {{
     Start-Sleep -Milliseconds 250
-}
+}}
 Get-Process -Name 'AshCaptions' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 robocopy $SourceDir $InstallDir /MIR /NFL /NDL /NJH /NJS /NC /NS | Out-Null
-if ($LASTEXITCODE -lt 8) {
+if ($LASTEXITCODE -lt 8) {{
     Start-Process -FilePath (Join-Path $InstallDir $ExeName)
-}
+}}
 """
 
 SpawnHelper = Callable[[list[str]], None]

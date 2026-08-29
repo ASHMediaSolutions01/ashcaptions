@@ -7,6 +7,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+# Deliberate, narrow exception to "this package never imports
+# ash_captions.app.updater" (see interfaces.py's module docstring): a
+# string constant only, no type/behavioral coupling. Reusing it rather
+# than retyping the message keeps the API response and app.updater's own
+# internal refusal (surfaced via UpdateApplyError -> str(exc), see
+# update_adapter.py) from being able to drift apart -- team-lead's ask.
+from ash_captions.app.updater import JOB_RUNNING_MESSAGE
+
 from .interfaces import JobQueue, UpdateApplier, UpdateApplyNotFoundError
 from .models import JobStatus, UpdateApplyJob, UpdateAvailable
 
@@ -47,7 +55,12 @@ def build_update_router(get_queue, get_update_applier) -> APIRouter:
         if blocked_reason is not None:
             raise HTTPException(status_code=409, detail=blocked_reason)
 
-        return update_applier.submit_apply(info)
+        # Forwarded to app.updater.apply_update()'s own required guard
+        # (checked again, twice, inside that function) -- this proactive
+        # check above and that guard read the same live queue snapshot
+        # conceptually, but are two separate calls in time, so both stay
+        # in place rather than trusting the first.
+        return update_applier.submit_apply(info, has_running_job=lambda: _any_job_running(queue))
 
     @router.get("/api/update/apply/{job_id}", response_model=UpdateApplyJob)
     async def get_update_apply(
@@ -82,13 +95,18 @@ def _current_update_info(request: Request):
     return state.get()
 
 
+def _any_job_running(queue: JobQueue) -> bool:
+    return any(job.status == JobStatus.RUNNING for job in queue.list_jobs())
+
+
 def _update_blocked_reason(queue: JobQueue) -> str | None:
     """Non-None while applying an update should be refused because a
-    caption job is running (`app.updater.apply_update`'s own module-level
-    guard refuses this too; checking here as well lets the control page
-    disable its Update button proactively -- spec: "so the editor
-    understands rather than clicks and gets rejected" -- instead of only
-    finding out after a click)."""
-    if any(job.status == JobStatus.RUNNING for job in queue.list_jobs()):
-        return "A caption job is still running. Try again when the queue is clear."
+    caption job is running (`app.updater.apply_update`'s own required
+    guard refuses this too, via the same `has_running_job` this module
+    passes it -- checking here as well lets the control page disable its
+    Update button proactively -- spec: "so the editor understands rather
+    than clicks and gets rejected" -- instead of only finding out after a
+    click)."""
+    if _any_job_running(queue):
+        return JOB_RUNNING_MESSAGE
     return None

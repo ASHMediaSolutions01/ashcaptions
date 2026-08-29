@@ -58,6 +58,27 @@ def test_apply_is_a_single_click_no_confirmation_needed(client, fake_update_stat
     assert fake_update_applier.submitted[0].version == "2.0.0"
 
 
+def test_apply_forwards_a_live_has_running_job_callback(client, fake_update_state, fake_queue, fake_update_applier):
+    """Regression guard: app.updater.apply_update() requires `has_running_job`
+    as a keyword-only argument with no default (integration's fix) -- the
+    route must always pass one, and it must reflect the queue's current
+    state when called, not a snapshot taken at submit time."""
+    from ash_captions.web.models import JobOptions
+
+    fake_update_state.set(FakeUpdateInfo())
+
+    client.post("/api/update/apply")
+
+    assert len(fake_update_applier.has_running_job_callbacks) == 1
+    has_running_job = fake_update_applier.has_running_job_callbacks[0]
+    assert callable(has_running_job)
+    assert has_running_job() is False
+
+    submitted = fake_queue.submit(Path("clip.mp4"), JobOptions(language="en", preset="POP"))
+    fake_queue.force_status(submitted.id, JobStatus.RUNNING)
+    assert has_running_job() is True  # same callback, re-evaluated live
+
+
 def test_apply_refused_while_a_job_is_running(client, fake_update_state, fake_queue, fake_update_applier):
     fake_update_state.set(FakeUpdateInfo())
     submitted = fake_queue.submit(Path("clip.mp4"), JobOptions(language="en", preset="POP"))

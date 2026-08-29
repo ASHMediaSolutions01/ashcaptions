@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -34,38 +35,64 @@ from .models import UpdateApplyJob, UpdateApplyStatus
 logger = logging.getLogger(__name__)
 
 OnApplied = Callable[[], None]
+DownloadAndVerify = Callable[..., Path]  # (update, *, dest_dir) -> artifact_path
+Apply = Callable[..., None]  # (artifact_path, *, has_running_job) -> None
+
+# How often to re-check `has_running_job()` while waiting for it to clear,
+# both before invoking `on_applied` and (via `sleep_fn`) in tests.
+_QUIESCENCE_POLL_INTERVAL_SECONDS = 0.5
 
 
 def _default_on_applied() -> None:
-    """`apply_update()`'s own contract: "the caller is expected to shut
-    down and exit" so its detached helper's wait-for-exit loop can proceed
-    and relaunch the app (spec 11.4). A short delay lets the HTTP response
+    """Called only once `_run` has already confirmed, by polling
+    `has_running_job`, that nothing is running -- see `UpdaterAdapter._run`.
+    `apply_update()`'s own contract: "the caller is expected to shut down
+    and exit" so its detached helper's wait-for-exit loop can proceed and
+    relaunch the app (spec 11.4). A short delay lets the HTTP response
     carrying the "done" status actually reach the browser first.
 
-    This is a blunt fallback, not a graceful shutdown -- it does not stop
-    the watcher/worker/sweeper threads cleanly the way `app/__main__.py`'s
-    own `shutdown()` closure does. Production wiring that wants a clean
-    stop should construct `UpdaterAdapter(on_applied=<that closure>)`
-    itself and pass it into `create_app(..., update_applier=...)` instead
-    of relying on this default.
+    This is still a blunt `os._exit`, not `app/__main__.py`'s full
+    graceful `shutdown()` (releasing the single-instance lock, stopping
+    the watcher/sweeper too) -- production wiring that has a reference to
+    those, and to the real `JobWorker` for a true
+    `worker.stop(timeout=None)`, should construct `UpdaterAdapter` with
+    its own `on_applied` instead of relying on this default.
     """
 
     def _exit() -> None:
         os._exit(0)
 
-    threading.Timer(1.5, _exit).start()
+    threading.Timer(0.5, _exit).start()
 
 
 class UpdaterAdapter:
-    """Implements `UpdateApplier` over `ash_captions.app.updater`."""
+    """Implements `UpdateApplier` over `ash_captions.app.updater`.
 
-    def __init__(self, *, dest_dir: Path | None = None, on_applied: OnApplied = _default_on_applied) -> None:
+    `download_and_verify`/`apply`/`sleep_fn` are injectable so tests can
+    exercise job bookkeeping, error handling, and -- critically -- the
+    wait-for-quiescence step below with no network, no zip extraction, no
+    detached helper, and no real sleeping. Production defaults are the
+    only place any of those are real.
+    """
+
+    def __init__(
+        self,
+        *,
+        dest_dir: Path | None = None,
+        on_applied: OnApplied = _default_on_applied,
+        sleep_fn: Callable[[float], None] = time.sleep,
+        download_and_verify: DownloadAndVerify = download_and_verify_update,
+        apply: Apply = apply_update,
+    ) -> None:
         self._dest_dir = Path(dest_dir) if dest_dir is not None else data_root() / "updates"
         self._on_applied = on_applied
+        self._sleep_fn = sleep_fn
+        self._download_and_verify = download_and_verify
+        self._apply = apply
         self._lock = threading.Lock()
         self._jobs: dict[str, UpdateApplyJob] = {}
 
-    def submit_apply(self, update: Any) -> UpdateApplyJob:
+    def submit_apply(self, update: Any, *, has_running_job: Callable[[], bool]) -> UpdateApplyJob:
         job_id = uuid.uuid4().hex
         job = UpdateApplyJob(id=job_id, status=UpdateApplyStatus.PENDING)
         with self._lock:
@@ -73,7 +100,7 @@ class UpdaterAdapter:
 
         thread = threading.Thread(
             target=self._run,
-            args=(job_id, update),
+            args=(job_id, update, has_running_job),
             daemon=True,
             name=f"ash-captions-update-{job_id[:8]}",
         )
@@ -91,22 +118,38 @@ class UpdaterAdapter:
         with self._lock:
             self._jobs[job_id] = self._jobs[job_id].model_copy(update=fields)
 
-    def _run(self, job_id: str, update: Any) -> None:
+    def _run(self, job_id: str, update: Any, has_running_job: Callable[[], bool]) -> None:
         try:
             self._set(job_id, status=UpdateApplyStatus.DOWNLOADING)
-            artifact_path = download_and_verify_update(update, dest_dir=self._dest_dir)
+            artifact_path = self._download_and_verify(update, dest_dir=self._dest_dir)
 
             self._set(job_id, status=UpdateApplyStatus.APPLYING)
-            apply_update(artifact_path)
+            self._apply(artifact_path, has_running_job=has_running_job)
+
+            # apply_update() checks has_running_job() twice internally but
+            # its own docstring is explicit about the residual window: a
+            # job could still start in the instant between its second
+            # check and this process actually exiting, and closing that
+            # is the caller's job, normally via a blocking, unbounded
+            # `JobWorker.stop(timeout=None)` before exiting -- not the
+            # bounded wait a normal Quit uses. This module has no
+            # reference to the real JobWorker, so it polls the same
+            # has_running_job() instead, with no cap -- genuinely
+            # unbounded, the same semantics, just implemented from the
+            # one signal reachable here. `on_applied` (which is what
+            # actually exits the process) never fires while this is true.
+            while has_running_job():
+                self._sleep_fn(_QUIESCENCE_POLL_INTERVAL_SECONDS)
 
             self._set(job_id, status=UpdateApplyStatus.DONE)
             self._on_applied()
         except UpdateApplyError as exc:
-            # Covers both a download/verification failure and (per
-            # app.updater's own module-level guard) an update refused
-            # because a caption job started running after our own
-            # pre-check in app.py -- str(exc) is already a plain,
-            # editor-facing sentence in both cases, never a stack trace.
+            # Covers a download/verification failure and (per
+            # app.updater's own required guard) an update refused because
+            # a caption job was running at either of apply_update()'s two
+            # checks -- str(exc) is already a plain, editor-facing
+            # sentence in both cases (JOB_RUNNING_MESSAGE for the latter),
+            # never a stack trace.
             logger.warning("update apply %s refused/failed: %s", job_id, exc)
             self._set(job_id, status=UpdateApplyStatus.FAILED, error=str(exc))
         except Exception as exc:  # noqa: BLE001 - any failure must reach the browser as a status, never crash the thread
