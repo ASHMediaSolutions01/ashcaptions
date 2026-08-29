@@ -109,7 +109,6 @@ it is a packaging problem, not an AI problem. See §9.
 ## 5. Non-goals
 
 - Not part of Ash OS. Separate tool, separate job, separate repo.
-- Not a template marketplace. Two solid presets, extended on request.
 - Not a replacement for editor review. Captions ship after a 60-second skim,
   especially names.
 - Not multi-user, not networked, not internet-facing. One editor, one machine.
@@ -203,6 +202,82 @@ treatment** when the v2 RTL pass happens.
 
 Expectation to set: Arabic is good for Modern Standard, notably weaker for
 Egyptian/Gulf/Levantine conversational dialect.
+
+## 7A. Caption styling
+
+Styled captions are a headline feature, not a formatting detail. The output an
+editor burns into a client reel has to stand next to what Submagic and Veed
+produce. Two static presets do not clear that bar.
+
+This section supersedes the earlier "two solid presets, not a template
+marketplace" non-goal, removed on 2026-08-29 at the owner's direction.
+
+### 7A.1 What ASS can actually do
+
+Almost every effect in those tools' templates is reachable with libass override
+tags. This is capability we already have and were not using:
+
+| Effect | Tag | Used for |
+|---|---|---|
+| Word pop / scale | `\t(0,120,\fscx118\fscy118)` | Active word punching forward |
+| Karaoke fill | `\kf` | Colour sweeping through a word |
+| Box behind active word | `BorderStyle=3` + `BackColour`, or `\p1` vector | Hormozi-style highlight blocks |
+| Entrance | `\fad`, `\move` | Cards rising, sliding, fading in |
+| Shake / emphasis | `\t` chain on `\frz` | Hype words |
+| Glow / soft edge | `\blur`, `\be` | Neon and soft-shadow looks |
+| Letter spacing, all-caps | `\fsp`, text transform | The wide bold short-form look |
+| Position variants | `\an` + margins | Lower-third, centred, top |
+
+**The one real limitation is colour emoji.** libass renders whatever the font
+provides, and colour-emoji font support (CBDT/COLR) is unreliable. Submagic's
+emoji bursts are composited, not typeset. Emoji and sticker overlays therefore
+need an ffmpeg overlay pass with PNG assets — a separate rendering pipeline,
+deferred to v3. Everything else in the table above ships.
+
+### 7A.2 Styles are data
+
+A style is a JSON file in `styles/`, never a branch in the renderer. Adding a
+look is a file, not a release.
+
+```json
+{ "name": "POP BOLD",
+  "font": "Montserrat ExtraBold", "size": 78, "uppercase": true,
+  "letter_spacing": 1.5,
+  "colors": { "text": "#FFFFFF", "active": "#00E28A", "outline": "#000000" },
+  "active_word": { "effect": "scale_box", "scale": 1.18, "box": true },
+  "entrance": { "effect": "rise", "duration_ms": 140 },
+  "layout": { "position": "center", "max_words": 3 } }
+```
+
+Ship 8–10 looks spanning what the studio actually sells: client-safe clean,
+Hormozi box, neon glow, minimal lower-third, karaoke fill, big centred hype,
+rounded playful, comic. `CLEAN` and `POP` remain as two of them so nothing that
+already references them breaks.
+
+### 7A.3 The style editor
+
+A second page in the control UI: pick a style, adjust font, size, case, colours,
+active-word effect, entrance and position — then render a **~3 second preview
+from the editor's actual video**, not a generic sample, and show it inline.
+
+The preview is the point. It is what makes this feel like Veed rather than a
+config file, and it is what stops an editor burning a 20-minute job before
+discovering the style was wrong.
+
+### 7A.4 Fonts are bundled
+
+Styles are worthless if the font resolves differently on each of six machines —
+that is the classic caption-styling support call. The installer therefore ships
+a broad set of SIL Open Font License / Apache 2.0 faces, which permit
+redistribution, covering the range short-form work actually uses: heavy display
+(Anton, Archivo Black, Bebas Neue, Titan One, Alfa Slab One), modern sans
+(Montserrat, Poppins, Inter, Rubik, Outfit, Manrope, Figtree, Space Grotesk),
+rounded and playful (Fredoka, Baloo 2, Nunito), and hand/comic (Bangers,
+Luckiest Guy, Permanent Marker, Caveat). Noto Sans covers broad Latin
+diacritics; Noto Naskh Arabic is bundled ready for the v2 RTL work.
+
+No style may reference a font that is not bundled. Validation must reject one
+that does, at load time, with a message naming the missing font.
 
 ## 8. Architecture
 
@@ -424,10 +499,14 @@ Six editors, six "Windows protected your PC" dialogs. Plan for it on rollout day
 ## 14. Roadmap
 
 **v1** — per-PC install, watch folder + control page, SRT/ASS/TXT/translate/burn,
-CLEAN + POP presets, glossary, dialect presets, CPU default with opt-in GPU.
+the style library and style editor with live preview (§7A), bundled fonts,
+glossary, dialect presets, CPU default with opt-in GPU.
 
-**v2** — Arabic and Urdu RTL styling with bundled font; per-client style presets;
-1080p proof burns.
+**v2** — Arabic and Urdu RTL styling using the bundled Noto Naskh face;
+per-client style presets; 1080p proof burns.
+
+**v3** — emoji, stickers and image overlays via an ffmpeg compositing pass
+(§7A.1: not achievable in ASS, needs its own pipeline).
 
 **Later, only if justified** — WhisperX timing (if drift is observed); a Premiere
 UXP panel as a thin client to this service; vocal isolation for music-heavy clips;
