@@ -39,6 +39,11 @@ STATIC_DIR = PACKAGE_DIR / "web" / "static"
 ENTRY_SCRIPT = PACKAGE_DIR / "__main__.py"
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 PKGTOOLS_DIR = Path(__file__).resolve().parent / "pkgtools"
+# Top-level, sibling of src/ -- NOT the src/ash_captions/styles Python
+# package (which contains the *code* that reads these). Both are read via
+# `app_root()`, same as bin/ and models/, so both must ship the same way.
+STYLES_DIR = REPO_ROOT / "styles"
+FONTS_DIR = REPO_ROOT / "assets" / "fonts"
 
 APP_NAME = "AshCaptions"
 
@@ -60,6 +65,22 @@ REQUIRED_PKGTOOLS_FILES = ("__init__.py", "manifest.py", "gpu_matrix.py")
 # Destination inside the bundle, relative to its root -- must match what
 # `updater._load_pkgtools_manifest()` looks for via `app_root() / "scripts"`.
 PKGTOOLS_DEST = "scripts/pkgtools"
+
+# styles/library.py's shipped_styles_dir() == app_root() / "styles". Without
+# this, list_styles() finds nothing and every job silently falls back to the
+# default style -- no error, no log an editor would ever see, just the
+# entire styling feature quietly absent from the shipped product.
+STYLES_DEST = "styles"
+
+# styles/fonts.py's assets_fonts_dir() == app_root() / "assets" / "fonts".
+# manifest.json is the part that MUST ship -- it is what style validation
+# reads, committed and offline. The actual .ttf files are fetched separately
+# (`python -m ash_captions.styles.fonts download`, not a scripts/ concern)
+# and ship if present at build time, but are not required for the build to
+# proceed -- without manifest.json, though, validation rejects every font by
+# design, so that file failing to ship must fail the build.
+FONTS_DEST = "assets/fonts"
+FONT_MANIFEST_FILENAME = "manifest.json"
 
 FFMPEG_BINARIES = ("ffmpeg.exe", "ffprobe.exe")
 
@@ -117,6 +138,43 @@ def validate_pkgtools_assets(pkgtools_dir: Path = PKGTOOLS_DIR) -> None:
         raise BuildError(f"pkgtools directory {pkgtools_dir} is missing required files: {missing}")
 
 
+def validate_styles_assets(styles_dir: Path = STYLES_DIR) -> None:
+    """Fail loudly if the shipped style presets are missing -- otherwise
+    `list_styles()` finds nothing at runtime and every job silently falls
+    back to the default style, with no error an editor would ever see."""
+    styles_dir = Path(styles_dir)
+    if not styles_dir.is_dir():
+        raise BuildError(
+            f"styles directory not found: {styles_dir}\n"
+            "Every job would silently fall back to the default style. Build from a full checkout."
+        )
+    style_files = sorted(p.name for p in styles_dir.glob("*.json"))
+    if not style_files:
+        raise BuildError(f"styles directory {styles_dir} contains no *.json style files")
+
+
+def validate_fonts_assets(fonts_dir: Path = FONTS_DIR) -> None:
+    """Fail loudly if assets/fonts/manifest.json is missing -- style
+    validation reads it to know which fonts are bundled, and rejects every
+    font by design when it can't find the manifest at all. The .ttf files
+    themselves are not required here: they're fetched separately
+    (`python -m ash_captions.styles.fonts download`) and ship if present,
+    but their absence is not a reason to fail a build -- a missing
+    manifest is."""
+    fonts_dir = Path(fonts_dir)
+    if not fonts_dir.is_dir():
+        raise BuildError(
+            f"fonts directory not found: {fonts_dir}\n"
+            "Style validation rejects every font without assets/fonts/manifest.json. "
+            "Build from a full checkout."
+        )
+    manifest = fonts_dir / FONT_MANIFEST_FILENAME
+    if not manifest.is_file():
+        raise BuildError(
+            f"{manifest} not found -- style validation rejects every font without it."
+        )
+
+
 def discover_ffmpeg_binaries(ffmpeg_dir: Path) -> list[Path]:
     """Locate ffmpeg.exe/ffprobe.exe fetched by `fetch_ffmpeg.py`.
 
@@ -146,6 +204,8 @@ def build_pyinstaller_args(
     spec_dir: Path,
     static_dir: Path,
     pkgtools_dir: Path = PKGTOOLS_DIR,
+    styles_dir: Path = STYLES_DIR,
+    fonts_dir: Path = FONTS_DIR,
     ffmpeg_binaries: list[Path] | None = None,
     model_dir: Path | None = None,
     app_name: str = APP_NAME,
@@ -171,9 +231,10 @@ def build_pyinstaller_args(
         "--console" if console else "--windowed",
         # PyInstaller >=6 defaults onedir to a `_internal/` subdirectory for
         # everything but the exe. config.py's `app_root()` (bin/ffmpeg.exe,
-        # models/) and updater.py's `app_root() / "scripts"` both assume the
-        # flat, pre-6.0 layout -- everything sitting directly beside the exe.
-        # Restore that instead of quietly breaking three different lookups.
+        # models/) and every app_root()-relative lookup below (scripts/,
+        # styles/, assets/fonts/) both assume the flat, pre-6.0 layout --
+        # everything sitting directly beside the exe. Restore that instead
+        # of quietly breaking every one of those lookups at once.
         "--contents-directory", ".",
         # Compiled extensions with data files PyInstaller's default hooks
         # under-collect; belt and suspenders beats a bundle that imports
@@ -187,6 +248,11 @@ def build_pyinstaller_args(
         # `app_root() / "scripts" / "pkgtools"` -- see REQUIRED_PKGTOOLS_FILES
         # above for why this is not optional the way ffmpeg/model bundling is.
         "--add-data", f"{pkgtools_dir};{PKGTOOLS_DEST}",
+        # styles/library.py's shipped_styles_dir() and styles/fonts.py's
+        # assets_fonts_dir() both read from app_root() at runtime -- required,
+        # not optional, exactly like static/ above. See STYLES_DEST/FONTS_DEST.
+        "--add-data", f"{styles_dir};{STYLES_DEST}",
+        "--add-data", f"{fonts_dir};{FONTS_DEST}",
     ]
     for binary in ffmpeg_binaries or []:
         args += ["--add-binary", f"{binary};bin"]
@@ -280,6 +346,8 @@ def main(argv: list[str] | None = None) -> int:
 
     validate_static_assets(STATIC_DIR)
     validate_pkgtools_assets(PKGTOOLS_DIR)
+    validate_styles_assets(STYLES_DIR)
+    validate_fonts_assets(FONTS_DIR)
     version = read_project_version(PYPROJECT_PATH)
 
     ffmpeg_binaries: list[Path] = []
