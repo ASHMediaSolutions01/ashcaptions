@@ -26,7 +26,7 @@ from ash_captions.styles.library import (
 from ash_captions.styles.schema import Style, StyleValidationError
 
 EXPECTED_SHIPPED_NAMES = {
-    "CLEAN", "POP", "NEON GLOW", "LOWER THIRD", "KARAOKE", "HYPE", "PLAYFUL", "COMIC",
+    "CLEAN", "POP", "NEON GLOW", "LOWER THIRD", "KARAOKE", "HYPE", "PLAYFUL", "COMIC", "ASH BRAND",
 }
 
 
@@ -66,6 +66,23 @@ def test_every_shipped_style_loads_and_validates_cleanly():
     for path in shipped_styles_dir().glob("*.json"):
         style = load_style_file(path)
         assert isinstance(style, Style)
+
+
+def test_ash_brand_uses_the_real_identity_board_palette(empty_user_dir):
+    # ash-os-v3/brand/ash-limited-brandboard.html --
+    # --void, --bone, --ember. Pinned here so a future placeholder-style
+    # "arbitrary colour" edit can't drift this away from the real board
+    # without a test catching it.
+    style = list_styles(user_dir=empty_user_dir)["ASH BRAND"]
+    assert style.font == "Archivo Black"  # bundled; house sans is Archivo
+    assert style.colors.text == "#D8D2C8"  # --bone
+    assert style.colors.active == "#C8542A"  # --ember
+    assert style.colors.outline == "#131211"  # --void, not pure black
+    assert style.uppercase is True
+    assert style.letter_spacing > 0
+    # "restrained, editorial motion" -- no shake, no glow, no box.
+    assert style.active_word.effect == "pop"
+    assert style.active_word.box is False
 
 
 def test_user_style_overrides_shipped_style_by_name(tmp_path):

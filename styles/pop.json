@@ -9,7 +9,7 @@
     "active": "#111111",
     "outline": "#000000",
     "shadow": "#00000000",
-    "box": "#00E28A"
+    "box": "#FFD400"
   },
   "active_word": { "effect": "scale_box", "scale": 1.12, "box": true },
   "entrance": { "effect": "rise", "duration_ms": 140 },

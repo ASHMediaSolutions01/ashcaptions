@@ -5,8 +5,8 @@
   "uppercase": false,
   "letter_spacing": 0,
   "colors": {
-    "text": "#FFFFFF",
-    "active": "#FFE9A8",
+    "text": "#EDEDED",
+    "active": "#FFFFFF",
     "outline": "#000000",
     "shadow": "#000000A0",
     "box": "#00000000"
