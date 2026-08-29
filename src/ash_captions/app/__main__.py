@@ -10,12 +10,15 @@ app's actual identity on an editor's desktop.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import logging
+import msvcrt
 import socket
 import sys
 import threading
 import webbrowser
 from pathlib import Path
+from typing import IO
 
 from ash_captions.config import MAX_PORT_PROBES, Settings
 from ash_captions.pipeline import JobWorker, Watcher
@@ -68,6 +71,60 @@ def _find_open_port(preferred: int, *, max_probes: int) -> int:
     raise RuntimeError(f"No free port found in range {preferred}-{preferred + max_probes - 1}.")
 
 
+def _acquire_single_instance_lock(lock_path: Path) -> IO[str] | None:
+    """Try to become the only running instance. Returns an open file
+    object holding an OS-level exclusive byte-range lock on success, or
+    ``None`` if another instance already holds it.
+
+    Two real processes launching a `pystray.Icon` never collide with each
+    other (each gets its own address space, so the Win32 window class
+    name it registers -- derived from `id(self)` -- never collides across
+    processes; see `tray.build_tray_icon`'s docstring for the *same*-
+    process collision that guards against). But two live ASH Captions
+    processes absolutely would collide on everything downstream of the
+    tray icon: both would watch the same folder and could both pick up
+    the same dropped file (`pipeline.JobStore.fetch_oldest_pending()` +
+    `mark_running()` aren't one atomic transaction, so two processes could
+    both grab the same pending job), both would try to bind a control-page
+    port, and an editor would see two tray icons. This lock -- held for
+    the life of the caller's process -- is what stops the second launch
+    before any of that.
+
+    The lock is released by Windows the moment this process exits, cleanly
+    or via a crash, so a stale lock can never survive a dead process --
+    same crash-recovery philosophy as `JobStore.reset_stale_running()`:
+    nothing here needs manual cleanup on restart.
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+")
+    try:
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        handle.close()
+        return None
+    return handle
+
+
+def _warn_already_running() -> None:
+    """A second launch (an editor double-clicking the desktop shortcut
+    while the logon task's instance is already running, say) must never
+    surface a raw error -- there is no console to show one in anyway
+    (spec section 11: windowed build). A native message box is the only
+    UI available before -- or instead of -- a tray icon.
+    """
+    try:
+        MB_OK = 0x0
+        MB_ICONINFORMATION = 0x40
+        ctypes.windll.user32.MessageBoxW(  # type: ignore[attr-defined]
+            None,
+            "ASH Captions is already running. Look for its icon in the system tray.",
+            "ASH Captions",
+            MB_OK | MB_ICONINFORMATION,
+        )
+    except Exception:  # noqa: BLE001 - the message box is a courtesy, never load-bearing
+        logger.warning("ASH Captions is already running.")
+
+
 def _enqueue_watch_file(adapter: QueueAdapter, settings: Settings, path: Path) -> None:
     """``Watcher.on_ready`` callback: submit a dropped file with the
     configured defaults (spec section 6: "the 80% path -- no UI at all").
@@ -113,6 +170,16 @@ def main(argv: list[str] | None = None) -> None:
 
     settings = Settings.load()
     configure_logging(settings.log_path)
+
+    # Held for the rest of this function's lifetime (see docstring) -- do
+    # not let `lock` go out of scope or get closed before shutdown.
+    lock_path = settings.db_path.parent / "ash-captions.lock"
+    lock = _acquire_single_instance_lock(lock_path)
+    if lock is None:
+        logger.warning("Another ASH Captions instance is already running; exiting.")
+        _warn_already_running()
+        return
+
     logger.info("ASH Captions starting (open_browser=%s)", args.open)
 
     app, _adapter, worker, watcher, sweeper = build_application(settings)
@@ -140,6 +207,7 @@ def main(argv: list[str] | None = None) -> None:
         watcher.stop()
         worker.stop()
         sweeper.stop()
+        lock.close()  # release the single-instance lock explicitly, don't wait on process exit
 
     try:
         from .tray import build_tray_icon

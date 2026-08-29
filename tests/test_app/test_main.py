@@ -11,7 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from ash_captions.app.__main__ import _enqueue_watch_file, _find_open_port, _parse_args, build_application
+from ash_captions.app.__main__ import (
+    _acquire_single_instance_lock,
+    _enqueue_watch_file,
+    _find_open_port,
+    _parse_args,
+    _warn_already_running,
+    build_application,
+)
 from ash_captions.app.adapter import QueueAdapter
 from ash_captions.config import Settings
 from ash_captions.web.models import JobStatus
@@ -27,6 +34,89 @@ class TestParseArgs:
     def test_open_flag_requests_the_browser(self) -> None:
         """The desktop shortcut / Start Menu entry passes --open."""
         assert _parse_args(["--open"]).open is True
+
+
+class TestSingleInstanceLock:
+    """A second real process launched while the first is still running
+    must not silently race it (two watchers on the same folder, two
+    workers polling the same DB) -- see _acquire_single_instance_lock's
+    docstring. The lock is OS-enforced (msvcrt byte-range lock), so a
+    second `open()` on the same path within *this* test process already
+    proves the exclusion; it's the same mechanism a second OS process
+    would hit.
+    """
+
+    def test_first_caller_acquires_the_lock(self, tmp_path: Path) -> None:
+        lock_path = tmp_path / "ash-captions.lock"
+        handle = _acquire_single_instance_lock(lock_path)
+        try:
+            assert handle is not None
+        finally:
+            if handle is not None:
+                handle.close()
+
+    def test_second_caller_is_refused_while_the_first_holds_it(self, tmp_path: Path) -> None:
+        lock_path = tmp_path / "ash-captions.lock"
+        first = _acquire_single_instance_lock(lock_path)
+        assert first is not None
+        try:
+            second = _acquire_single_instance_lock(lock_path)
+            assert second is None
+        finally:
+            first.close()
+
+    def test_lock_becomes_available_again_once_released(self, tmp_path: Path) -> None:
+        """Simulates a crashed prior instance: closing the handle (which is
+        also what happens when a process dies, cleanly or not -- Windows
+        releases the lock either way) must let the next launch succeed
+        without any manual cleanup.
+        """
+        lock_path = tmp_path / "ash-captions.lock"
+        first = _acquire_single_instance_lock(lock_path)
+        assert first is not None
+        first.close()
+
+        second = _acquire_single_instance_lock(lock_path)
+        try:
+            assert second is not None
+        finally:
+            if second is not None:
+                second.close()
+
+    def test_creates_parent_directory(self, tmp_path: Path) -> None:
+        lock_path = tmp_path / "nested" / "dir" / "ash-captions.lock"
+        handle = _acquire_single_instance_lock(lock_path)
+        try:
+            assert handle is not None
+            assert lock_path.parent.is_dir()
+        finally:
+            if handle is not None:
+                handle.close()
+
+
+class TestWarnAlreadyRunning:
+    def test_shows_a_message_box_and_never_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = []
+        monkeypatch.setattr(
+            "ctypes.windll.user32.MessageBoxW",
+            lambda *args: calls.append(args) or 1,
+            raising=False,
+        )
+
+        _warn_already_running()  # must not raise, must not actually block on a real dialog
+
+        assert len(calls) == 1
+        assert "already running" in calls[0][1]
+
+    def test_falls_back_to_a_log_message_if_the_message_box_itself_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def boom(*args):
+            raise OSError("no user32 in this environment")
+
+        monkeypatch.setattr("ctypes.windll.user32.MessageBoxW", boom, raising=False)
+
+        _warn_already_running()  # must not raise even if the message box itself fails
 
 
 def make_settings(tmp_path: Path) -> Settings:
