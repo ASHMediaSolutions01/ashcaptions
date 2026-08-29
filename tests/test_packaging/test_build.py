@@ -63,6 +63,37 @@ def test_validate_static_assets_against_real_repo():
     build.validate_static_assets(build.STATIC_DIR)
 
 
+# -- pkgtools asset validation (the in-app updater's dependency) -----------
+
+
+def test_validate_pkgtools_assets_missing_dir(tmp_path):
+    with pytest.raises(build.BuildError, match="not found"):
+        build.validate_pkgtools_assets(tmp_path / "does-not-exist")
+
+
+def test_validate_pkgtools_assets_missing_files(tmp_path):
+    pkgtools_dir = tmp_path / "pkgtools"
+    pkgtools_dir.mkdir()
+    (pkgtools_dir / "__init__.py").write_text("", encoding="utf-8")
+    # manifest.py and gpu_matrix.py deliberately missing
+    with pytest.raises(build.BuildError, match="missing required files"):
+        build.validate_pkgtools_assets(pkgtools_dir)
+
+
+def test_validate_pkgtools_assets_ok(tmp_path):
+    pkgtools_dir = tmp_path / "pkgtools"
+    pkgtools_dir.mkdir()
+    for name in build.REQUIRED_PKGTOOLS_FILES:
+        (pkgtools_dir / name).write_text("x", encoding="utf-8")
+    build.validate_pkgtools_assets(pkgtools_dir)  # does not raise
+
+
+def test_validate_pkgtools_assets_against_real_repo():
+    """The actual scripts/pkgtools this build ships must never regress below
+    what the in-app updater needs -- see updater._load_pkgtools_manifest()."""
+    build.validate_pkgtools_assets(build.PKGTOOLS_DIR)
+
+
 # -- ffmpeg discovery -----------------------------------------------------
 
 
@@ -107,6 +138,34 @@ def test_build_pyinstaller_args_basic(tmp_path):
     assert str(dist_dir) in args
     assert str(work_dir) in args
     assert str(spec_dir) in args
+    # PyInstaller >=6's default `_internal/` layout would break every
+    # app_root()-relative lookup (bin/ffmpeg.exe, models/, scripts/pkgtools);
+    # this restores the flat layout config.py and updater.py assume.
+    assert "--contents-directory" in args
+    assert args[args.index("--contents-directory") + 1] == "."
+    # pkgtools ships by default -- updater.py's update checker depends on it
+    # being at exactly this path inside the bundle.
+    assert f"{build.PKGTOOLS_DIR};{build.PKGTOOLS_DEST}" in args
+
+
+def test_build_pyinstaller_args_pkgtools_dest_matches_updater_expectation():
+    """updater._load_pkgtools_manifest() does `app_root() / "scripts"` then
+    `from pkgtools.manifest import ...` -- the --add-data destination here
+    must produce exactly that layout, or the frozen import still fails."""
+    assert build.PKGTOOLS_DEST == "scripts/pkgtools"
+
+
+def test_build_pyinstaller_args_pkgtools_dir_override(tmp_path):
+    custom_pkgtools = tmp_path / "custom-pkgtools"
+    args = build.build_pyinstaller_args(
+        entry_script=tmp_path / "m.py",
+        dist_dir=tmp_path / "d",
+        work_dir=tmp_path / "w",
+        spec_dir=tmp_path / "s",
+        static_dir=tmp_path / "static",
+        pkgtools_dir=custom_pkgtools,
+    )
+    assert f"{custom_pkgtools};scripts/pkgtools" in args
 
 
 def test_build_pyinstaller_args_windowed(tmp_path):

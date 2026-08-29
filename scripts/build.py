@@ -38,6 +38,7 @@ PACKAGE_DIR = SRC_DIR / "ash_captions"
 STATIC_DIR = PACKAGE_DIR / "web" / "static"
 ENTRY_SCRIPT = PACKAGE_DIR / "__main__.py"
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+PKGTOOLS_DIR = Path(__file__).resolve().parent / "pkgtools"
 
 APP_NAME = "AshCaptions"
 
@@ -46,6 +47,19 @@ APP_NAME = "AshCaptions"
 # no obvious cause on an editor's machine, three time zones away from a
 # terminal that could tell them why.
 REQUIRED_STATIC_FILES = ("index.html", "app.js", "style.css")
+
+# src/ash_captions/app/updater.py reuses this module's version-comparison
+# and manifest-validation logic on purpose (see its `_load_pkgtools_manifest`)
+# rather than a second implementation that could disagree with the one
+# scripts/release.py was built against. It looks for these files at
+# `app_root() / "scripts" / "pkgtools"` and silently no-ops the update check
+# if they are missing -- so the bundle must actually ship them, or six
+# machines never learn an update exists and the failure looks exactly like
+# "no network," never like a bug.
+REQUIRED_PKGTOOLS_FILES = ("__init__.py", "manifest.py", "gpu_matrix.py")
+# Destination inside the bundle, relative to its root -- must match what
+# `updater._load_pkgtools_manifest()` looks for via `app_root() / "scripts"`.
+PKGTOOLS_DEST = "scripts/pkgtools"
 
 FFMPEG_BINARIES = ("ffmpeg.exe", "ffprobe.exe")
 
@@ -87,6 +101,22 @@ def validate_static_assets(static_dir: Path = STATIC_DIR) -> None:
         )
 
 
+def validate_pkgtools_assets(pkgtools_dir: Path = PKGTOOLS_DIR) -> None:
+    """Fail loudly, before invoking PyInstaller, if the shared manifest/
+    version-comparison logic the in-app updater reuses is missing --
+    otherwise the bundle builds fine and the update checker just silently
+    never works on any of six machines. See REQUIRED_PKGTOOLS_FILES above."""
+    pkgtools_dir = Path(pkgtools_dir)
+    if not pkgtools_dir.is_dir():
+        raise BuildError(
+            f"pkgtools directory not found: {pkgtools_dir}\n"
+            "The in-app update checker silently no-ops without it. Build from a full checkout."
+        )
+    missing = [name for name in REQUIRED_PKGTOOLS_FILES if not (pkgtools_dir / name).is_file()]
+    if missing:
+        raise BuildError(f"pkgtools directory {pkgtools_dir} is missing required files: {missing}")
+
+
 def discover_ffmpeg_binaries(ffmpeg_dir: Path) -> list[Path]:
     """Locate ffmpeg.exe/ffprobe.exe fetched by `fetch_ffmpeg.py`.
 
@@ -115,6 +145,7 @@ def build_pyinstaller_args(
     work_dir: Path,
     spec_dir: Path,
     static_dir: Path,
+    pkgtools_dir: Path = PKGTOOLS_DIR,
     ffmpeg_binaries: list[Path] | None = None,
     model_dir: Path | None = None,
     app_name: str = APP_NAME,
@@ -138,6 +169,12 @@ def build_pyinstaller_args(
         "--workpath", str(work_dir),
         "--specpath", str(spec_dir),
         "--console" if console else "--windowed",
+        # PyInstaller >=6 defaults onedir to a `_internal/` subdirectory for
+        # everything but the exe. config.py's `app_root()` (bin/ffmpeg.exe,
+        # models/) and updater.py's `app_root() / "scripts"` both assume the
+        # flat, pre-6.0 layout -- everything sitting directly beside the exe.
+        # Restore that instead of quietly breaking three different lookups.
+        "--contents-directory", ".",
         # Compiled extensions with data files PyInstaller's default hooks
         # under-collect; belt and suspenders beats a bundle that imports
         # fine on the build box and fails on an editor's PC.
@@ -146,6 +183,10 @@ def build_pyinstaller_args(
         "--collect-all", "av",
         "--collect-submodules", "uvicorn",
         "--add-data", f"{static_dir};ash_captions/web/static",
+        # src/ash_captions/app/updater.py imports this at runtime from
+        # `app_root() / "scripts" / "pkgtools"` -- see REQUIRED_PKGTOOLS_FILES
+        # above for why this is not optional the way ffmpeg/model bundling is.
+        "--add-data", f"{pkgtools_dir};{PKGTOOLS_DEST}",
     ]
     for binary in ffmpeg_binaries or []:
         args += ["--add-binary", f"{binary};bin"]
@@ -238,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     validate_static_assets(STATIC_DIR)
+    validate_pkgtools_assets(PKGTOOLS_DIR)
     version = read_project_version(PYPROJECT_PATH)
 
     ffmpeg_binaries: list[Path] = []
