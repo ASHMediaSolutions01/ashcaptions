@@ -285,6 +285,7 @@ class TestApplyUpdate:
         spawned: list[list[str]] = []
         updater.apply_update(
             artifact,
+            has_running_job=lambda: False,
             install_dir=install_dir,
             extract_to=tmp_path / "staged",
             spawn_helper=spawned.append,
@@ -308,6 +309,7 @@ class TestApplyUpdate:
         spawned: list[list[str]] = []
         updater.apply_update(
             artifact,
+            has_running_job=lambda: False,
             install_dir=tmp_path / "install",
             extract_to=tmp_path / "staged",
             spawn_helper=spawned.append,
@@ -326,6 +328,7 @@ class TestApplyUpdate:
         with pytest.raises(updater.UpdateApplyError):
             updater.apply_update(
                 artifact,
+                has_running_job=lambda: False,
                 install_dir=tmp_path / "install",
                 extract_to=tmp_path / "staged",
                 spawn_helper=spawned.append,
@@ -340,8 +343,102 @@ class TestApplyUpdate:
         with pytest.raises(updater.UpdateApplyError):
             updater.apply_update(
                 artifact,
+                has_running_job=lambda: False,
                 install_dir=tmp_path / "install",
                 extract_to=tmp_path / "staged",
                 spawn_helper=spawned.append,
             )
         assert spawned == []
+
+
+class TestApplyUpdateRefusesWhileAJobIsRunning:
+    """The non-negotiable part: applying an update must never kill an
+    in-progress caption job. This check lives in apply_update() itself,
+    not just the UI, so no caller can bypass it.
+    """
+
+    def _make_bundle_zip(self, path: Path) -> None:
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr(updater.EXE_NAME, "fake exe bytes")
+
+    def test_refuses_with_an_editor_facing_message_and_never_spawns(self, tmp_path: Path) -> None:
+        artifact = tmp_path / "bundle.zip"
+        self._make_bundle_zip(artifact)
+
+        spawned: list[list[str]] = []
+        with pytest.raises(updater.UpdateApplyError) as exc_info:
+            updater.apply_update(
+                artifact,
+                has_running_job=lambda: True,
+                install_dir=tmp_path / "install",
+                extract_to=tmp_path / "staged",
+                spawn_helper=spawned.append,
+            )
+
+        assert str(exc_info.value) == updater.JOB_RUNNING_MESSAGE
+        assert spawned == []
+
+    def test_refuses_before_ever_extracting_the_artifact(self, tmp_path: Path) -> None:
+        """No side effects at all when refused -- not even the staging
+        directory should appear."""
+        artifact = tmp_path / "bundle.zip"
+        self._make_bundle_zip(artifact)
+        staging = tmp_path / "staged"
+
+        with pytest.raises(updater.UpdateApplyError):
+            updater.apply_update(
+                artifact,
+                has_running_job=lambda: True,
+                install_dir=tmp_path / "install",
+                extract_to=staging,
+                spawn_helper=lambda argv: None,
+            )
+
+        assert not staging.exists()
+
+    def test_a_job_that_starts_during_extraction_is_still_caught_by_the_recheck(
+        self, tmp_path: Path
+    ) -> None:
+        """Simulates the TOCTOU window: has_running_job() says False on
+        the first call (checked up front) but True by the time
+        apply_update reaches its second check, immediately before the
+        point of no return (the helper spawn) -- proving that second
+        check is real, not decorative.
+        """
+        artifact = tmp_path / "bundle.zip"
+        self._make_bundle_zip(artifact)
+
+        calls = {"count": 0}
+
+        def has_running_job() -> bool:
+            calls["count"] += 1
+            return calls["count"] > 1  # clear on the first check, running by the second
+
+        spawned: list[list[str]] = []
+        with pytest.raises(updater.UpdateApplyError) as exc_info:
+            updater.apply_update(
+                artifact,
+                has_running_job=has_running_job,
+                install_dir=tmp_path / "install",
+                extract_to=tmp_path / "staged",
+                spawn_helper=spawned.append,
+            )
+
+        assert str(exc_info.value) == updater.JOB_RUNNING_MESSAGE
+        assert calls["count"] == 2  # both the upfront and the pre-spawn check ran
+        assert spawned == []  # never reached the point of no return
+
+    def test_proceeds_normally_when_no_job_is_running(self, tmp_path: Path) -> None:
+        artifact = tmp_path / "bundle.zip"
+        self._make_bundle_zip(artifact)
+
+        spawned: list[list[str]] = []
+        updater.apply_update(
+            artifact,
+            has_running_job=lambda: False,
+            install_dir=tmp_path / "install",
+            extract_to=tmp_path / "staged",
+            spawn_helper=spawned.append,
+        )
+
+        assert len(spawned) == 1

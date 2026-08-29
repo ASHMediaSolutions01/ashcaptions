@@ -94,6 +94,66 @@ def test_validate_pkgtools_assets_against_real_repo():
     build.validate_pkgtools_assets(build.PKGTOOLS_DIR)
 
 
+# -- styles asset validation (styles/library.py's shipped_styles_dir) -----
+
+
+def test_validate_styles_assets_missing_dir(tmp_path):
+    with pytest.raises(build.BuildError, match="not found"):
+        build.validate_styles_assets(tmp_path / "does-not-exist")
+
+
+def test_validate_styles_assets_empty_dir(tmp_path):
+    styles_dir = tmp_path / "styles"
+    styles_dir.mkdir()
+    with pytest.raises(build.BuildError, match="no \\*.json"):
+        build.validate_styles_assets(styles_dir)
+
+
+def test_validate_styles_assets_ok(tmp_path):
+    styles_dir = tmp_path / "styles"
+    styles_dir.mkdir()
+    (styles_dir / "pop.json").write_text("{}", encoding="utf-8")
+    build.validate_styles_assets(styles_dir)  # does not raise
+
+
+def test_validate_styles_assets_against_real_repo():
+    """This is the exact bug report: a real build silently shipped no
+    styles/ directory at all, and every job fell back to the default style
+    with no error anyone would see. This must never regress."""
+    build.validate_styles_assets(build.STYLES_DIR)
+
+
+# -- fonts asset validation (styles/fonts.py's assets_fonts_dir) ----------
+
+
+def test_validate_fonts_assets_missing_dir(tmp_path):
+    with pytest.raises(build.BuildError, match="not found"):
+        build.validate_fonts_assets(tmp_path / "does-not-exist")
+
+
+def test_validate_fonts_assets_missing_manifest(tmp_path):
+    fonts_dir = tmp_path / "fonts"
+    fonts_dir.mkdir()
+    (fonts_dir / "SomeFont.ttf").write_bytes(b"not a real font")
+    with pytest.raises(build.BuildError, match="manifest.json"):
+        build.validate_fonts_assets(fonts_dir)
+
+
+def test_validate_fonts_assets_ok_without_ttf_files(tmp_path):
+    """The manifest is required; the .ttf files are not -- they are fetched
+    separately and their absence must not fail the build."""
+    fonts_dir = tmp_path / "fonts"
+    fonts_dir.mkdir()
+    (fonts_dir / "manifest.json").write_text('{"fonts": []}', encoding="utf-8")
+    build.validate_fonts_assets(fonts_dir)  # does not raise
+
+
+def test_validate_fonts_assets_against_real_repo():
+    """assets/fonts/manifest.json is a committed file -- this must never
+    regress the way styles/ did (see test_validate_styles_assets_against_real_repo)."""
+    build.validate_fonts_assets(build.FONTS_DIR)
+
+
 # -- ffmpeg discovery -----------------------------------------------------
 
 
@@ -146,6 +206,10 @@ def test_build_pyinstaller_args_basic(tmp_path):
     # pkgtools ships by default -- updater.py's update checker depends on it
     # being at exactly this path inside the bundle.
     assert f"{build.PKGTOOLS_DIR};{build.PKGTOOLS_DEST}" in args
+    # styles/ and assets/fonts/ ship by default too -- required, not
+    # optional, the exact bug report this test guards against.
+    assert f"{build.STYLES_DIR};{build.STYLES_DEST}" in args
+    assert f"{build.FONTS_DIR};{build.FONTS_DEST}" in args
 
 
 def test_build_pyinstaller_args_pkgtools_dest_matches_updater_expectation():
@@ -153,6 +217,30 @@ def test_build_pyinstaller_args_pkgtools_dest_matches_updater_expectation():
     `from pkgtools.manifest import ...` -- the --add-data destination here
     must produce exactly that layout, or the frozen import still fails."""
     assert build.PKGTOOLS_DEST == "scripts/pkgtools"
+
+
+def test_build_pyinstaller_args_styles_and_fonts_dest_match_app_expectation():
+    """styles/library.py's shipped_styles_dir() == app_root() / "styles" and
+    styles/fonts.py's assets_fonts_dir() == app_root() / "assets" / "fonts"
+    -- the --add-data destinations here must produce exactly that layout."""
+    assert build.STYLES_DEST == "styles"
+    assert build.FONTS_DEST == "assets/fonts"
+
+
+def test_build_pyinstaller_args_styles_fonts_dir_override(tmp_path):
+    custom_styles = tmp_path / "custom-styles"
+    custom_fonts = tmp_path / "custom-fonts"
+    args = build.build_pyinstaller_args(
+        entry_script=tmp_path / "m.py",
+        dist_dir=tmp_path / "d",
+        work_dir=tmp_path / "w",
+        spec_dir=tmp_path / "s",
+        static_dir=tmp_path / "static",
+        styles_dir=custom_styles,
+        fonts_dir=custom_fonts,
+    )
+    assert f"{custom_styles};styles" in args
+    assert f"{custom_fonts};assets/fonts" in args
 
 
 def test_build_pyinstaller_args_pkgtools_dir_override(tmp_path):

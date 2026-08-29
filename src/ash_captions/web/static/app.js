@@ -18,10 +18,15 @@
   const submitError = document.getElementById("submit-error");
   const jobList = document.getElementById("job-list");
   const emptyQueue = document.getElementById("empty-queue");
+  const updateBanner = document.getElementById("update-banner");
+  const updateBannerDetail = document.getElementById("update-banner-detail");
+  const updateBannerReason = document.getElementById("update-banner-reason");
+  const updateNowBtn = document.getElementById("update-now-btn");
 
   let languages = [];
   // { type: "path", value: "D:\...\clip.mp4" } or { type: "upload", value: File }
   let selectedSource = null;
+  let queueBusyReason = null; // set from the live job list; overrides the server's snapshot reason
 
   // ---- Caption style dropdown (spec 7A) ----
   // Populated from the same style library the style editor manages, so a
@@ -34,7 +39,15 @@
     for (const style of styles) {
       const opt = document.createElement("option");
       opt.value = style.name;
-      opt.textContent = style.shipped ? style.name : `${style.name} (custom)`;
+      // A style whose name matches a built-in but has a saved local edit
+      // silently overrides it for every job (spec 7A) -- flagged here too,
+      // not just in the style editor, since this is where the consequence
+      // actually lands: picking "POP" here uses the customized version.
+      opt.textContent = style.customized_locally
+        ? `${style.name} (customized)`
+        : style.shipped
+        ? style.name
+        : `${style.name} (custom)`;
       presetSelect.appendChild(opt);
     }
     // POP is the short-form default (spec 6); fall back to the first style.
@@ -208,6 +221,14 @@
   const STATUS_LABEL = { pending: "Waiting", running: "Working", done: "Done", failed: "Failed" };
 
   function renderJobs(jobs) {
+    // Kept live off the same job snapshot the queue section already
+    // renders from, so the Update button proactively disables itself the
+    // moment a job starts running, without a second poll of its own.
+    queueBusyReason = (jobs || []).some((j) => j.status === "running")
+      ? "A caption job is still running. Try again when the queue is clear."
+      : null;
+    updateUpdateButtonState();
+
     if (!jobs || jobs.length === 0) {
       emptyQueue.style.display = "block";
       jobList.innerHTML = "";
@@ -296,10 +317,111 @@
     };
   }
 
+  // ---- In-app updates (spec 11.4) ----
+  // The click on "Update now" IS the consent -- deliberately no confirmation
+  // dialog here (a second "are you sure?" just trains people to click
+  // through unread). Applying restarts the app, which is why the button
+  // says so right next to itself rather than behind a dialog.
+
+  function formatMegabytes(bytes) {
+    return `${Math.round(bytes / 1024 / 1024)} MB`;
+  }
+
+  function updateUpdateButtonState() {
+    if (updateBanner.hidden) return;
+    updateNowBtn.disabled = !!queueBusyReason;
+    updateBannerReason.hidden = !queueBusyReason;
+    updateBannerReason.textContent = queueBusyReason || "";
+  }
+
+  async function checkForUpdate() {
+    const res = await fetch("/api/update");
+    if (!res.ok) return;
+    const info = await res.json();
+    if (!info) return;
+
+    updateBannerDetail.textContent =
+      `Version ${info.version} (${formatMegabytes(info.size_bytes)})` + (info.notes ? ` -- ${info.notes}` : "");
+    if (info.blocked_reason) queueBusyReason = info.blocked_reason;
+    updateBanner.hidden = false;
+    updateUpdateButtonState();
+  }
+
+  updateNowBtn.addEventListener("click", async () => {
+    updateNowBtn.disabled = true;
+    updateBannerReason.hidden = false;
+    updateBannerReason.textContent = "Starting the update…";
+
+    try {
+      const res = await fetch("/api/update/apply", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Could not start the update.");
+      }
+      const job = await res.json();
+      pollUpdateApply(job.id);
+    } catch (err) {
+      updateBannerReason.textContent = err.message;
+      updateNowBtn.disabled = !!queueBusyReason;
+    }
+  });
+
+  const UPDATE_PHASE_LABEL = {
+    pending: "Starting the update…",
+    downloading: "Downloading the update…",
+    applying: "Applying the update…",
+  };
+
+  function pollUpdateApply(jobId) {
+    const timer = setInterval(async () => {
+      let job;
+      try {
+        const res = await fetch(`/api/update/apply/${encodeURIComponent(jobId)}`);
+        if (!res.ok) throw new Error("Lost track of the update.");
+        job = await res.json();
+      } catch (err) {
+        clearInterval(timer);
+        updateBannerReason.textContent = err.message;
+        updateNowBtn.disabled = !!queueBusyReason;
+        return;
+      }
+
+      if (job.status === "done") {
+        clearInterval(timer);
+        updateBannerReason.textContent = "Update applied -- the app is restarting…";
+        waitForRestartThenReload();
+      } else if (job.status === "failed") {
+        clearInterval(timer);
+        updateBannerReason.textContent = job.error || "The update failed.";
+        updateNowBtn.disabled = !!queueBusyReason;
+      } else {
+        updateBannerReason.textContent = UPDATE_PHASE_LABEL[job.status] || "Working…";
+      }
+    }, 1000);
+  }
+
+  function waitForRestartThenReload() {
+    // The app process is about to exit and relaunch (spec 11.4) -- this
+    // page's own connection will drop. Poll for it to come back rather
+    // than making the editor remember to refresh manually.
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch("/api/jobs", { cache: "no-store" });
+        if (res.ok) {
+          clearInterval(timer);
+          window.location.reload();
+        }
+      } catch (err) {
+        // still restarting; keep waiting
+      }
+    }, 2000);
+  }
+
   // ---- Boot ----
 
   loadLanguages();
   loadPresets();
   refreshJobs();
   connectEvents();
+  checkForUpdate();
 })();

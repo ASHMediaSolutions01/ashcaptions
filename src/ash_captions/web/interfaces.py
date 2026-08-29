@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, AsyncIterator, Protocol, runtime_checkable
 
-from .models import Job, JobOptions, Language, PreviewJob, StyleSummary
+from .models import Job, JobOptions, Language, PreviewJob, StyleSummary, UpdateApplyJob
 
 
 class JobNotFoundError(Exception):
@@ -167,4 +167,45 @@ class PreviewRenderer(Protocol):
 
     def get_preview(self, job_id: str) -> PreviewJob:
         """Current status of a preview job. Raises PreviewNotFoundError."""
+        ...
+
+
+# --- In-app updates (spec 11.4) ---------------------------------------------
+#
+# Checking for an update -- the background thread, and where its result is
+# published -- is owned by `app/__main__.py`, not by anything here: it sets
+# `app.state.update_state` itself (same `app.state` convention as
+# `app.state.queue`, just wired after `create_app()` returns rather than
+# through it -- see that module's own comment). `app.py`'s routes read
+# whatever is on `app.state.update_state` structurally (only ever calling
+# `.get()` on it and reading attributes off whatever that returns) and never
+# import `ash_captions.app.updater` to do so, so this package stays
+# decoupled from `app/` the same way it is from `engine`/`styles`/`pipeline`.
+# This protocol only covers what happens *after* an editor clicks "Update
+# now": download, verify, apply. `web.update_adapter.UpdaterAdapter` is the
+# real implementation, constructed by `create_app()` by default.
+
+
+class UpdateApplyNotFoundError(Exception):
+    """Raised by UpdateApplier.get_apply_status() when job_id does not exist."""
+
+
+@runtime_checkable
+class UpdateApplier(Protocol):
+    """Downloads, verifies, and applies an in-app update (spec 11.4).
+
+    Job-shaped like PreviewRenderer: downloading and verifying a
+    multi-hundred-MB installer takes real time, so `submit_apply` returns
+    immediately with a job the browser polls, rather than blocking.
+    Applying restarts the app once it succeeds.
+    """
+
+    def submit_apply(self, update: Any) -> UpdateApplyJob:
+        """Starts downloading, verifying, and applying `update` (whatever
+        `app.state.update_state.get()` returned -- structurally an
+        `app.updater.UpdateInfo`) on a background thread."""
+        ...
+
+    def get_apply_status(self, job_id: str) -> UpdateApplyJob:
+        """Raises UpdateApplyNotFoundError if job_id does not exist."""
         ...

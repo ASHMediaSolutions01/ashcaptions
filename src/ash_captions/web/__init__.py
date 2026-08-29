@@ -13,6 +13,8 @@ from .interfaces import (
     StyleNotFoundError,
     StyleProvider,
     StyleValidationFailedError,
+    UpdateApplier,
+    UpdateApplyNotFoundError,
 )
 from .models import (
     Dialect,
@@ -23,6 +25,9 @@ from .models import (
     PreviewJob,
     PreviewStatus,
     StyleSummary,
+    UpdateApplyJob,
+    UpdateApplyStatus,
+    UpdateAvailable,
 )
 
 __all__ = [
@@ -32,12 +37,14 @@ __all__ = [
     "LanguageCatalogueProvider",
     "StyleProvider",
     "PreviewRenderer",
+    "UpdateApplier",
     "JobNotFoundError",
     "JobNotRetryableError",
     "StyleNotFoundError",
     "StyleValidationFailedError",
     "StyleIsShippedError",
     "PreviewNotFoundError",
+    "UpdateApplyNotFoundError",
     "Job",
     "JobOptions",
     "JobStatus",
@@ -46,4 +53,7 @@ __all__ = [
     "StyleSummary",
     "PreviewJob",
     "PreviewStatus",
+    "UpdateAvailable",
+    "UpdateApplyJob",
+    "UpdateApplyStatus",
 ]

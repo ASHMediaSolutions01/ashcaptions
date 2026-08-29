@@ -18,7 +18,51 @@ def test_list_styles_distinguishes_shipped_from_user(client, fake_style_provider
     assert by_name["CLEAN"]["shipped"] is True
     assert by_name["POP"]["shipped"] is True
     assert by_name["MY LOOK"]["shipped"] is False
-    assert by_name["MY LOOK"]["definition"]["font"] == "Inter"
+
+
+def test_shadowed_shipped_style_is_flagged_customized_locally(client, fake_style_provider):
+    """Saving a user style under a shipped name (e.g. "POP") silently
+    overrides it for every job that uses that name -- this must be visible,
+    not indistinguishable from the pristine built-in (see team-lead's
+    finding: `shipped: True` alone hides this)."""
+    untouched = client.get("/api/styles/CLEAN").json()
+    assert untouched["shipped"] is True
+    assert untouched["customized_locally"] is False
+
+    overridden = default_style_definition("POP")
+    overridden["font"] = "Montserrat"
+    fake_style_provider.save_style("POP", overridden)
+
+    res = client.get("/api/styles/POP")
+    assert res.json()["shipped"] is True
+    assert res.json()["customized_locally"] is True
+    assert res.json()["definition"]["font"] == "Montserrat"
+
+    by_name = {s["name"]: s for s in client.get("/api/styles").json()}
+    assert by_name["POP"]["customized_locally"] is True
+    assert by_name["CLEAN"]["customized_locally"] is False
+
+
+def test_customized_locally_never_true_for_a_pure_user_style(client, fake_style_provider):
+    fake_style_provider.save_style("MY LOOK", default_style_definition("MY LOOK"))
+
+    res = client.get("/api/styles/MY LOOK")
+
+    assert res.json()["shipped"] is False
+    assert res.json()["customized_locally"] is False
+
+
+def test_shipped_only_view_of_a_shadowed_style_is_never_flagged_customized(client, fake_style_provider):
+    """`?shipped_only=true` -- the "reset to shipped" fetch -- returns the
+    pristine version, so it must never claim to be customized."""
+    overridden = default_style_definition("POP")
+    overridden["font"] = "Montserrat"
+    fake_style_provider.save_style("POP", overridden)
+
+    res = client.get("/api/styles/POP", params={"shipped_only": True})
+
+    assert res.json()["customized_locally"] is False
+    assert res.json()["definition"]["font"] != "Montserrat"
 
 
 def test_get_style_returns_full_definition(client):

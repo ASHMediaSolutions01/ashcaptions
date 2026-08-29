@@ -28,6 +28,7 @@ import threading
 import pytest
 
 from ash_captions.app import tray
+from ash_captions.app.updater import UpdateInfo, UpdateState
 from ash_captions.config import Settings
 
 
@@ -58,6 +59,84 @@ def test_menu_has_the_four_expected_items(tmp_path) -> None:
 
     labels = [item.text for item in menu]
     assert labels == ["Open control page", "Open output folder", "Open log file", "Quit"]
+
+
+def make_update_info(version: str = "0.2.0") -> UpdateInfo:
+    return UpdateInfo(
+        version=version, notes=None, download_url="https://example.com/x.zip",
+        sha256="a" * 64, size_bytes=1, manifest={},
+    )
+
+
+class TestUpdateMenuItem:
+    """The tray's half of the decided UX (spec section 11.4): a signpost
+    only, never an apply action. It appears only once update_state holds
+    an update and opens the control page -- the same as "Open control
+    page" -- rather than applying anything itself.
+    """
+
+    def test_hidden_when_no_update_state_is_given(self, tmp_path) -> None:
+        settings, opener = make_settings(tmp_path)
+        menu = tray._build_menu(
+            url="http://127.0.0.1:8756", settings=settings, on_quit=lambda: None, open_path=opener
+        )
+        assert "Update available" not in [item.text for item in menu]
+
+    def test_hidden_when_update_state_holds_no_update(self, tmp_path) -> None:
+        settings, opener = make_settings(tmp_path)
+        state = UpdateState()  # empty -- no update found (yet)
+        menu = tray._build_menu(
+            url="http://127.0.0.1:8756", settings=settings, on_quit=lambda: None,
+            open_path=opener, update_state=state,
+        )
+        assert len(list(menu)) == 4  # the update item is filtered out, not just blank
+
+    def test_visible_with_the_version_once_an_update_is_found(self, tmp_path) -> None:
+        settings, opener = make_settings(tmp_path)
+        state = UpdateState()
+        state.set(make_update_info("0.5.0"))
+        menu = tray._build_menu(
+            url="http://127.0.0.1:8756", settings=settings, on_quit=lambda: None,
+            open_path=opener, update_state=state,
+        )
+
+        labels = [item.text for item in menu]
+        assert "Update available (v0.5.0)" in labels
+        assert len(labels) == 5
+
+    def test_appears_the_moment_state_is_populated_without_rebuilding_the_menu(self, tmp_path) -> None:
+        """The same live `menu` object must reflect a later state change
+        -- pystray re-evaluates text/visible on each render, so nothing
+        here should need to construct a new Menu."""
+        settings, opener = make_settings(tmp_path)
+        state = UpdateState()
+        menu = tray._build_menu(
+            url="http://127.0.0.1:8756", settings=settings, on_quit=lambda: None,
+            open_path=opener, update_state=state,
+        )
+        assert "Update available" not in [item.text for item in menu]
+
+        state.set(make_update_info("0.3.0"))
+
+        assert "Update available (v0.3.0)" in [item.text for item in menu]
+
+    def test_clicking_it_opens_the_control_page_not_an_apply_action(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        settings, opener = make_settings(tmp_path)
+        state = UpdateState()
+        state.set(make_update_info("0.5.0"))
+        url = "http://127.0.0.1:8756"
+        menu = tray._build_menu(
+            url=url, settings=settings, on_quit=lambda: None, open_path=opener, update_state=state
+        )
+        opened_urls: list = []
+        monkeypatch.setattr(tray.webbrowser, "open", opened_urls.append)
+
+        item = next(i for i in menu if i.text.startswith("Update available"))
+        item(None)
+
+        assert opened_urls == [url]
 
 
 def test_quit_item_calls_icon_stop_and_on_quit(tmp_path) -> None:

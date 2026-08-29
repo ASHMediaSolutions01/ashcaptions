@@ -108,14 +108,23 @@
     if (toSelect) selectStyle(toSelect);
   }
 
+  function pickerTag(style) {
+    // A shipped name with a saved local edit silently overrides the
+    // built-in for every job using that name -- must read differently
+    // from a pristine built-in, not just "Built-in" (team-lead's finding).
+    if (style.customized_locally) return { text: "Built-in, edited", cls: "custom" };
+    return style.shipped ? { text: "Built-in", cls: "" } : { text: "Custom", cls: "custom" };
+  }
+
   function renderStyleList() {
     styleList.innerHTML = "";
     for (const style of styles) {
+      const tag = pickerTag(style);
       const item = document.createElement("div");
       item.className = "style-item" + (style.name === selectedName ? " selected" : "");
       item.innerHTML = `
         <span>${escapeHtml(style.name)}</span>
-        <span class="tag${style.shipped ? "" : " custom"}">${style.shipped ? "Built-in" : "Custom"}</span>
+        <span class="tag${tag.cls ? " " + tag.cls : ""}">${tag.text}</span>
       `;
       item.addEventListener("click", () => selectStyle(style.name));
       styleList.appendChild(item);
@@ -138,10 +147,18 @@
     applyDraftToForm();
     renderStyleList();
     editingName.textContent = name;
-    editingBadge.textContent = style.shipped ? "Built-in" : "Custom";
+    if (style.customized_locally) {
+      editingBadge.textContent = "Built-in, customized locally";
+      showSaveStatus(
+        `Other jobs using "${name}" -- including the watch-folder default -- will pick up this customized version, not the original built-in.`,
+        true
+      );
+    } else {
+      editingBadge.textContent = style.shipped ? "Built-in" : "Custom";
+      hideSaveStatus();
+    }
     deleteBtn.hidden = style.shipped;
     resetBtn.hidden = !style.shipped;
-    hideSaveStatus();
   }
 
   // `draft` is the full style dict (schema fields: name, font, size,

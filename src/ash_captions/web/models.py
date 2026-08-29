@@ -122,6 +122,15 @@ class StyleSummary(BaseModel):
     shipped: bool = Field(
         ..., description="True for one of the built-in looks; the editor may edit it but never delete it."
     )
+    customized_locally: bool = Field(
+        False,
+        description=(
+            "True when `shipped` is also True AND a user override file exists for this name -- i.e. "
+            "`definition` is NOT the pristine built-in any more. Every job (including the watch-folder "
+            "default) that uses this name picks up the customized version, not the original, so this "
+            "must be surfaced distinctly from plain `shipped` rather than silently folded into it."
+        ),
+    )
     definition: dict[str, Any]
 
 
@@ -155,3 +164,48 @@ class PreviewJob(BaseModel):
     phase: str | None = None
     error: str | None = None
     clip_path: str | None = None
+
+
+# --- In-app updates (spec 11.4) ---------------------------------------------
+#
+# `app.updater.UpdateInfo` carries more than the browser needs (download_url,
+# sha256, the raw manifest) -- this is the trimmed, display-safe subset for
+# GET /api/update. The apply flow is job-shaped like preview rendering: a
+# download of a multi-hundred-MB installer plus verification takes real
+# time, so POST /api/update/apply returns a job handle immediately rather
+# than blocking, and the browser polls for progress.
+
+
+class UpdateAvailable(BaseModel):
+    """What GET /api/update returns when a newer version has been found."""
+
+    version: str
+    notes: str | None = None
+    size_bytes: int
+    blocked_reason: str | None = Field(
+        None,
+        description=(
+            "Non-null while applying would currently be refused (e.g. a caption job is still "
+            "running) -- the control page should disable its Update button and show this text "
+            "rather than let the editor click and get rejected."
+        ),
+    )
+
+
+class UpdateApplyStatus(str, Enum):
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    APPLYING = "applying"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class UpdateApplyJob(BaseModel):
+    """Progress of one update-apply attempt. `status == "done"` means the
+    verified update was extracted and handed off to the restart helper --
+    the app is about to exit and relaunch itself, so the page should expect
+    the connection to drop rather than treat that as an error."""
+
+    id: str
+    status: UpdateApplyStatus
+    error: str | None = None

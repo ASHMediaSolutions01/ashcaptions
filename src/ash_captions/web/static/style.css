@@ -60,6 +60,38 @@ main {
   padding: 24px;
 }
 
+/* Update banner (spec 11.4) */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-color: var(--accent);
+  background: var(--run-bg);
+}
+.update-banner-text strong {
+  font-size: 16px;
+}
+.update-banner-text p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.update-banner-text .hint {
+  color: var(--fail);
+}
+.update-banner-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.update-banner-actions .hint {
+  margin: 0;
+  text-align: right;
+}
+
 /* Path input (primary submission field) */
 .hint {
   margin: 8px 0 0;

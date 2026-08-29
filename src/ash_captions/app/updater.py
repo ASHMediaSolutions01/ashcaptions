@@ -307,6 +307,9 @@ if ($LASTEXITCODE -lt 8) {
 """
 
 SpawnHelper = Callable[[list[str]], None]
+HasRunningJob = Callable[[], bool]
+
+JOB_RUNNING_MESSAGE = "A caption job is still running. Try again when the queue is clear."
 
 
 def _default_spawn_helper(argv: list[str]) -> None:
@@ -322,6 +325,7 @@ def _default_spawn_helper(argv: list[str]) -> None:
 def apply_update(
     artifact_path: Path,
     *,
+    has_running_job: HasRunningJob,
     install_dir: Path | None = None,
     extract_to: Path | None = None,
     spawn_helper: SpawnHelper = _default_spawn_helper,
@@ -332,13 +336,44 @@ def apply_update(
     relaunches it. Only ever call this after
     ``download_and_verify_update`` has already verified ``artifact_path``.
 
-    Does not itself stop or restart anything -- by the time this returns,
-    the caller is expected to shut down and exit so the helper's wait-for-
-    exit loop can proceed. Raises ``UpdateApplyError`` if the artifact
-    can't be extracted; the spawn step itself is not expected to fail
-    (a launch failure there is a machine problem, not a data problem) but
-    is not swallowed either -- OSError propagates.
+    ``apply_update()`` stops the running app to replace its files (spec:
+    "not an in-place overwrite of a running exe") -- doing that mid-
+    transcode would both lose an editor's in-progress job outright and,
+    on the watch-folder path, potentially strand it: the input file may
+    already be consumed, and ``JobStore.reset_stale_running()`` would
+    requeue it from scratch on the next launch, so the editor would see a
+    job mysteriously restart with no explanation. ``has_running_job`` is
+    therefore a **required** parameter, not an optional safety net --
+    there is deliberately no default that lets a caller silently skip it.
+    Raises ``UpdateApplyError`` with an editor-facing message (never a
+    generic error) if any job is running, checked once up front and once
+    more immediately before the point of no return (the helper spawn), so
+    a job that started during extraction is still caught.
+
+    That second check does not close the window all the way: a job could
+    still start in the moment between it and the caller's actual process
+    exit, which is outside this function's control (this module never
+    stops the worker or exits the process itself -- see below). Closing
+    that residual window is the caller's responsibility, the same way the
+    single-instance lock's real guarantee comes from an OS-level wait, not
+    a check: the caller applying an update must shut the job worker down
+    with a blocking, unbounded wait (``JobWorker.stop(timeout=None)``,
+    not the short timeout a normal quit uses) before exiting, so any job
+    that slipped past this function's checks still finishes -- genuinely,
+    not just up to a timeout -- before the detached helper's own
+    wait-for-exit loop lets it touch a single file.
+
+    Does not itself stop or restart anything else -- by the time this
+    returns, the caller is expected to shut down (per the paragraph
+    above) and exit so the helper's wait-for-exit loop can proceed.
+    Raises ``UpdateApplyError`` if the artifact can't be extracted; the
+    spawn step itself is not expected to fail (a launch failure there is
+    a machine problem, not a data problem) but is not swallowed either --
+    OSError propagates.
     """
+    if has_running_job():
+        raise UpdateApplyError(JOB_RUNNING_MESSAGE)
+
     artifact_path = Path(artifact_path)
     install_dir = Path(install_dir) if install_dir is not None else app_root()
     staging = Path(extract_to) if extract_to is not None else artifact_path.parent / "staged_update"
@@ -360,6 +395,12 @@ def apply_update(
 
     helper_script = staging.parent / "apply_update.ps1"
     helper_script.write_text(_APPLY_HELPER_TEMPLATE, encoding="utf-8")
+
+    # Re-checked immediately before the point of no return: a job could
+    # have started during extraction, above. See the docstring for why
+    # this still isn't the whole guarantee.
+    if has_running_job():
+        raise UpdateApplyError(JOB_RUNNING_MESSAGE)
 
     argv = [
         "powershell.exe",

@@ -4,7 +4,9 @@
 There is deliberately no console window -- an editor must never be able
 to accidentally close a terminal and kill the tool. The tray icon is what
 stays visible and controllable instead: open the control page, open the
-output folder, open the log file, or quit.
+output folder, open the log file, or quit -- plus a signpost to an
+available update, when one exists (the control page carries the primary
+banner and the actual apply action; the tray only points there).
 
 ``pystray`` (and Pillow, for the icon image) pull in a platform-specific
 GUI backend at import time. That import is guarded so this module can
@@ -30,6 +32,8 @@ except ImportError:  # pragma: no cover - exercised wherever pystray/PIL are abs
 
 from ash_captions.config import Settings
 
+from .updater import UpdateState
+
 logger = logging.getLogger("ash_captions.app.tray")
 
 ICON_SIZE = 64
@@ -51,9 +55,10 @@ def _build_menu(
     settings: Settings,
     on_quit: Callable[[], None],
     open_path: Callable[[str], None],
+    update_state: UpdateState | None = None,
 ):
-    """Build the menu: open the control page, open the output folder, open
-    the log file, quit.
+    """Build the menu: update available (only when one is), open the
+    control page, open the output folder, open the log file, quit.
 
     Split out from ``build_tray_icon`` so tests can exercise these
     callbacks without constructing a real ``pystray.Icon`` -- unlike
@@ -65,6 +70,13 @@ def _build_menu(
 
     def open_control_page(icon, item) -> None:
         webbrowser.open(url)
+
+    def update_item_text(item) -> str:
+        info = update_state.get() if update_state is not None else None
+        return f"Update available (v{info.version})" if info is not None else "Update available"
+
+    def update_item_visible(item) -> bool:
+        return update_state is not None and update_state.get() is not None
 
     def open_output_folder(icon, item) -> None:
         settings.out_dir.mkdir(parents=True, exist_ok=True)
@@ -81,6 +93,13 @@ def _build_menu(
         on_quit()
 
     return pystray.Menu(
+        # The tray is a signpost, not an action: this opens the control
+        # page (where the primary update banner lives) rather than
+        # applying anything itself. Re-evaluated by pystray on every
+        # render (text/visible are both callables, per pystray's own
+        # MenuItem), so it appears the moment update_state is populated
+        # without needing the menu to be rebuilt.
+        pystray.MenuItem(update_item_text, open_control_page, visible=update_item_visible),
         pystray.MenuItem("Open control page", open_control_page, default=True),
         pystray.MenuItem("Open output folder", open_output_folder),
         pystray.MenuItem("Open log file", open_log_file),
@@ -94,6 +113,7 @@ def build_tray_icon(
     settings: Settings,
     on_quit: Callable[[], None],
     opener: Callable[[str], None] | None = None,
+    update_state: UpdateState | None = None,
 ):
     """Build (but do not run) the tray icon.
 
@@ -119,6 +139,8 @@ def build_tray_icon(
     # platform (spec section 6) -- resolved lazily so importing this module
     # elsewhere never fails on the attribute lookup.
     open_path: Callable[[str], None] = opener or os.startfile  # type: ignore[attr-defined]
-    menu = _build_menu(url=url, settings=settings, on_quit=on_quit, open_path=open_path)
+    menu = _build_menu(
+        url=url, settings=settings, on_quit=on_quit, open_path=open_path, update_state=update_state
+    )
 
     return pystray.Icon("ash_captions", _build_icon_image(), "ASH Captions", menu)

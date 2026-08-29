@@ -36,17 +36,22 @@ from .interfaces import (
     StyleNotFoundError,
     StyleProvider,
     StyleValidationFailedError,
+    UpdateApplier,
+    UpdateApplyNotFoundError,
 )
 from .models import (
     ALLOWED_VIDEO_EXTENSIONS,
     Job,
     JobOptions,
     JobPathRequest,
+    JobStatus,
     Language,
     PreviewJob,
     PreviewRequest,
     PreviewStatus,
     StyleSummary,
+    UpdateApplyJob,
+    UpdateAvailable,
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -61,6 +66,7 @@ def create_app(
     *,
     style_provider: StyleProvider | None = None,
     preview_renderer: PreviewRenderer | None = None,
+    update_applier: UpdateApplier | None = None,
     incoming_dir: Path | None = None,
     sse_poll_interval: float = DEFAULT_SSE_POLL_INTERVAL,
 ) -> FastAPI:
@@ -71,17 +77,27 @@ def create_app(
     directory distinct from the watch folder (`C:\\AshCaptions\\in\\`) so an
     upload is never picked up a second time by the folder watcher.
 
-    `style_provider`/`preview_renderer` default to real implementations
-    backed by `ash_captions.styles`/`ash_captions.engine` (see
-    `styles_adapter.py`/`preview_adapter.py`) so production callers don't
-    need to change to get the style editor (spec 7A) working -- tests
-    inject fakes instead, same as `queue`/`catalogue`.
+    `style_provider`/`preview_renderer`/`update_applier` default to real
+    implementations backed by `ash_captions.styles`/`ash_captions.engine`/
+    `ash_captions.app.updater` (see `styles_adapter.py`/`preview_adapter.py`/
+    `update_adapter.py`) so production callers don't need to change to get
+    the style editor (spec 7A) or in-app updates (spec 11.4) working --
+    tests inject fakes instead, same as `queue`/`catalogue`.
+
+    Note `update_applier` only covers *applying* an update. *Checking* for
+    one is owned by whoever calls this (`app/__main__.py` in production),
+    which sets `app.state.update_state` itself, after this returns, to
+    whatever `ash_captions.app.updater.check_for_update_in_background`
+    populates -- this function does not touch that attribute at all, and
+    the routes below treat its absence (e.g. in a test that never sets it)
+    as a normal "no update" outcome, not an error.
     """
     app = FastAPI(title="ASH Captions")
     app.state.queue = queue
     app.state.catalogue = catalogue
     app.state.style_provider = style_provider or _default_style_provider()
     app.state.preview_renderer = preview_renderer or _default_preview_renderer()
+    app.state.update_applier = update_applier or _default_update_applier()
     app.state.incoming_dir = incoming_dir or DEFAULT_INCOMING_DIR
     app.state.sse_poll_interval = sse_poll_interval
 
@@ -96,6 +112,9 @@ def create_app(
 
     def get_preview_renderer(request: Request) -> PreviewRenderer:
         return request.app.state.preview_renderer
+
+    def get_update_applier(request: Request) -> UpdateApplier:
+        return request.app.state.update_applier
 
     # Serves style.css and app.js alongside the page. index.html is served
     # from "/" below (not through this mount) so the control page works at
@@ -285,6 +304,50 @@ def create_app(
             raise HTTPException(status_code=409, detail=f"Preview job {job_id!r} isn't ready yet.")
         return FileResponse(job.clip_path, media_type="video/mp4")
 
+    # --- In-app updates (spec 11.4) -----------------------------------------
+
+    @app.get("/api/update", response_model=UpdateAvailable | None)
+    async def get_update(request: Request, queue: JobQueue = Depends(get_queue)) -> UpdateAvailable | None:
+        info = _current_update_info(request)
+        if info is None:
+            return None
+        return UpdateAvailable(
+            version=info.version,
+            notes=info.notes,
+            size_bytes=info.size_bytes,
+            blocked_reason=_update_blocked_reason(queue),
+        )
+
+    @app.post("/api/update/apply", response_model=UpdateApplyJob, status_code=202)
+    async def submit_update_apply(
+        request: Request,
+        queue: JobQueue = Depends(get_queue),
+        update_applier: UpdateApplier = Depends(get_update_applier),
+    ) -> UpdateApplyJob:
+        """The click IS the consent -- no confirmation dialog here or in the
+        frontend (a second "are you sure?" just trains people to click
+        through unread). Applying restarts the app; the control page says
+        so beside the button, not this route."""
+        info = _current_update_info(request)
+        if info is None:
+            raise HTTPException(status_code=404, detail="No update is currently available.")
+
+        blocked_reason = _update_blocked_reason(queue)
+        if blocked_reason is not None:
+            raise HTTPException(status_code=409, detail=blocked_reason)
+
+        return update_applier.submit_apply(info)
+
+    @app.get("/api/update/apply/{job_id}", response_model=UpdateApplyJob)
+    async def get_update_apply(
+        job_id: str,
+        update_applier: UpdateApplier = Depends(get_update_applier),
+    ) -> UpdateApplyJob:
+        try:
+            return update_applier.get_apply_status(job_id)
+        except UpdateApplyNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Update job {job_id!r} not found.")
+
     @app.get("/api/events")
     async def events(request: Request, queue: JobQueue = Depends(get_queue)) -> StreamingResponse:
         poll_interval: float = request.app.state.sse_poll_interval
@@ -340,6 +403,44 @@ def _default_preview_renderer() -> PreviewRenderer:
     from .preview_adapter import InProcessPreviewRenderer
 
     return InProcessPreviewRenderer()
+
+
+def _default_update_applier() -> UpdateApplier:
+    from .update_adapter import UpdaterAdapter
+
+    return UpdaterAdapter()
+
+
+def _current_update_info(request: Request):
+    """Whatever the last background check found -- structurally an
+    `app.updater.UpdateInfo`, or None for "no update" (or "nobody has
+    checked yet", which looks identical and is fine to treat the same way).
+
+    Reads `request.app.state.update_state` via getattr rather than a
+    dependency-injected getter (unlike queue/catalogue/style_provider/
+    preview_renderer/update_applier above) because that attribute isn't set
+    by `create_app()` at all -- `app/__main__.py` sets it directly on the
+    FastAPI app object it gets back, after construction (see
+    `create_app()`'s own docstring on this). A test -- or any other caller
+    of `create_app()` that never sets it -- gets a normal "no update"
+    result here, not an AttributeError.
+    """
+    state = getattr(request.app.state, "update_state", None)
+    if state is None:
+        return None
+    return state.get()
+
+
+def _update_blocked_reason(queue: JobQueue) -> str | None:
+    """Non-None while applying an update should be refused because a
+    caption job is running (`app.updater.apply_update`'s own module-level
+    guard refuses this too; checking here as well lets the control page
+    disable its Update button proactively -- spec: "so the editor
+    understands rather than clicks and gets rejected" -- instead of only
+    finding out after a click)."""
+    if any(job.status == JobStatus.RUNNING for job in queue.list_jobs()):
+        return "A caption job is still running. Try again when the queue is clear."
+    return None
 
 
 def _validate_options(

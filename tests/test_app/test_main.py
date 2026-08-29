@@ -322,3 +322,29 @@ class TestBuildApplication:
         assert worker._thread is None
         assert watcher._thread is None
         assert sweeper._thread is None
+
+    def test_exposes_has_running_job_for_the_future_apply_route(self, tmp_path: Path) -> None:
+        """The correct has_running_job recipe for updater.apply_update(),
+        defined once here and exposed on app.state so whoever wires the
+        actual apply endpoint doesn't reimplement it."""
+        settings = make_settings(tmp_path)
+        app, adapter, _worker, _watcher, _sweeper = build_application(settings)
+
+        assert app.state.has_running_job() is False
+
+        video = settings.in_dir / "clip.mp4"
+        video.parent.mkdir(parents=True, exist_ok=True)
+        video.write_bytes(b"fake")
+        from ash_captions.web.models import JobOptions as WebJobOptions
+
+        job = adapter.submit(
+            video,
+            WebJobOptions(language="en", dialect=None, preset="POP", burn_in=False, translate_to_english=False),
+        )
+        assert app.state.has_running_job() is False  # still just pending, not running
+
+        # Reach into the real store the same way JobWorker does to mark it running.
+        from ash_captions.pipeline.db import JobStore
+
+        JobStore(settings.db_path).mark_running(int(job.id))
+        assert app.state.has_running_job() is True

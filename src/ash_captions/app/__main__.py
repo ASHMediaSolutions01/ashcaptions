@@ -23,7 +23,7 @@ from typing import IO
 from ash_captions import styles
 from ash_captions.config import MAX_PORT_PROBES, Settings
 from ash_captions.pipeline import JobWorker, Watcher
-from ash_captions.pipeline.db import JobStore
+from ash_captions.pipeline.db import JobStatus, JobStore
 from ash_captions.web import create_app, run_server
 from ash_captions.web.models import JobOptions
 
@@ -182,6 +182,19 @@ def _current_version() -> str:
         return "0.0.0"
 
 
+def _has_running_job(store: JobStore) -> bool:
+    """The exact, correct answer to ``updater.apply_update``'s required
+    ``has_running_job`` question, defined once here (this module already
+    imports ``pipeline.db``; ``updater.py`` deliberately does not, to stay
+    decoupled from the pipeline package) so whoever wires the actual
+    "apply this update" action -- the control-page route, not built here,
+    see the tray/control-page UX split -- has the correct recipe instead
+    of reinventing it. Exposed as ``app.state.has_running_job`` (same
+    pattern as ``app.state.update_state``).
+    """
+    return bool(store.list_jobs(status=JobStatus.RUNNING))
+
+
 def build_application(settings: Settings):
     """Construct every component, wired together, without starting any of
     them. Split out from ``main()`` so tests (and any future embedding)
@@ -202,6 +215,7 @@ def build_application(settings: Settings):
     )
     sweeper = RetentionSweeper(settings.out_dir, retention_days=settings.retention_days)
     app = create_app(adapter, catalogue)
+    app.state.has_running_job = lambda: _has_running_job(store)
 
     return app, adapter, worker, watcher, sweeper
 
@@ -261,7 +275,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         from .tray import build_tray_icon
 
-        icon = build_tray_icon(url=url, settings=settings, on_quit=shutdown)
+        icon = build_tray_icon(url=url, settings=settings, on_quit=shutdown, update_state=update_state)
     except RuntimeError:
         # No usable tray backend on this machine. There is still no
         # console to fall back to (this ships as a windowed PyInstaller
