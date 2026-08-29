@@ -3,10 +3,20 @@
 All render_* functions are pure (str in, str out) so timing/format logic
 is testable without touching disk; write_* wraps each with a file write.
 
-ASS presets (CLEAN, POP) are data (``AssPreset`` instances), not
-branching code -- ``render_ass`` reads preset fields and never checks
-``preset.name``. Adding a third preset later is a new ``AssPreset``
-value, not a new code path.
+``render_ass``/``write_ass`` now consume a ``Style`` from
+``ash_captions.styles`` (spec 7A) -- that package owns the real,
+animated renderer (word pop, karaoke, boxes, entrances, glow, shake;
+see ``ash_captions.styles.render``). This module just dispatches to it.
+
+The legacy ``AssPreset`` dataclass and the ``CLEAN``/``POP`` instances
+built from it are kept as-is, unmodified, for backward compatibility:
+older callers (and ``tests/test_engine/test_writers.py``, which asserts
+their exact historical output byte-for-byte) still pass an ``AssPreset``
+in, and ``render_ass``/``write_ass`` still produce identical output for
+one. Dispatch is by *type* (``isinstance``), which is not the kind of
+per-style-name branching spec 7A.2 rules out -- it is a single, static
+fork between "old preset object" and "new style object", checked once,
+not a growing list of special cases per look.
 """
 from __future__ import annotations
 
@@ -14,6 +24,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..styles.render import DEFAULT_PLAY_RES as _STYLE_DEFAULT_PLAY_RES
+from ..styles.render import render_ass as _render_ass_styled
+from ..styles.render import write_ass as _write_ass_styled
+from ..styles.schema import Style
 from .rules import Card
 from .transcribe import Segment
 
@@ -120,19 +134,24 @@ DEFAULT_PLAY_RES = (1080, 1920)  # vertical short-form default
 
 def render_ass(
     cards: Sequence[Card],
-    preset: AssPreset,
+    preset: AssPreset | Style,
     *,
     play_res: tuple[int, int] = DEFAULT_PLAY_RES,
 ) -> str:
     """Render styled, word-by-word ASS captions with the active word highlighted.
 
-    Each word in a card becomes its own Dialogue event spanning from that
-    word's start to the next word's start (or the card's end, for the
-    last word), so highlighting is continuous across the whole card. The
-    active word is wrapped in a color override tag using
-    ``preset.highlight_colour``; the rest of the card's text stays at
-    ``preset.primary_colour``.
+    Accepts either a ``Style`` (``ash_captions.styles`` -- spec 7A's real,
+    animated renderer: word pop, karaoke, boxes, entrances, glow, shake,
+    letter spacing, position variants) or a legacy ``AssPreset``, for
+    which this keeps the original behaviour byte-for-byte: each word in a
+    card becomes its own Dialogue event spanning from that word's start to
+    the next word's start (or the card's end, for the last word), with the
+    active word wrapped in a color override tag using
+    ``preset.highlight_colour`` and the rest at ``preset.primary_colour``.
     """
+    if isinstance(preset, Style):
+        return _render_ass_styled(cards, preset, play_res=play_res)
+
     width, height = play_res
     header = _ass_header(preset, width, height)
     events: list[str] = []
@@ -144,10 +163,12 @@ def render_ass(
 def write_ass(
     cards: Sequence[Card],
     path: Path | str,
-    preset: AssPreset,
+    preset: AssPreset | Style,
     *,
     play_res: tuple[int, int] = DEFAULT_PLAY_RES,
 ) -> Path:
+    if isinstance(preset, Style):
+        return _write_ass_styled(cards, path, preset, play_res=play_res)
     return _write(render_ass(cards, preset, play_res=play_res), path)
 
 

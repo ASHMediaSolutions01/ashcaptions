@@ -139,6 +139,14 @@ class Watcher:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._wake_event = threading.Event()
+        # Guards start()/stop() transitions. Without this, two threads
+        # calling stop() concurrently can both read self._observer as
+        # non-None before either clears it, and both end up operating on
+        # the same watchdog Observer -- on Windows that has produced a
+        # reproducible race (confirmed while diagnosing this) and, per
+        # watchdog's own Windows backend, closes a native directory handle
+        # from more than one place, which is unsafe.
+        self._lifecycle_lock = threading.Lock()
 
     def poll_once(self) -> list[Path]:
         """Run one detection tick. Returns files newly handed to ``on_ready``.
