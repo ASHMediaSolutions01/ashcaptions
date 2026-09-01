@@ -1,3 +1,9 @@
+/* The `hidden` attribute is only `display:none` from the UA stylesheet, so
+   ANY class rule setting `display` silently beats it -- which made the
+   update banner (`.update-banner{display:flex}`) show on every launch even
+   with `hidden` set, offering an update that did not exist. */
+[hidden] { display: none !important; }
+
 :root {
   --ink: #1c1f26;
   --muted: #6b7280;

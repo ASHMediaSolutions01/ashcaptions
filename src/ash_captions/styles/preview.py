@@ -64,18 +64,28 @@ def build_preview_command(
         f":fontsdir='{_escape_path_for_filtergraph(fonts_directory)}'"
     )
 
-    return [
+    # Same reason burn.py probes rather than hardcodes: an LGPL ffmpeg has
+    # no libx264 (x264 is GPL), so a fixed encoder name fails outright with
+    # "Unknown encoder" -- which is exactly how the live preview broke.
+    from ash_captions.engine.burn import select_video_encoder
+
+    encoder = select_video_encoder(ffmpeg_path, use_nvenc=False)
+
+    command = [
         str(ffmpeg_path),
         "-y",
         "-ss", _format_seconds(start_seconds),
         "-t", _format_seconds(duration_seconds),
         "-i", str(video_path),
         "-vf", subtitle_filter,
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-an",
-        str(output_path),
+        "-c:v", encoder,
     ]
+    # -preset is an x264/x265 option; libopenh264 and the hardware encoders
+    # reject it, so only pass it to an encoder that understands it.
+    if encoder in ("libx264", "libx265"):
+        command += ["-preset", "veryfast"]
+    command += ["-an", str(output_path)]
+    return command
 
 
 def _default_fonts_dir() -> Path:

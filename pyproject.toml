@@ -24,6 +24,16 @@ ash-captions = "ash_captions.__main__:main"
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Without this, setuptools does not find the package: the code lives under
+# src/, so `pip install -e .` reported success while leaving `ash_captions`
+# unimportable. The test suite hid it, because pytest's `pythonpath` below
+# puts src/ on the path independently of any install.
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ash_captions = ["web/static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
