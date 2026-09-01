@@ -313,7 +313,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--ffmpeg-dir",
         type=Path,
-        default=REPO_ROOT / "build" / "ffmpeg",
+        default=REPO_ROOT / "bin",  # where fetch_ffmpeg.py puts them, and where config.find_binary looks
         help="Directory containing ffmpeg.exe/ffprobe.exe (see fetch_ffmpeg.py).",
     )
     parser.add_argument(

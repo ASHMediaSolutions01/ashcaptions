@@ -36,7 +36,12 @@ from pathlib import Path
 from urllib.error import URLError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DEST = REPO_ROOT / "build" / "ffmpeg"
+# `bin/` beside the repo root, because that is where `config.find_binary()`
+# looks -- `app_root()/bin/ffmpeg.exe`. Fetching into `build/ffmpeg/` meant
+# a source checkout never found ffmpeg at all; only the packaged build did,
+# since `build.py` copies it into the bundle's `bin/`. Same path either way
+# now, so running from source behaves like the shipped app.
+DEFAULT_DEST = REPO_ROOT / "bin"
 
 # BtbN publishes a rolling "latest" release with these predictable asset
 # names. "lgpl" (not "lgpl-shared") is the static build: one self-contained

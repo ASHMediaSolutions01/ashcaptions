@@ -14,7 +14,14 @@ without breaking callers:
     )
 """
 from .audio import AudioExtractionError, DEFAULT_FFMPEG_PATH, extract_audio
-from .burn import BurnInError, build_burn_command, burn_captions, detect_nvenc
+from .burn import (
+    BurnInError,
+    available_encoders,
+    build_burn_command,
+    burn_captions,
+    detect_nvenc,
+    select_video_encoder,
+)
 from .rules import Card, build_cards
 from .transcribe import (
     Segment,
@@ -58,6 +65,8 @@ __all__ = [
     "CLEAN",
     "POP",
     "detect_nvenc",
+    "available_encoders",
+    "select_video_encoder",
     "build_burn_command",
     "burn_captions",
     "BurnInError",

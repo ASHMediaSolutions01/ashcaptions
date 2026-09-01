@@ -28,3 +28,5 @@ build/
 __pycache__/
 *.py[cod]
 *.egg-info/
+bin/
+assets/fonts/*.ttf

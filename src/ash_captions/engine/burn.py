@@ -27,6 +27,79 @@ DEFAULT_NVIDIA_SMI_PATH = "nvidia-smi"
 
 ProgressCallback = Callable[[float], None]  # called with a 0-100 percentage
 
+# Software H.264 encoders in preference order. libx264 is the quality and
+# speed benchmark, but it is GPL, so an LGPL ffmpeg build cannot ship it --
+# BtbN's LGPL build is configured --disable-libx264 and burning with it
+# fails outright with "Unknown encoder 'libx264'". libopenh264 (Cisco, BSD)
+# is the LGPL build's software encoder; h264_mf is Windows MediaFoundation,
+# a last resort that exists on any Windows machine.
+#
+# Which of these is present is a property of the ffmpeg binary we ship, not
+# of this code, so the encoder is probed at run time rather than assumed.
+SOFTWARE_H264_ENCODERS = ("libx264", "libopenh264", "h264_mf")
+
+_encoder_cache: dict[str, frozenset[str]] = {}
+
+
+def available_encoders(ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH) -> frozenset[str]:
+    """Encoder names the given ffmpeg binary actually supports.
+
+    Cached per binary path: shelling out to ``-encoders`` costs ~100ms and
+    the answer cannot change for a given file.
+    """
+    key = str(ffmpeg_path)
+    cached = _encoder_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        result = subprocess.run(
+            [str(ffmpeg_path), "-hide_banner", "-encoders"],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+    except Exception:  # noqa: BLE001
+        # Probing is a convenience, never a precondition for burning: a
+        # missing binary, a permissions error or a stubbed subprocess must
+        # all mean "cannot tell", not "cannot burn". Callers fall back to
+        # the historical default when this returns nothing.
+        return frozenset()
+    names = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        # Encoder lines look like " V....D libx264   H.264 ..." -- the flag
+        # column is exactly six characters, which is what distinguishes them
+        # from the header and the legend above it.
+        if len(parts) >= 2 and len(parts[0]) == 6:
+            names.add(parts[1])
+    found = frozenset(names)
+    _encoder_cache[key] = found
+    return found
+
+
+def select_video_encoder(
+    ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH, *, use_nvenc: bool = False
+) -> str:
+    """Pick an H.264 encoder this ffmpeg build can actually run.
+
+    Raises ``BurnInError`` naming the problem rather than letting ffmpeg
+    fail later with its own less actionable "Encoder not found".
+    """
+    encoders = available_encoders(ffmpeg_path)
+    if use_nvenc and (not encoders or "h264_nvenc" in encoders):
+        return "h264_nvenc"
+    if not encoders:
+        # Probing failed (a mocked or missing binary). Assume the historical
+        # default rather than refusing to build a command at all.
+        return "libx264"
+    for name in SOFTWARE_H264_ENCODERS:
+        if name in encoders:
+            return name
+    raise BurnInError(
+        f"{ffmpeg_path} has no usable H.264 encoder "
+        f"(looked for {', '.join(SOFTWARE_H264_ENCODERS)}). "
+        "An LGPL ffmpeg build excludes libx264; use a build that ships one "
+        "of these encoders."
+    )
+
 
 class BurnInError(Exception):
     """Raised when captions cannot be burned into the video."""
@@ -82,7 +155,7 @@ def build_burn_command(
     subtitle_filter = f"ass='{_escape_path_for_filtergraph(ass_path)}'"
     if fontsdir is not None:
         subtitle_filter += f":fontsdir='{_escape_path_for_filtergraph(Path(fontsdir))}'"
-    video_codec = ["-c:v", "h264_nvenc"] if use_nvenc else ["-c:v", "libx264"]
+    video_codec = ["-c:v", select_video_encoder(ffmpeg_path, use_nvenc=use_nvenc)]
 
     return [
         str(ffmpeg_path),

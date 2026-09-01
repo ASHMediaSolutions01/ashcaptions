@@ -213,7 +213,11 @@ def test_burn_captions_reports_progress_and_returns_output_path(tmp_path):
 
     assert result == output
     assert progress_updates == [25.0, 50.0]
-    mock_popen.assert_called_once()
+    # Exactly one *burn* invocation. Popen is also used to probe the binary
+    # for available encoders (an LGPL ffmpeg has no libx264), so asserting a
+    # single Popen call overall would be asserting an implementation detail.
+    burn_calls = [c for c in mock_popen.call_args_list if "-encoders" not in c[0][0]]
+    assert len(burn_calls) == 1
     assert output.parent.is_dir()
 
 
@@ -284,3 +288,46 @@ def test_burn_captions_raises_typed_error_when_ffmpeg_missing(tmp_path):
     with patch("ash_captions.engine.burn.subprocess.Popen", side_effect=OSError("not found")):
         with pytest.raises(BurnInError, match="Failed to launch"):
             burn_captions(video, ass, tmp_path / "out.mp4", duration_seconds=10.0, ffmpeg_path=tmp_path / "missing.exe")
+
+
+def test_selects_a_software_encoder_the_build_actually_has(monkeypatch, tmp_path):
+    """An LGPL ffmpeg has no libx264 -- x264 is GPL, so the LGPL build is
+    configured --disable-libx264. Burning hardcoded libx264 failed outright
+    with "Unknown encoder". The encoder must come from the real binary."""
+    from ash_captions.engine import burn
+
+    burn._encoder_cache.clear()
+    monkeypatch.setattr(
+        burn, "available_encoders", lambda _p: frozenset({"libopenh264", "h264_mf"})
+    )
+    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "libopenh264"
+
+
+def test_prefers_libx264_when_the_build_has_it(monkeypatch, tmp_path):
+    from ash_captions.engine import burn
+
+    burn._encoder_cache.clear()
+    monkeypatch.setattr(
+        burn, "available_encoders", lambda _p: frozenset({"libx264", "libopenh264"})
+    )
+    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "libx264"
+
+
+def test_raises_a_named_error_when_no_h264_encoder_exists(monkeypatch, tmp_path):
+    """Better than letting ffmpeg fail later with its own vaguer message."""
+    from ash_captions.engine import burn
+
+    burn._encoder_cache.clear()
+    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"vp9", "aac"}))
+    with pytest.raises(burn.BurnInError, match="no usable H.264 encoder"):
+        burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False)
+
+
+def test_probe_failure_falls_back_rather_than_blocking_a_burn(tmp_path):
+    """Probing is a convenience: a missing binary must not stop us building
+    a command, or every mocked test and offline run would break."""
+    from ash_captions.engine import burn
+
+    burn._encoder_cache.clear()
+    assert burn.available_encoders(tmp_path / "definitely-not-here.exe") == frozenset()
+    assert burn.select_video_encoder(tmp_path / "definitely-not-here.exe") == "libx264"

@@ -157,6 +157,7 @@ def download_fonts(
         entries = tuple(e for e in entries if e.family in wanted)
 
     written: list[Path] = []
+    failed: list[tuple[str, str]] = []
     for entry in entries:
         out_path = target_dir / entry.file
         if out_path.exists() and not overwrite:
@@ -164,27 +165,63 @@ def download_fonts(
             continue
         css_url = (
             "https://fonts.googleapis.com/css2?family="
-            + entry.family.replace(" ", "+")
+            + _google_family(entry).replace(" ", "+")
             + f":wght@{entry.weight}&display=swap"
         )
-        css_request = urllib.request.Request(
-            css_url, headers={"User-Agent": _LEGACY_USER_AGENT}
-        )
-        with urllib.request.urlopen(css_request, timeout=30) as response:  # noqa: S310
-            css_text = response.read().decode("utf-8")
-        font_url = _extract_font_url(css_text)
-        if font_url is None:
-            raise RuntimeError(
-                f"could not find a font file URL in the Google Fonts CSS "
-                f"response for {entry.family!r}"
+        # One family failing must never abandon the rest. Google Fonts
+        # returns 400 for some family/weight combinations, and aborting
+        # there left a real install with 6 of 24 faces -- every style then
+        # silently falling back to a system font, which is exactly what
+        # bundling exists to prevent.
+        try:
+            css_request = urllib.request.Request(
+                css_url, headers={"User-Agent": _LEGACY_USER_AGENT}
             )
-        font_request = urllib.request.Request(
-            font_url, headers={"User-Agent": _LEGACY_USER_AGENT}
-        )
-        with urllib.request.urlopen(font_request, timeout=30) as response:  # noqa: S310
-            out_path.write_bytes(response.read())
+            with urllib.request.urlopen(css_request, timeout=30) as response:  # noqa: S310
+                css_text = response.read().decode("utf-8")
+            font_url = _extract_font_url(css_text)
+            if font_url is None:
+                raise RuntimeError(
+                    f"no font file URL in the Google Fonts CSS response "
+                    f"for {entry.family!r}"
+                )
+            font_request = urllib.request.Request(
+                font_url, headers={"User-Agent": _LEGACY_USER_AGENT}
+            )
+            with urllib.request.urlopen(font_request, timeout=30) as response:  # noqa: S310
+                data = response.read()
+            out_path.write_bytes(data)
+        except Exception as exc:  # noqa: BLE001 -- any failure, keep going
+            failed.append((entry.family, str(exc)))
+            continue
         written.append(out_path)
+
+    if failed:
+        detail = "; ".join(f"{family} ({reason})" for family, reason in failed)
+        print(
+            f"WARNING: {len(failed)} of {len(entries)} fonts could not be "
+            f"downloaded and will fall back to a system face: {detail}"
+        )
     return written
+
+
+def _google_family(entry: FontEntry) -> str:
+    """The family name Google Fonts' CSS API expects.
+
+    Our manifest names weight variants as distinct families -- "Montserrat
+    ExtraBold" -- because that is how a style refers to them. Google has
+    one family plus a ``wght`` axis, so asking for family="Montserrat
+    ExtraBold" returns HTTP 400. The manifest's ``source`` specimen URL
+    carries the real family, so prefer it and fall back to the declared
+    family when there is no usable source.
+    """
+    source = (entry.source or "").rstrip("/")
+    marker = "/specimen/"
+    if marker in source:
+        slug = source.rsplit(marker, 1)[1].split("?", 1)[0]
+        if slug:
+            return slug.replace("+", " ").replace("%20", " ")
+    return entry.family
 
 
 def _extract_font_url(css_text: str) -> str | None:
