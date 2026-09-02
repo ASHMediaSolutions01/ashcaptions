@@ -8,8 +8,11 @@ from __future__ import annotations
 import pytest
 
 from ash_captions.engine.punch import (
+    _SUM_LEAF_TERMS,
     PunchMode,
     PunchMoment,
+    _balanced_sum,
+    build_punch_filter,
     build_zoompan_filter,
     select_punch_moments,
 )
@@ -134,29 +137,35 @@ def test_duration_is_clamped_to_a_sane_range() -> None:
 
 
 def test_no_moments_means_no_filter_at_all() -> None:
-    """Returning None rather than an identity filter matters: a zoompan pass
-    re-encodes every frame even at zoom 1.0."""
+    """Returning None rather than an identity filter matters: a filter pass
+    touches every frame of a 90-minute master."""
+    assert build_punch_filter([]) is None
     assert build_zoompan_filter([], width=1080, height=1920, fps=30) is None
 
 
 def test_zoom_of_one_means_no_filter() -> None:
     moments = [PunchMoment(0.0, 1.0, "sentence")]
-    assert build_zoompan_filter(moments, width=1080, height=1920, fps=30, zoom=1.0) is None
+    assert build_punch_filter(moments, zoom=1.0) is None
 
 
-def test_filter_carries_the_real_output_size_and_rate() -> None:
-    """zoompan must be told its size explicitly; getting it wrong silently
-    rescales the whole video."""
-    moments = [PunchMoment(1.0, 2.0, "sentence")]
-    vf = build_zoompan_filter(moments, width=1080, height=1920, fps=30)
-    assert "s=1080x1920" in vf
-    assert "fps=30" in vf
+def test_filter_scales_per_frame_and_crops_back_to_the_source_size() -> None:
+    """The size is taken from the stream itself (``iw``/``ih`` at config
+    time), never from a probe: a rotated phone video swaps the probed
+    width and height on decode and would otherwise be cropped wrongly."""
+    vf = build_punch_filter([PunchMoment(1.0, 2.0, "sentence")])
+    assert vf.startswith("scale=w='iw*(1+0.1200*max(0,")
+    assert ":h='ih*ow/iw':eval=frame," in vf
+    assert ",crop=w=iw:h=ih:x='iw*(0.1200*max(0," in vf
+    assert vf.endswith(":y='x*ih/iw'")
+    assert "zoompan" not in vf
 
 
-def test_filter_uses_input_time_not_frame_count() -> None:
-    moments = [PunchMoment(1.5, 2.5, "sentence")]
-    vf = build_zoompan_filter(moments, width=720, height=1280, fps=25)
-    assert "between(it,1.500,2.500)" in vf
+def test_filter_uses_frame_timestamps_not_a_frame_counter() -> None:
+    """zoompan regenerated timestamps from a constant fps and drifted from
+    the copied audio on variable-frame-rate recordings."""
+    vf = build_punch_filter([PunchMoment(1.5, 2.5, "sentence")])
+    assert "between(t,1.500,2.500)" in vf
+    assert "fps=" not in vf and "between(it," not in vf
 
 
 def test_every_moment_appears_in_the_expression() -> None:
@@ -165,26 +174,52 @@ def test_every_moment_appears_in_the_expression() -> None:
         PunchMoment(8.0, 9.0, "keyword"),
         PunchMoment(15.0, 16.0, "sentence"),
     ]
-    vf = build_zoompan_filter(moments, width=1080, height=1920, fps=30)
-    assert vf.count("between(it,") == 3
+    vf = build_punch_filter(moments)
+    # once in scale's width, once in crop's x offset
+    assert vf.count("between(t,") == 6
 
 
-def test_zero_fps_falls_back_rather_than_producing_a_broken_filter() -> None:
-    """ffprobe reports 0/0 for some streams; fps=0 would be rejected."""
+def test_compat_wrapper_ignores_fps_and_validates_dimensions() -> None:
     moments = [PunchMoment(1.0, 2.0, "sentence")]
-    vf = build_zoompan_filter(moments, width=1080, height=1920, fps=0)
-    assert "fps=30" in vf
-
-
-def test_bad_dimensions_raise_rather_than_emit_a_broken_filter() -> None:
-    moments = [PunchMoment(1.0, 2.0, "sentence")]
+    assert build_zoompan_filter(moments, width=1080, height=1920, fps=0) == build_punch_filter(moments)
     with pytest.raises(ValueError, match="positive"):
         build_zoompan_filter(moments, width=0, height=1920, fps=30)
 
 
 def test_expression_never_goes_below_one() -> None:
     """A zoom below 1.0 would show black bars around the frame."""
-    moments = [PunchMoment(5.0, 6.0, "sentence")]
-    vf = build_zoompan_filter(moments, width=1080, height=1920, fps=30)
+    vf = build_punch_filter([PunchMoment(5.0, 6.0, "sentence")])
     assert "max(0," in vf  # the envelope is clamped at zero before scaling
-    assert vf.startswith("zoompan=z='1+")
+    assert vf.startswith("scale=w='iw*(1+")
+
+
+def _paren_depth(text: str) -> int:
+    depth = deepest = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif ch == ")":
+            depth -= 1
+    return deepest
+
+
+@pytest.mark.parametrize("count", [1, 16, 17, 100, 900, 3000])
+def test_long_envelopes_are_summed_in_a_balanced_tree(count: int) -> None:
+    """ffmpeg's expression parser recurses once per ``+`` and stops at
+    depth 100: a flat sum failed to parse past ~80 moments. Every term
+    must still be present, and no ``+`` chain may run long."""
+    terms = [f"t{i}" for i in range(count)]
+    total = _balanced_sum(terms)
+    assert total.count("+") == count - 1
+    assert all(term in total for term in terms)
+    assert _paren_depth(total) <= 9
+    longest_chain = max(len(chunk.split("+")) for chunk in total.replace("(", "|").replace(")", "|").split("|"))
+    assert longest_chain <= _SUM_LEAF_TERMS
+
+
+def test_nine_hundred_moments_build_without_a_flat_chain() -> None:
+    moments = [PunchMoment(i * 5.0, i * 5.0 + 1.2, "sentence") for i in range(900)]
+    vf = build_punch_filter(moments)
+    assert vf.count("between(t,") == 1800
+    assert _paren_depth(vf) < 20

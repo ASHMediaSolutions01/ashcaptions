@@ -10,6 +10,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from .ffmpeg_process import no_window_flags
+
 DEFAULT_FFMPEG_PATH = Path("bin/ffmpeg.exe")
 
 TARGET_SAMPLE_RATE_HZ = 16_000
@@ -66,7 +68,18 @@ def extract_audio(
     args = [
         str(ffmpeg_path),
         "-y",
+        "-hide_banner",
+        # No stdin: ffmpeg otherwise polls the console for 'q', and a tray
+        # app has no console to give it. No stats: an hour of progress
+        # lines is a lot of stderr to buffer for nothing.
+        "-nostdin",
+        "-loglevel", "error",
+        "-nostats",
         "-i", str(video_path),
+        # The first audio stream only. A camera file with two audio tracks
+        # (mic + ambient) would otherwise have them mixed by ffmpeg's
+        # default stream selection rules, which pick "best", not "first".
+        "-map", "0:a:0",
         "-vn",
         "-ac", str(TARGET_CHANNELS),
         "-ar", str(TARGET_SAMPLE_RATE_HZ),
@@ -77,10 +90,12 @@ def extract_audio(
     try:
         result = subprocess.run(
             args,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
+            **no_window_flags(),
         )
     except FileNotFoundError as exc:
         raise AudioExtractionError(
