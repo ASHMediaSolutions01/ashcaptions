@@ -48,12 +48,29 @@ wasn't added to PATH — re-run the installer, choose Modify, and tick the box.
 
 ### Step 2. Get the tool
 
-Ghazi will give you the `ASH Captions` folder — from a USB stick, the shared
-drive, or a download link. Put it somewhere sensible like:
+The tool lives in a **private** GitHub repository. Ask Ghazi to add your GitHub
+account to it first — without that, the next command fails with "repository not
+found".
+
+Install GitHub CLI from <https://cli.github.com>, then in a terminal:
 
 ```
-C:\Users\<your name>\Desktop\ASH Captions
+gh auth login
 ```
+
+Choose **GitHub.com → HTTPS → Login with a web browser** and follow the prompts.
+Then:
+
+```
+cd %USERPROFILE%\Desktop
+gh repo clone ASHMediaSolutions01/ashcaptions "ASH Captions"
+```
+
+That creates `C:\Users\<your name>\Desktop\ASH Captions`.
+
+**No GitHub account?** Ghazi can give you the folder on a USB stick instead —
+everything after this step is identical. You just won't get updates with
+`git pull`.
 
 ### Step 3. Open a terminal in that folder
 
@@ -121,6 +138,17 @@ Your browser opens at `http://127.0.0.1:8756`. **Leave the black terminal
 window open** — closing it stops the app.
 
 That's setup done.
+
+### Getting updates later
+
+When Ghazi pushes a fix, pull it in the same terminal:
+
+```
+git pull
+.venv\Scripts\python.exe -m pip install -e .
+```
+
+Then restart the app.
 
 ---
 
@@ -235,6 +263,46 @@ discovering the style was wrong after a 20-minute render.
 > every future job using `POP` gets *your* version — including other people's.
 > To make your own look, use **Save as…** with a new name instead. The editor
 > marks a changed built-in as "customized locally" so you can tell.
+
+---
+
+## Punch-in (zooming the footage)
+
+Captions tell the viewer what's being said. A **punch-in** — the picture pushing
+in slightly on a word — tells them it matters. On a talking-head video where the
+camera never moves, this is most of the difference between a captioned video and
+an edited one.
+
+It's **off by default**, because it changes how a client's video is framed and
+that shouldn't happen to footage without someone deciding it should.
+
+To turn it on, ask Ghazi to set it in `C:\AshCaptions\settings.json`:
+
+```json
+{
+  "punch_mode": "sentence",
+  "punch_zoom": 1.12,
+  "punch_duration_seconds": 1.2,
+  "punch_min_spacing_seconds": 5.0
+}
+```
+
+| Setting | What it does |
+|---|---|
+| `punch_mode` | `off`, `sentence` (punch on each new sentence), `keyword` (only on words you list), or `both` |
+| `punch_zoom` | How far in. `1.12` is 12% — noticeable but not seasick-making. Above ~1.2 starts to look like a mistake |
+| `punch_duration_seconds` | How long it holds |
+| `punch_min_spacing_seconds` | The important one. Never punch more often than this. Without it, fast dialogue zooms constantly and is unwatchable |
+
+For keyword mode, add the words worth emphasising for that client:
+
+```json
+{ "punch_mode": "keyword", "punch_keywords": ["free", "guarantee", "today"] }
+```
+
+Punch-in only applies when **Burn captions into the video** is ticked — it's an
+edit to the picture, so it can only happen in a file we're rendering. It costs
+essentially nothing: burn-in takes the same time with it as without.
 
 ---
 
