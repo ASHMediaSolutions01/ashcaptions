@@ -6,6 +6,17 @@ file instead of a console screenshot (there is no console -- spec section
 11), and a periodic sweep that deletes output folders older than the
 configured retention window. Neither is allowed to take the app down: a
 failed cleanup pass is logged and skipped, never raised past this module.
+
+What the sweep may delete
+-------------------------
+Only folders this app created: each job writes a ``.ash-captions-job``
+marker (holding its job id) into its output folder at start, and the
+sweep deletes nothing without one. A folder whose job is still pending or
+running is skipped (``folder_is_live``), age is the newer of the folder's
+and the marker's mtime (NTFS does not bump a folder's mtime when a file
+inside is rewritten, so a re-run into an old folder would otherwise be
+swept the same night), and an ``out_dir`` that is a drive root or holds
+no marker at all is refused outright.
 """
 
 from __future__ import annotations
@@ -16,6 +27,9 @@ import shutil
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Callable
+
+log = logging.getLogger("ash_captions.lifecycle")
 
 LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
 MAX_LOG_BYTES = 5 * 1024 * 1024
@@ -24,6 +38,13 @@ LOG_BACKUP_COUNT = 3
 # A 30-day retention window doesn't need checking every minute; four
 # sweeps a day is plenty of margin without keeping a thread constantly busy.
 DEFAULT_SWEEP_INTERVAL_SECONDS = 6 * 3600
+# Browser uploads are copies we made; a day after the job is over they are
+# just wasted disk.
+DEFAULT_UPLOAD_MAX_AGE_DAYS = 1
+
+MARKER_FILENAME = ".ash-captions-job"
+
+FolderIsLive = Callable[[Path], bool]
 
 
 def configure_logging(log_path: Path, *, level: int = logging.INFO) -> logging.Logger:
@@ -44,46 +65,165 @@ def configure_logging(log_path: Path, *, level: int = logging.INFO) -> logging.L
     return logging.getLogger("ash_captions")
 
 
-def clean_old_outputs(
-    out_dir: Path, *, retention_days: int, now: datetime | None = None
-) -> list[Path]:
-    """Delete output subfolders older than ``retention_days``.
+def write_job_marker(output_dir: Path, job_id: int) -> Path:
+    """Stamp ``output_dir`` as owned by job ``job_id`` (see module docstring)."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    marker = output_dir / MARKER_FILENAME
+    marker.write_text(f"{job_id}\n", encoding="utf-8")
+    return marker
 
-    Age is judged by each folder's own mtime (touched whenever a job last
-    wrote into it), not creation time -- Windows doesn't reliably track
-    creation time across every filesystem. Returns the paths removed, for
-    logging. Never raises: a folder that can't be inspected or removed
-    (e.g. a file an editor still has open) is skipped and the sweep
-    continues, per spec section 12's "must never take the app down."
+
+def _is_drive_root(path: Path) -> bool:
+    resolved = path.resolve()
+    return resolved.parent == resolved
+
+
+def _within(path: Path, directory: Path) -> bool:
+    try:
+        path.resolve().relative_to(directory.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def folder_is_live(store: Any, folder: Path) -> bool:
+    """True if any ``pending``/``running`` job writes to or reads from
+    ``folder``. ``store`` only needs ``list_live_jobs()``."""
+    folder = Path(folder)
+    for job in store.list_live_jobs():
+        if Path(job.output_dir) == folder or _within(Path(job.output_dir), folder):
+            return True
+        if _within(Path(job.input_path), folder):
+            return True
+    return False
+
+
+def _older_than(entry: Path, cutoff: datetime, *, marker: Path | None = None) -> bool:
+    newest = entry.stat().st_mtime
+    if marker is not None:
+        newest = max(newest, marker.stat().st_mtime)
+    return datetime.fromtimestamp(newest, tz=timezone.utc) < cutoff
+
+
+def clean_old_outputs(
+    out_dir: Path,
+    *,
+    retention_days: int,
+    now: datetime | None = None,
+    folder_is_live: FolderIsLive | None = None,
+) -> list[Path]:
+    """Delete marked output subfolders older than ``retention_days``.
+
+    Returns the paths removed, for logging. Never raises: a folder that
+    can't be inspected or removed (e.g. a file an editor still has open)
+    is skipped and the sweep continues, per spec section 12's "must never
+    take the app down." See the module docstring for the ownership rules.
     """
     if retention_days <= 0:
         return []
-    now = now or datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=retention_days)
-    removed: list[Path] = []
-
+    out_dir = Path(out_dir)
     try:
-        candidates = list(Path(out_dir).iterdir())
+        if _is_drive_root(out_dir):
+            log.warning("Retention sweep refused: %s is a drive root", out_dir)
+            return []
+        candidates = list(out_dir.iterdir())
     except OSError:
         return []
 
+    marked: list[tuple[Path, Path]] = []
     for entry in candidates:
         try:
-            if not entry.is_dir():
+            marker = entry / MARKER_FILENAME
+            if entry.is_dir() and marker.is_file():
+                marked.append((entry, marker))
+        except OSError:
+            continue
+    if not marked:
+        return []  # nothing here is ours to delete
+
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=retention_days)
+    removed: list[Path] = []
+    for entry, marker in marked:
+        try:
+            if folder_is_live is not None and folder_is_live(entry):
                 continue
-            mtime = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc)
-            if mtime < cutoff:
+            if _older_than(entry, cutoff, marker=marker):
                 shutil.rmtree(entry)
                 removed.append(entry)
         except OSError:
             continue
+    return removed
 
+
+def clean_old_uploads(
+    upload_dir: Path,
+    *,
+    max_age_days: int = DEFAULT_UPLOAD_MAX_AGE_DAYS,
+    now: datetime | None = None,
+    folder_is_live: FolderIsLive | None = None,
+) -> list[Path]:
+    """Delete per-upload subfolders older than ``max_age_days`` whose job
+    is no longer live. ``upload_dir`` is entirely ours (the control page's
+    upload route creates one ``<uuid>/`` folder per file), so no marker is
+    needed -- but the drive-root refusal still applies."""
+    if max_age_days <= 0:
+        return []
+    upload_dir = Path(upload_dir)
+    try:
+        if _is_drive_root(upload_dir):
+            log.warning("Upload sweep refused: %s is a drive root", upload_dir)
+            return []
+        candidates = list(upload_dir.iterdir())
+    except OSError:
+        return []
+
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=max_age_days)
+    removed: list[Path] = []
+    for entry in candidates:
+        try:
+            if not entry.is_dir():
+                continue
+            if folder_is_live is not None and folder_is_live(entry):
+                continue
+            if _older_than(entry, cutoff):
+                shutil.rmtree(entry)
+                removed.append(entry)
+        except OSError:
+            continue
+    return removed
+
+
+def sweep_tmp_dir(tmp_dir: Path) -> int:
+    """Remove everything inside the per-job scratch directory. Called at
+    startup, before the worker starts, so anything there is a leftover
+    from a job that was killed mid-extract. Returns the entry count removed."""
+    tmp_dir = Path(tmp_dir)
+    try:
+        entries = list(tmp_dir.iterdir())
+    except OSError:
+        return 0
+    removed = 0
+    for entry in entries:
+        try:
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+            removed += 1
+        except OSError:
+            log.warning("could not remove leftover scratch entry %s", entry)
+    if removed:
+        log.info("removed %d leftover scratch entr%s from %s", removed, "y" if removed == 1 else "ies", tmp_dir)
     return removed
 
 
 class RetentionSweeper:
-    """Runs ``clean_old_outputs`` on a timer, on its own background thread
-    -- same start/stop shape as ``pipeline.JobWorker`` and
+    """Runs ``clean_old_outputs`` (and, when given an ``upload_dir``,
+    ``clean_old_uploads``) on a timer, on its own background thread --
+    same start/stop shape as ``pipeline.JobWorker`` and
     ``pipeline.Watcher``, for the same reason: testable without real
     sleeps -- ``run_once()`` drives a single pass directly, and the
     background loop waits on an ``Event`` (interruptible by ``stop()``)
@@ -97,13 +237,19 @@ class RetentionSweeper:
         retention_days: int,
         interval_seconds: float = DEFAULT_SWEEP_INTERVAL_SECONDS,
         logger: logging.Logger | None = None,
+        upload_dir: Path | None = None,
+        upload_max_age_days: int = DEFAULT_UPLOAD_MAX_AGE_DAYS,
+        folder_is_live: FolderIsLive | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
         self._out_dir = Path(out_dir)
         self._retention_days = retention_days
         self._interval_seconds = interval_seconds
-        self._logger = logger or logging.getLogger("ash_captions.lifecycle")
+        self._logger = logger or log
+        self._upload_dir = Path(upload_dir) if upload_dir is not None else None
+        self._upload_max_age_days = upload_max_age_days
+        self._folder_is_live = folder_is_live
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -113,13 +259,24 @@ class RetentionSweeper:
         sleeps -- and so a bug in the sweep itself is caught here, never
         propagated to the caller (spec section 12).
         """
+        removed: list[Path] = []
         try:
-            removed = clean_old_outputs(self._out_dir, retention_days=self._retention_days)
+            removed += clean_old_outputs(
+                self._out_dir,
+                retention_days=self._retention_days,
+                folder_is_live=self._folder_is_live,
+            )
+            if self._upload_dir is not None:
+                removed += clean_old_uploads(
+                    self._upload_dir,
+                    max_age_days=self._upload_max_age_days,
+                    folder_is_live=self._folder_is_live,
+                )
         except Exception:  # noqa: BLE001 - a cleanup bug must never take the app down
             self._logger.exception("Retention sweep failed")
-            return []
+            return removed
         if removed:
-            self._logger.info("Retention sweep removed %d old output folder(s)", len(removed))
+            self._logger.info("Retention sweep removed %d old folder(s)", len(removed))
         return removed
 
     def start(self) -> None:

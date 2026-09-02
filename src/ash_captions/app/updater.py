@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -47,6 +48,8 @@ from pathlib import Path
 from typing import Callable
 
 from ash_captions.config import app_root
+
+from .jobobject import CREATE_BREAKAWAY_FROM_JOB
 
 logger = logging.getLogger("ash_captions.app.updater")
 
@@ -286,20 +289,19 @@ def download_and_verify_update(
 # verify everything up to that point (extraction, script content, the
 # arguments handed to it) without it.
 
-# The wait-for-exit deadline below is deliberately long (20 minutes), and
+# The wait-for-exit deadline below is deliberately long (6 hours), and
 # deliberately NOT the thing that bounds how long an in-flight job gets to
-# finish. This is a short-form captioning tool, but nothing stops a large
-# 4K file or a slow CPU-only burn-in from legitimately running well past a
-# naive "30 seconds ought to be enough" guess -- an earlier version of this
-# template used exactly that 30s figure, which would have force-killed a
-# perfectly healthy, still-running job every time, defeating the entire
-# point of apply_update()'s has_running_job guard and an unbounded
-# `worker.stop(timeout=None)`. The real, tight bound lives in the Python
-# process itself (see app/__main__.py's shutdown watchdog, generously
-# shorter than this); this deadline is a last-resort backstop only for the
-# case where that process is wedged badly enough that even its own
-# watchdog timer can't fire -- not the normal exit path.
-_HELPER_WAIT_DEADLINE_SECONDS = 20 * 60
+# finish. The studio runs this on 60-90 minute recordings: a CPU-only
+# transcription plus burn-in of one of those legitimately takes hours, and
+# an earlier version of this template used a 30-second figure that would
+# have force-killed a perfectly healthy job every time, defeating the
+# entire point of apply_update()'s has_running_job guard. The real gate
+# lives in the Python process itself (see app/update_flow.py: an update is
+# never applied while a job is running -- it waits, unbounded, for the
+# queue to go idle before this helper is even spawned); this deadline is a
+# last-resort backstop only for a process wedged badly enough that its own
+# shutdown never completes -- not the normal exit path.
+_HELPER_WAIT_DEADLINE_SECONDS = 6 * 3600
 
 _APPLY_HELPER_TEMPLATE = f"""
 param(
@@ -325,16 +327,30 @@ SpawnHelper = Callable[[list[str]], None]
 HasRunningJob = Callable[[], bool]
 
 JOB_RUNNING_MESSAGE = "A caption job is still running. Try again when the queue is clear."
+SOURCE_CHECKOUT_MESSAGE = "This is a source checkout; update it with git, not the in-app updater."
 
 
 def _default_spawn_helper(argv: list[str]) -> None:
     # Detached: this process is about to exit as part of the update: the
     # helper must keep running after that, not be a child tied to it.
-    subprocess.Popen(  # noqa: S603 - argv is built entirely from our own paths, no shell
-        argv,
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-        close_fds=True,
-    )
+    # CREATE_BREAKAWAY_FROM_JOB matters just as much: the app sits in a
+    # kill-on-close Job Object (app/jobobject.py) so ffmpeg dies with it,
+    # and without breaking away the helper would die with it too -- the
+    # app would exit and never come back. Retried without the flag only
+    # if the OS refuses it (an outer job that forbids breakaway), with a
+    # warning, since a helper that can't outlive us can't relaunch us.
+    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(  # noqa: S603 - argv is built entirely from our own paths, no shell
+            argv, creationflags=flags | CREATE_BREAKAWAY_FROM_JOB, close_fds=True
+        )
+    except OSError as exc:
+        logger.warning(
+            "Update helper could not break away from the job object (%s); it may be "
+            "killed when this process exits, in which case relaunch AshCaptions by hand.",
+            exc,
+        )
+        subprocess.Popen(argv, creationflags=flags, close_fds=True)  # noqa: S603
 
 
 def apply_update(
@@ -391,9 +407,19 @@ def apply_update(
 
     artifact_path = Path(artifact_path)
     install_dir = Path(install_dir) if install_dir is not None else app_root()
+    if (install_dir / ".git").exists():
+        # A developer's source checkout is updated with git; robocopy /MIR
+        # over it would wipe the working tree. The control page already
+        # refuses this (web.runtime.updates_supported); the tray path
+        # arrives here directly.
+        raise UpdateApplyError(SOURCE_CHECKOUT_MESSAGE)
     staging = Path(extract_to) if extract_to is not None else artifact_path.parent / "staged_update"
 
     try:
+        # A previous, failed apply may have left a half-extracted tree
+        # here; robocopy /MIR would faithfully mirror its stale files.
+        if staging.exists():
+            shutil.rmtree(staging)
         with zipfile.ZipFile(artifact_path) as zf:
             zf.extractall(staging)
     except (zipfile.BadZipFile, OSError) as exc:

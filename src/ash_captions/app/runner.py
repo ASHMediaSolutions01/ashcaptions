@@ -6,36 +6,56 @@ executes for each queued job: resolve the (language, dialect) choice,
 extract audio, transcribe (and translate, if asked), post-process the
 text, build caption cards, write every output file, optionally burn in,
 then -- the single most dangerous line in this module -- delete the input
-file, but *only* if it came from the watch folder. A file submitted by
-path lives wherever the editor keeps their footage; deleting a client's
-source file would be a catastrophe, so that check is not optional (spec
-section 10, 12).
+file, but *only* if it came from the watch folder (or the control page's
+own upload folder). A file submitted by path lives wherever the editor
+keeps their footage; deleting a client's source file would be a
+catastrophe, so that check is not optional (spec section 10, 12). The
+deletion itself is handed back to the worker to run *after* the job row
+says ``done``: a crash between the two must leave the file, never the
+row saying "pending" for a file that is gone.
+
+Built for hour-long jobs
+------------------------
+Every engine stage reports progress through ``report`` (a
+``pipeline.queue.ProgressReporter``: callable with a percentage, plus
+``stage()`` and ``should_stop()``), the transcriber's own per-segment
+progress drives the biggest slice of the bar, and ``should_stop`` is
+threaded into transcribe/translate/burn so Quit cancels within a segment
+rather than after the file. Optional engine/languages keywords are passed
+only when the callee accepts them, so this module keeps working against
+an engine that predates them.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import logging
-import tempfile
+import shutil
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from ash_captions import engine, languages, styles
-from ash_captions.config import Settings, find_binary
+from ash_captions.config import Settings, app_root, find_binary
 from ash_captions.pipeline.db import Job
+from ash_captions.pipeline.queue import AfterDone, JobCancelled
 
 from .catalogue import dialect_preset_id
+from .lifecycle import write_job_marker
+from .runner_util import (  # noqa: F401 - re-exported for tests and callers
+    DiskSpaceError,
+    _ffprobe_beside,
+    _is_within,
+    _postprocess_segments,
+    _postprocess_words,
+    _progress_budget,
+    accepted_kwargs,
+    atomic_write,
+    check_free_space,
+    load_glossary_entries,
+)
 
 log = logging.getLogger(__name__)
 
-
-def _ffprobe_beside(ffmpeg_path: Path) -> Path:
-    """ffprobe ships next to ffmpeg in the bundle, so derive it rather than
-    making the caller configure a second path that can drift out of sync."""
-    candidate = Path(ffmpeg_path).with_name("ffprobe.exe")
-    return candidate if candidate.is_file() else Path("ffprobe")
-
-RunJob = Callable[[Job, Callable[[int], None]], None]
+RunJob = Callable[[Job, Callable[[int], None]], "AfterDone | None"]
 
 # engine.rules.build_cards()'s own default for its `min_words` floor --
 # not re-exported from engine, so mirrored here as the ceiling
@@ -44,85 +64,46 @@ RunJob = Callable[[Job, Callable[[int], None]], None]
 # undone by a `min_words` floor higher than the style's own max.
 _DEFAULT_MIN_WORDS_PER_CARD = 3
 
-# Base weights for the progress bar. Transcription dominates real runtime
-# (spec section 9: "timing quality is the feature"), so it must dominate
-# the bar too -- not a naive linear 20/40/60/80 split. Stages that don't
-# apply to a given job (translate, burn) are dropped and the rest
-# re-normalised to still span 0-100 -- see ``_progress_budget``.
-_STAGE_ORDER = ("extract", "transcribe", "translate", "postprocess", "cards_and_write", "burn")
-_BASE_WEIGHTS = {
-    "extract": 5,
-    "transcribe": 55,
-    "translate": 15,
-    "postprocess": 3,
-    "cards_and_write": 7,
-    "burn": 15,
-}
+# The engine's cancellation exceptions, when this tree's engine has them.
+_CANCEL_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
+    exc for exc in (
+        getattr(engine, "TranscriptionCancelled", None),
+        getattr(engine, "BurnCancelled", None),
+    ) if isinstance(exc, type)
+)
+
+_TRANSCRIBER_OPTIONALS = ("cpu_threads", "condition_on_previous_text", "hallucination_silence_threshold")
 
 
-def _progress_budget(*, translate: bool, burn: bool) -> dict[str, tuple[int, int]]:
-    """Allocate ``_BASE_WEIGHTS`` proportionally over the stages that
-    actually run for this job, returning ``{stage: (start_pct, end_pct)}``.
-    The last active stage always ends exactly at 100, regardless of
-    rounding drift in the stages before it.
-    """
-    active = {"extract", "transcribe", "postprocess", "cards_and_write"}
-    if translate:
-        active.add("translate")
-    if burn:
-        active.add("burn")
-    total_weight = sum(weight for name, weight in _BASE_WEIGHTS.items() if name in active)
+class SharedTranscriber:
+    """A ``Transcriber`` that defers to the pipeline's lazily-built model,
+    so the style editor's preview renderer can share one loaded model
+    with the queue instead of loading a second copy. ``build_run_job``
+    attaches the getter as ``run_job.get_transcriber``."""
 
-    budget: dict[str, tuple[int, int]] = {}
-    cursor = 0.0
-    for name in _STAGE_ORDER:
-        if name not in active:
-            continue
-        share = _BASE_WEIGHTS[name] / total_weight * 100
-        start, cursor = cursor, cursor + share
-        budget[name] = (round(start), round(cursor))
+    def __init__(self, get_transcriber: Callable[[], "engine.Transcriber"]) -> None:
+        self._get = get_transcriber
 
-    last_stage = next(name for name in reversed(_STAGE_ORDER) if name in active)
-    start, _ = budget[last_stage]
-    budget[last_stage] = (start, 100)
-    return budget
+    def transcribe(self, audio_path: Any, **kwargs: Any) -> Any:
+        return self._get().transcribe(audio_path, **kwargs)
+
+    def translate(self, audio_path: Any, **kwargs: Any) -> Any:
+        return self._get().translate(audio_path, **kwargs)
 
 
-def _postprocess_words(
-    words: tuple, resolved: languages.ResolvedDialect, glossary_path: Path
-) -> tuple:
-    """Apply the post-processing chain (dialect glossary, client glossary,
-    spelling) word-by-word, preserving each word's timing.
-
-    Matching per-word (rather than over the full segment) means a
-    multi-word glossary phrase only reliably fires in the plain-text
-    transcript (``_postprocess_segments``, below), not in the word-timed
-    captions -- an accepted limitation given ``build_cards`` needs
-    per-``Word`` timing to produce the .srt/.ass files, and most glossary
-    corrections in practice are single terms (a name, a brand).
-    """
-    return tuple(
-        dataclasses.replace(word, text=languages.postprocess(word.text, resolved, glossary_path))
-        for word in words
-    )
+def _call_with_optionals(fn: Callable[..., Any], *args: Any, optional: dict[str, Any], **kwargs: Any) -> Any:
+    """Call ``fn`` passing only those ``optional`` keywords it accepts."""
+    accepted = accepted_kwargs(fn, optional)
+    extras = {name: value for name, value in optional.items() if name in accepted}
+    return fn(*args, **kwargs, **extras)
 
 
-def _postprocess_segments(
-    segments: tuple, resolved: languages.ResolvedDialect, glossary_path: Path
-) -> tuple:
-    return tuple(
-        dataclasses.replace(seg, text=languages.postprocess(seg.text, resolved, glossary_path))
-        for seg in segments
-    )
-
-
-def _is_within(path: Path, directory: Path) -> bool:
-    """True if ``path`` resolves to somewhere inside ``directory``."""
+def _probe_or_none(video_path: Path, ffmpeg_path: Path) -> "engine.VideoInfo | None":
     try:
-        path.resolve().relative_to(directory.resolve())
-    except (OSError, ValueError):
-        return False
-    return True
+        return engine.probe_video(video_path, ffprobe_path=_ffprobe_beside(ffmpeg_path))
+    except Exception:  # noqa: BLE001 - a probe failure degrades to defaults, never fails the job
+        log.warning("could not probe %s; using default PlayRes and transcript-end duration", video_path.name, exc_info=True)
+        return None
 
 
 def build_run_job(
@@ -131,6 +112,7 @@ def build_run_job(
     watch_dir: Path,
     transcriber: engine.Transcriber | None = None,
     ffmpeg_path: Path | None = None,
+    upload_dir: Path | None = None,
 ) -> RunJob:
     """Build the ``run_job`` callable ``JobWorker`` executes.
 
@@ -142,31 +124,45 @@ def build_run_job(
     time, so sharing one instance across them is safe and avoids reloading
     per job), and ffmpeg is resolved via ``config.find_binary`` (bundled
     ``bin/ffmpeg.exe``, falling back to PATH).
+
+    ``upload_dir`` (default ``settings.upload_dir``) is treated exactly
+    like ``watch_dir`` for post-success deletion: both hold copies that
+    are ours, never an editor's originals.
     """
     resolved_ffmpeg = ffmpeg_path or find_binary("ffmpeg") or engine.DEFAULT_FFMPEG_PATH
     watch_dir = Path(watch_dir)
+    upload_dir = Path(upload_dir) if upload_dir is not None else Path(settings.upload_dir)
     lazy_transcriber: dict[str, engine.Transcriber] = {}
 
     def get_transcriber() -> engine.Transcriber:
         if transcriber is not None:
             return transcriber
         if "instance" not in lazy_transcriber:
-            lazy_transcriber["instance"] = engine.WhisperTranscriber(
+            optional = {name: getattr(settings, name) for name in _TRANSCRIBER_OPTIONALS}
+            # A bundled model cache (installer-shipped app_root()/models)
+            # must never trigger a HuggingFace download on an office PC.
+            optional["local_files_only"] = (app_root() / "models").is_dir()
+            lazy_transcriber["instance"] = _call_with_optionals(
+                engine.WhisperTranscriber,
                 settings.model_size,
                 device=settings.device,
                 download_root=settings.model_cache_dir,
+                optional=optional,
             )
         return lazy_transcriber["instance"]
 
-    def run_job(job: Job, report: Callable[[int], None]) -> None:
+    def run_job(job: Job, report: Callable[[int], None]) -> AfterDone | None:
+        set_stage: Callable[[str], None] = getattr(report, "stage", None) or (lambda _name: None)
+        should_stop: Callable[[], bool] | None = getattr(report, "should_stop", None)
         video_path = Path(job.input_path)
         output_dir = Path(job.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        write_job_marker(output_dir, job.id)
         stem = video_path.stem
 
         preset_id = dialect_preset_id(job.options.language, job.options.dialect)
         resolved = languages.resolve(job.options.language, preset_id)
         client_glossary_path = settings.glossary_dir / "glossary.txt"
+        glossary_entries = load_glossary_entries(client_glossary_path)
         # Never raises -- an unknown or invalid style name falls back to
         # styles.DEFAULT_STYLE (spec 7A.4), so a bad/renamed style can
         # never fail a job.
@@ -176,37 +172,36 @@ def build_run_job(
 
         budget = _progress_budget(translate=job.options.translate, burn=job.options.burn)
         model = get_transcriber()
+        # One probe, up front: PlayRes for the .ass (a 1920x1080 landscape
+        # file rendered at the 1080x1920 default comes out ~56% size),
+        # duration for the burn progress bar, geometry for punch-in.
+        info = _probe_or_none(video_path, resolved_ffmpeg)
 
-        with tempfile.TemporaryDirectory(prefix="ash-captions-") as tmp_dir:
-            audio_path = Path(tmp_dir) / f"{stem}.wav"
+        job_tmp = Path(settings.tmp_dir) / f"job-{job.id}"
+        try:
+            job_tmp.mkdir(parents=True, exist_ok=True)
+            audio_path = job_tmp / f"{stem}.wav"
 
+            set_stage("extract")
             report(budget["extract"][0])
             engine.extract_audio(video_path, audio_path, ffmpeg_path=resolved_ffmpeg)
             report(budget["extract"][1])
 
-            report(budget["transcribe"][0])
-            result = model.transcribe(
-                audio_path,
-                language=resolved.whisper_language,
-                initial_prompt=resolved.initial_prompt or None,
-            )
-            report(budget["transcribe"][1])
+            set_stage("transcribe")
+            result = _run_transcriber(model.transcribe, audio_path, resolved, budget["transcribe"], report, should_stop)
 
             translation = None
             if job.options.translate:
-                report(budget["translate"][0])
-                translation = model.translate(
-                    audio_path,
-                    language=resolved.whisper_language,
-                    initial_prompt=resolved.initial_prompt or None,
-                )
-                report(budget["translate"][1])
+                set_stage("translate")
+                translation = _run_transcriber(model.translate, audio_path, resolved, budget["translate"], report, should_stop)
 
+            set_stage("postprocess")
             report(budget["postprocess"][0])
-            words = _postprocess_words(result.words, resolved, client_glossary_path)
-            segments = _postprocess_segments(result.segments, resolved, client_glossary_path)
+            words = _postprocess_words(result.words, resolved, client_glossary_path, entries=glossary_entries)
+            segments = _postprocess_segments(result.segments, resolved, client_glossary_path, entries=glossary_entries)
             report(budget["postprocess"][1])
 
+            set_stage("write")
             report(budget["cards_and_write"][0])
             cards = engine.build_cards(
                 words,
@@ -214,87 +209,159 @@ def build_run_job(
                 min_words=card_min_words,
                 silence_gap=settings.silence_gap_seconds,
             )
-            engine.write_srt(cards, output_dir / f"{stem}.srt")
-            engine.write_ass(cards, output_dir / f"{stem}.ass", style)
-            engine.write_txt(segments, output_dir / f"{stem}.txt")
+            atomic_write(lambda p: engine.write_srt(cards, p), output_dir / f"{stem}.srt")
+            ass_optional = {"play_res": (info.width, info.height)} if info is not None else {}
+            atomic_write(
+                lambda p: _call_with_optionals(engine.write_ass, cards, p, style, optional=ass_optional),
+                output_dir / f"{stem}.ass",
+            )
+            atomic_write(lambda p: engine.write_txt(segments, p), output_dir / f"{stem}.txt")
             if translation is not None:
-                en_words = _postprocess_words(translation.words, resolved, client_glossary_path)
+                en_words = _postprocess_words(translation.words, resolved, client_glossary_path, entries=glossary_entries)
                 en_cards = engine.build_cards(
                     en_words,
                     max_words=card_max_words,
                     min_words=card_min_words,
                     silence_gap=settings.silence_gap_seconds,
                 )
-                engine.write_srt(en_cards, output_dir / f"{stem}.en.srt")
+                atomic_write(lambda p: engine.write_srt(en_cards, p), output_dir / f"{stem}.en.srt")
             report(budget["cards_and_write"][1])
 
             if job.options.burn:
-                start, end = budget["burn"]
-                # Engine doesn't probe video duration itself (burn.py takes
-                # it as a parameter); the transcript's own last timestamp is
-                # a close enough proxy to drive the burn-in progress bar
-                # without adding a separate ffprobe call here.
-                duration = max((seg.end for seg in result.segments), default=0.0)
+                set_stage("burn")
+                _burn(job, video_path, output_dir, stem, words, result, info, budget["burn"], report, should_stop)
+        except _CANCEL_EXCEPTIONS as exc:
+            raise JobCancelled(str(exc)) from exc
+        finally:
+            shutil.rmtree(job_tmp, ignore_errors=True)
 
-                def on_burn_progress(pct: float, start=start, end=end) -> None:
-                    report(round(start + (end - start) * (pct / 100)))
+        # DANGER: only ever delete a file that came from the watch folder
+        # or our own upload folder. A path submitted directly by an editor
+        # points at their live footage -- deleting it would destroy a
+        # client's source file. Returned, not run: the worker calls it
+        # only after the job row is marked done.
+        from_watch = _is_within(video_path, watch_dir)
+        from_upload = _is_within(video_path, upload_dir)
+        if not (from_watch or from_upload):
+            return None
 
-                # Points libass at the bundled font directory (spec 7A.4) so
-                # a style's font resolves identically on all six machines
-                # without being installed into Windows -- without this, a
-                # bundled-but-not-installed font silently falls back to a
-                # default face on burn-in, defeating the point of bundling
-                # fonts at all.
-                # Punch-in (engine/punch.py). Off unless the studio turned it
-                # on, because it changes how a client's video is framed and
-                # should never happen to footage silently. Any failure to
-                # build it degrades to a normal burn rather than losing the
-                # job: captions are the deliverable, the zoom is a flourish.
-                punch_filter = None
-                if settings.punch_mode != "off":
-                    try:
-                        info = engine.probe_video(
-                            video_path, ffprobe_path=_ffprobe_beside(resolved_ffmpeg)
-                        )
-                        moments = engine.select_punch_moments(
-                            words,
-                            mode=settings.punch_mode,
-                            keywords=tuple(settings.punch_keywords),
-                            duration=settings.punch_duration_seconds,
-                            min_spacing=settings.punch_min_spacing_seconds,
-                            video_duration=info.duration_seconds,
-                        )
-                        punch_filter = engine.build_zoompan_filter(
-                            moments,
-                            width=info.width,
-                            height=info.height,
-                            fps=info.fps,
-                            zoom=settings.punch_zoom,
-                        )
-                        log.info(
-                            "punch-in: %d moment(s) at zoom %.2f",
-                            len(moments), settings.punch_zoom,
-                        )
-                    except Exception:  # noqa: BLE001
-                        log.warning("punch-in unavailable; burning without it", exc_info=True)
-                        punch_filter = None
-
-                engine.burn_captions(
-                    video_path,
-                    output_dir / f"{stem}.ass",
-                    output_dir / f"{stem}.captioned.mp4",
-                    duration_seconds=duration,
-                    ffmpeg_path=resolved_ffmpeg,
-                    fontsdir=styles.fontsdir_arg(),
-                    punch_filter=punch_filter,
-                    on_progress=on_burn_progress,
-                )
-                report(end)
-
-        # DANGER: only ever delete a file that came from the watch folder.
-        # A path submitted directly by an editor points at their live
-        # footage -- deleting it would destroy a client's source file.
-        if _is_within(video_path, watch_dir):
+        def delete_consumed_input() -> None:
             video_path.unlink(missing_ok=True)
+            # The upload route gives each file its own <uuid>/ folder;
+            # leave nothing behind once the file itself is gone.
+            if from_upload and video_path.parent != upload_dir:
+                try:
+                    video_path.parent.rmdir()
+                except OSError:
+                    pass
 
+        return delete_consumed_input
+
+    def _run_transcriber(
+        fn: Callable[..., Any],
+        audio_path: Path,
+        resolved: languages.ResolvedDialect,
+        span: tuple[int, int],
+        report: Callable[[int], None],
+        should_stop: Callable[[], bool] | None,
+    ) -> Any:
+        start, end = span
+        report(start)
+
+        def on_progress(seconds_done: float, total_seconds: float) -> None:
+            if total_seconds and total_seconds > 0:
+                fraction = max(0.0, min(1.0, seconds_done / total_seconds))
+                report(round(start + (end - start) * fraction))
+
+        result = _call_with_optionals(
+            fn,
+            audio_path,
+            language=resolved.whisper_language,
+            initial_prompt=resolved.initial_prompt or None,
+            optional={"on_progress": on_progress, "should_stop": should_stop},
+        )
+        report(end)
+        return result
+
+    def _burn(
+        job: Job,
+        video_path: Path,
+        output_dir: Path,
+        stem: str,
+        words: tuple,
+        result: Any,
+        info: "engine.VideoInfo | None",
+        span: tuple[int, int],
+        report: Callable[[int], None],
+        should_stop: Callable[[], bool] | None,
+    ) -> None:
+        start, end = span
+        try:
+            input_size = video_path.stat().st_size
+        except OSError:
+            input_size = 0
+        check_free_space(output_dir, input_size_bytes=input_size, min_free_gb=settings.min_free_disk_gb)
+
+        # Real duration from ffprobe when it answered; the transcript's own
+        # last timestamp is the fallback (close enough to drive the bar,
+        # but it stops early on a file that ends in silence or music).
+        duration = info.duration_seconds if info is not None and info.duration_seconds > 0 else 0.0
+        if duration <= 0:
+            duration = max((seg.end for seg in result.segments), default=0.0)
+
+        def on_burn_progress(pct: float) -> None:
+            report(round(start + (end - start) * (pct / 100)))
+
+        # Punch-in (engine/punch.py). Off unless the studio turned it on,
+        # because it changes how a client's video is framed and should
+        # never happen to footage silently. Any failure to build it
+        # degrades to a normal burn rather than losing the job: captions
+        # are the deliverable, the zoom is a flourish.
+        punch_filter = None
+        if settings.punch_mode != "off":
+            try:
+                geometry = info if info is not None else engine.probe_video(
+                    video_path, ffprobe_path=_ffprobe_beside(resolved_ffmpeg)
+                )
+                moments = engine.select_punch_moments(
+                    words,
+                    mode=settings.punch_mode,
+                    keywords=tuple(settings.punch_keywords),
+                    duration=settings.punch_duration_seconds,
+                    min_spacing=settings.punch_min_spacing_seconds,
+                    video_duration=geometry.duration_seconds,
+                )
+                # build_punch_filter is the timestamp-preserving scale/crop
+                # chain; build_zoompan_filter is its older name.
+                build_filter = getattr(engine, "build_punch_filter", None) or engine.build_zoompan_filter
+                punch_filter = build_filter(
+                    moments,
+                    width=geometry.width,
+                    height=geometry.height,
+                    fps=geometry.fps,
+                    zoom=settings.punch_zoom,
+                )
+                log.info("punch-in: %d moment(s) at zoom %.2f", len(moments), settings.punch_zoom)
+            except Exception:  # noqa: BLE001
+                log.warning("punch-in unavailable; burning without it", exc_info=True)
+                punch_filter = None
+
+        # fontsdir points libass at the bundled font directory (spec 7A.4)
+        # so a style's font resolves identically on all six machines
+        # without being installed into Windows.
+        _call_with_optionals(
+            engine.burn_captions,
+            video_path,
+            output_dir / f"{stem}.ass",
+            output_dir / f"{stem}.captioned.mp4",
+            duration_seconds=duration,
+            ffmpeg_path=resolved_ffmpeg,
+            fontsdir=styles.fontsdir_arg(),
+            punch_filter=punch_filter,
+            on_progress=on_burn_progress,
+            optional={"should_stop": should_stop},
+        )
+        report(end)
+
+    run_job.get_transcriber = get_transcriber  # type: ignore[attr-defined]
     return run_job

@@ -1,7 +1,7 @@
 """Tests for runner.build_run_job: the progress budget, the postprocess
-bridge into engine's Word/Segment types, and -- the most important case
-in this whole package -- that the watch-folder-only input deletion rule
-(spec section 10, 12) is actually enforced.
+bridge into engine's Word/Segment types, output writing, and style/punch
+wiring. The input-deletion matrix, cancellation, stage reporting, disk
+space and upload handling live in test_runner_inputs.py.
 
 A fake Transcriber and monkeypatched extract_audio/burn_captions mean none
 of this needs faster-whisper, ffmpeg, or a GPU.
@@ -26,6 +26,9 @@ def make_settings(tmp_path: Path) -> Settings:
         db_path=tmp_path / "jobs.db",
         log_path=tmp_path / "log.txt",
         glossary_dir=tmp_path / "glossaries",
+        upload_dir=tmp_path / "uploads",
+        tmp_dir=tmp_path / "tmp",
+        min_free_disk_gb=0,
     )
 
 
@@ -42,7 +45,8 @@ def _result(word_texts: list[str], *, start: float = 0.0, step: float = 0.5, lan
 
 
 class FakeTranscriber:
-    """Implements engine.Transcriber without faster-whisper."""
+    """Implements engine.Transcriber *without* the newer on_progress /
+    should_stop keywords -- the runner must cope with an older engine."""
 
     def __init__(self, transcribe_result, translate_result=None) -> None:
         self.transcribe_result = transcribe_result
@@ -58,12 +62,18 @@ class FakeTranscriber:
         return self.translate_result
 
 
+def run_to_completion(run_job, job, report=lambda _p: None):
+    """What JobWorker does: run, then (after mark_done) run the returned cleanup."""
+    after_done = run_job(job, report)
+    if after_done is not None:
+        after_done()
+    return after_done
+
+
 @pytest.fixture(autouse=True)
 def fake_extract_audio(monkeypatch: pytest.MonkeyPatch):
-    """No real ffmpeg -- FakeTranscriber never reads the audio file, so
-    extraction only needs to not blow up."""
-
     def _fake(video_path, output_path, *, ffmpeg_path=None):
+        Path(output_path).write_bytes(b"RIFF")
         return Path(output_path)
 
     monkeypatch.setattr(engine, "extract_audio", _fake)
@@ -81,13 +91,36 @@ def make_job(store: JobStore, input_path: Path, output_dir: Path, **option_overr
     return store.get_job(job_id)
 
 
+def _video(tmp_path: Path, folder: str = "footage") -> Path:
+    video = tmp_path / folder / "clip.mp4"
+    video.parent.mkdir(parents=True, exist_ok=True)
+    video.write_bytes(b"fake video")
+    return video
+
+
+def _fake_burn(received: dict | None = None):
+    def fake_burn_captions(
+        video_path, ass_path, output_path, *,
+        duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None,
+        use_nvenc=None, punch_filter=None, **_extra,
+    ):
+        if received is not None:
+            received.update(dict(fontsdir=fontsdir, punch_filter=punch_filter, duration=duration_seconds, extra=_extra))
+        Path(output_path).write_bytes(b"fake mp4")
+        if on_progress is not None:
+            on_progress(0.0)
+            on_progress(100.0)
+        return Path(output_path)
+
+    return fake_burn_captions
+
+
 class TestProgressBudget:
     def test_always_spans_0_to_100(self) -> None:
         for translate in (False, True):
             for burn in (False, True):
                 budget = _progress_budget(translate=translate, burn=burn)
-                last_stage = max(budget.values(), key=lambda span: span[1])
-                assert last_stage[1] == 100
+                assert max(budget.values(), key=lambda span: span[1])[1] == 100
                 assert min(start for start, _ in budget.values()) == 0
 
     def test_transcription_owns_the_largest_share_of_the_bar(self) -> None:
@@ -97,69 +130,96 @@ class TestProgressBudget:
 
     def test_disabled_stages_are_absent(self) -> None:
         budget = _progress_budget(translate=False, burn=False)
-        assert "translate" not in budget
-        assert "burn" not in budget
+        assert "translate" not in budget and "burn" not in budget
         assert "extract" in budget and "transcribe" in budget
 
 
 class TestPostprocessBridge:
     def test_postprocess_words_applies_spelling_convention_per_word(self) -> None:
-        resolved = languages.resolve("en", "uk")  # American -> British spelling
+        resolved = languages.resolve("en", "uk")
         words = (engine.Word(text="color", start=0.0, end=0.5),)
-
         result = _postprocess_words(words, resolved, Path("does-not-exist.txt"))
-
         assert result[0].text.lower() == "colour"
-        assert result[0].start == 0.0 and result[0].end == 0.5  # timing preserved
+        assert result[0].start == 0.0 and result[0].end == 0.5
 
     def test_postprocess_segments_applies_glossary_correction(self, tmp_path: Path) -> None:
         glossary_path = tmp_path / "glossary.txt"
         glossary_path.write_text("Gazi => Ghazi\n", encoding="utf-8")
         resolved = languages.resolve("en", "us")
         segment = engine.Segment(text="hello Gazi", start=0.0, end=1.0, words=())
-
         result = _postprocess_segments((segment,), resolved, glossary_path)
-
         assert "Ghazi" in result[0].text
+
+    def test_preloaded_entries_are_forwarded_when_postprocess_accepts_them(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list = []
+
+        def fake_postprocess(text, resolved, client_glossary_path=None, *, entries=None):
+            seen.append(entries)
+            return text
+
+        monkeypatch.setattr(languages, "postprocess", fake_postprocess)
+        resolved = languages.resolve("en", "us")
+        words = (engine.Word(text="hi", start=0.0, end=0.5),)
+        _postprocess_words(words, resolved, tmp_path / "g.txt", entries=("preloaded",))
+        assert seen == [("preloaded",)]
+
+
+    def test_batch_postprocess_words_is_preferred_when_languages_offers_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """languages.postprocess_words (one call per transcript, phrase
+        matches across word boundaries) is used when present; the texts
+        are zipped back onto the timed Word tuples."""
+        seen: dict = {}
+
+        def fake_batch(texts, resolved, client_glossary_path=None, *, entries=None):
+            seen["texts"] = list(texts)
+            seen["entries"] = entries
+            return tuple(t.upper() for t in texts)
+
+        monkeypatch.setattr(languages, "postprocess_words", fake_batch, raising=False)
+        resolved = languages.resolve("en", "us")
+        words = (engine.Word(text="hello", start=0.0, end=0.5), engine.Word(text="there", start=0.5, end=1.0))
+
+        result = _postprocess_words(words, resolved, tmp_path / "g.txt", entries=("e",))
+
+        assert seen == {"texts": ["hello", "there"], "entries": ("e",)}
+        assert [w.text for w in result] == ["HELLO", "THERE"]
+        assert [(w.start, w.end) for w in result] == [(0.0, 0.5), (0.5, 1.0)]
 
 
 class TestRunJobOutputs:
     def test_writes_srt_ass_txt_and_reports_completion(self, tmp_path: Path, store: JobStore) -> None:
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
+        video = _video(tmp_path)
         output_dir = settings.out_dir / "clip"
-
         job = make_job(store, video, output_dir)
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend", "how", "are", "you"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["hello", "there", "friend", "how", "are", "you"])))
 
         progress: list[int] = []
-        run_job(job, progress.append)
+        run_to_completion(run_job, job, progress.append)
 
-        assert (output_dir / "clip.srt").is_file()
-        assert (output_dir / "clip.ass").is_file()
-        assert (output_dir / "clip.txt").is_file()
+        for suffix in (".srt", ".ass", ".txt"):
+            assert (output_dir / f"clip{suffix}").is_file()
+            assert not (output_dir / f"clip{suffix}.part").exists()  # atomic: no .part left
         assert not (output_dir / "clip.en.srt").exists()
+        assert (output_dir / ".ash-captions-job").read_text(encoding="utf-8").strip() == str(job.id)
         assert progress[-1] == 100
         assert all(0 <= p <= 100 for p in progress)
+        assert list(settings.tmp_dir.iterdir()) == []  # per-job scratch cleaned up
 
     def test_translate_flag_writes_en_srt(self, tmp_path: Path, store: JobStore) -> None:
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
+        video = _video(tmp_path)
         output_dir = settings.out_dir / "clip"
-
         job = make_job(store, video, output_dir, translate=True)
         transcriber = FakeTranscriber(
             transcribe_result=_result(["hola", "amigo", "como", "estas"], language="es"),
             translate_result=_result(["hello", "friend", "how", "are", "you"], language="en"),
         )
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber), job)
 
         assert (output_dir / "clip.en.srt").is_file()
         assert any(call[0] == "translate" and call[1] == "en" for call in transcriber.calls)
@@ -168,164 +228,65 @@ class TestRunJobOutputs:
         self, tmp_path: Path, store: JobStore, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
+        video = _video(tmp_path)
         output_dir = settings.out_dir / "clip"
-
         job = make_job(store, video, output_dir, burn=True)
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend", "how", "are", "you"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        def fake_burn_captions(
-            video_path, ass_path, output_path, *,
-            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None,
-            use_nvenc=None, **_extra,
-        ):
-            Path(output_path).write_bytes(b"fake mp4")
-            if on_progress is not None:
-                on_progress(0.0)
-                on_progress(100.0)
-            return Path(output_path)
-
-        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
+        monkeypatch.setattr(engine, "burn_captions", _fake_burn())
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["hello", "there", "friend", "how", "are", "you"])))
 
         progress: list[int] = []
-        run_job(job, progress.append)
+        run_to_completion(run_job, job, progress.append)
 
         assert (output_dir / "clip.captioned.mp4").is_file()
         assert progress[-1] == 100
-        # The burn stage's on_progress(0.0) call must map to somewhere
-        # *inside* the burn stage's slice of the bar, not reset to 0.
-        burn_stage_reports = progress[-2:]
-        assert burn_stage_reports[0] > 0
+        assert progress[-2] > 0  # burn's on_progress(0.0) maps inside its slice
 
     def test_burn_passes_the_bundled_fontsdir_to_burn_captions(
         self, tmp_path: Path, store: JobStore, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Without this, a bundled-but-not-Windows-installed font silently
-        falls back to a default face on burn-in, defeating the point of
-        bundling fonts at all (spec 7A.4)."""
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
-        output_dir = settings.out_dir / "clip"
-
-        job = make_job(store, video, output_dir, burn=True)
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
+        job = make_job(store, _video(tmp_path), settings.out_dir / "clip", burn=True)
         received: dict = {}
-
-        def fake_burn_captions(
-            video_path, ass_path, output_path, *,
-            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None,
-            use_nvenc=None, **_extra,
-        ):
-            received["fontsdir"] = fontsdir
-            Path(output_path).write_bytes(b"fake mp4")
-            return Path(output_path)
-
-        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
-
-        run_job(job, lambda _p: None)
-
+        monkeypatch.setattr(engine, "burn_captions", _fake_burn(received))
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["hello", "there", "friend"]))), job)
         assert received["fontsdir"] == styles.fontsdir_arg()
 
 
 class TestStyleWiring:
-    """The whole point of the styling system (spec 7A) is worthless if a
-    job never actually reaches it. These assert the ASS runner.py writes
-    for a non-legacy style contains *that style's* real, distinctive
-    animation tags -- not just that a file exists -- so a regression back
-    to the two static CLEAN/POP presets would fail loudly here rather than
-    silently shipping to a client.
-    """
-
-    def test_hype_style_produces_shake_tags_and_respects_its_max_words(
-        self, tmp_path: Path, store: JobStore
-    ) -> None:
+    def test_hype_style_produces_shake_tags_and_respects_its_max_words(self, tmp_path: Path, store: JobStore) -> None:
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
         output_dir = settings.out_dir / "clip"
-
-        # HYPE (styles/hype.json): active_word.effect="shake", layout.max_words=2.
-        job = make_job(store, video, output_dir, preset="HYPE")
-        transcriber = FakeTranscriber(_result(["one", "two", "three", "four", "five", "six"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)
+        job = make_job(store, _video(tmp_path), output_dir, preset="HYPE")
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["one", "two", "three", "four", "five", "six"]))), job)
 
         ass_content = (output_dir / "clip.ass").read_text(encoding="utf-8")
-        assert "\\frz" in ass_content  # shake's rotation tags -- never emitted by the legacy AssPreset renderer
-        assert "HYPE" in ass_content  # the style's own name, not a hardcoded CLEAN/POP
-
-        srt_content = (output_dir / "clip.srt").read_text(encoding="utf-8")
-        # No caption line should show more than HYPE's 2-word cards.
+        assert "\\frz" in ass_content
+        assert "HYPE" in ass_content
         text_lines = [
-            line for line in srt_content.splitlines()
+            line for line in (output_dir / "clip.srt").read_text(encoding="utf-8").splitlines()
             if line and not line[0].isdigit() and "-->" not in line
         ]
-        assert text_lines, "expected at least one caption line"
-        assert all(len(line.split()) <= 2 for line in text_lines)
+        assert text_lines and all(len(line.split()) <= 2 for line in text_lines)
 
     def test_neon_glow_style_produces_glow_tags(self, tmp_path: Path, store: JobStore) -> None:
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
         output_dir = settings.out_dir / "clip"
-
-        # NEON GLOW (styles/neon_glow.json): active_word.effect="glow".
-        job = make_job(store, video, output_dir, preset="NEON GLOW")
-        transcriber = FakeTranscriber(_result(["one", "two", "three", "four", "five"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)
-
+        job = make_job(store, _video(tmp_path), output_dir, preset="NEON GLOW")
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["one", "two", "three", "four", "five"]))), job)
         ass_content = (output_dir / "clip.ass").read_text(encoding="utf-8")
-        assert "\\blur" in ass_content  # glow's blurred outline tag
-        assert "NEON_GLOW" in ass_content  # style name, space-sanitised for the ASS Style field
+        assert "\\blur" in ass_content and "NEON_GLOW" in ass_content
 
-    def test_unknown_style_name_falls_back_without_failing_the_job(
-        self, tmp_path: Path, store: JobStore
-    ) -> None:
+    def test_unknown_style_name_falls_back_without_failing_the_job(self, tmp_path: Path, store: JobStore) -> None:
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
         output_dir = settings.out_dir / "clip"
-
-        job = make_job(store, video, output_dir, preset="DOES-NOT-EXIST")
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)  # must not raise
-
+        job = make_job(store, _video(tmp_path), output_dir, preset="DOES-NOT-EXIST")
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["hello", "there", "friend"]))), job)
         assert (output_dir / "clip.ass").is_file()
 
 
 class TestSilenceGapWiring:
-    """Settings.silence_gap_seconds must reach engine.build_cards() for
-    real, not just get accepted without effect. Proven with an actual
-    behavioural difference, not just "the job still succeeds": a single
-    word isolated by a gap on both sides is dropped as a voice-activity
-    survivor only once that gap meets the *configured* silence threshold
-    (engine.rules._drop_silent_cards) -- so the same transcript produces
-    different output depending on the setting.
-    """
-
     @staticmethod
     def _result_with_isolated_word() -> "engine.TranscriptionResult":
-        # "lonely" sits 0.8s clear of its neighbours on both sides.
-        # POP's own layout.max_words is 3, so with the *default* 1.5s gap
-        # nothing forces a break around it and it survives, folded into a
-        # bigger group. With a custom 0.5s gap, 0.8s on both sides clears
-        # the threshold, isolates it as its own one-word card, and
-        # _drop_silent_cards removes it entirely.
         words = (
             engine.Word(text="hello", start=0.0, end=0.5),
             engine.Word(text="there", start=0.5, end=1.0),
@@ -337,209 +298,58 @@ class TestSilenceGapWiring:
         return engine.TranscriptionResult(segments=(segment,), language="en")
 
     def test_default_silence_gap_keeps_the_isolated_word(self, tmp_path: Path, store: JobStore) -> None:
-        settings = make_settings(tmp_path)  # silence_gap_seconds defaults to 1.5
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
-        output_dir = settings.out_dir / "clip"
-
-        job = make_job(store, video, output_dir)
-        transcriber = FakeTranscriber(self._result_with_isolated_word())
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)
-
-        srt_content = (output_dir / "clip.srt").read_text(encoding="utf-8")
-        assert "lonely" in srt_content.lower()
-
-    def test_a_tighter_configured_silence_gap_drops_the_isolated_word(
-        self, tmp_path: Path, store: JobStore
-    ) -> None:
         settings = make_settings(tmp_path)
-        settings.silence_gap_seconds = 0.5  # tighter than the 0.8s gaps around "lonely"
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
         output_dir = settings.out_dir / "clip"
+        job = make_job(store, _video(tmp_path), output_dir)
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(self._result_with_isolated_word())), job)
+        assert "lonely" in (output_dir / "clip.srt").read_text(encoding="utf-8").lower()
 
-        job = make_job(store, video, output_dir)
-        transcriber = FakeTranscriber(self._result_with_isolated_word())
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)
-
-        srt_content = (output_dir / "clip.srt").read_text(encoding="utf-8")
-        assert "lonely" not in srt_content.lower()
-        assert "hello" in srt_content.lower()  # the rest of the transcript is unaffected
-
-
-class TestInputDeletionRule:
-    """The most dangerous line in this package: only ever delete a file
-    that came from the watch folder. Tested explicitly on both axes
-    (location x outcome) per the task brief.
-    """
-
-    def test_watch_folder_file_is_deleted_on_success(self, tmp_path: Path, store: JobStore) -> None:
+    def test_a_tighter_configured_silence_gap_drops_the_isolated_word(self, tmp_path: Path, store: JobStore) -> None:
         settings = make_settings(tmp_path)
-        settings.in_dir.mkdir(parents=True)
-        video = settings.in_dir / "clip.mp4"
-        video.write_bytes(b"fake video")
+        settings.silence_gap_seconds = 0.5
         output_dir = settings.out_dir / "clip"
-
-        job = make_job(store, video, output_dir)
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)
-
-        assert not video.exists()
-
-    def test_submit_by_path_file_is_never_deleted_on_success(self, tmp_path: Path, store: JobStore) -> None:
-        settings = make_settings(tmp_path)
-        video = tmp_path / "editors_own_footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
-        output_dir = settings.out_dir / "clip"
-
-        job = make_job(store, video, output_dir)
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        run_job(job, lambda _p: None)
-
-        assert video.exists()
-
-    def test_submit_by_path_file_is_never_deleted_on_failure(
-        self, tmp_path: Path, store: JobStore, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        settings = make_settings(tmp_path)
-        video = tmp_path / "editors_own_footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
-        output_dir = settings.out_dir / "clip"
-
-        def boom(video_path, output_path, *, ffmpeg_path=None):
-            raise engine.AudioExtractionError("ffmpeg exploded")
-
-        monkeypatch.setattr(engine, "extract_audio", boom)
-
-        job = make_job(store, video, output_dir)
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        with pytest.raises(engine.AudioExtractionError):
-            run_job(job, lambda _p: None)
-
-        assert video.exists()
-
-    def test_watch_folder_file_is_not_deleted_on_failure(
-        self, tmp_path: Path, store: JobStore, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        settings = make_settings(tmp_path)
-        settings.in_dir.mkdir(parents=True)
-        video = settings.in_dir / "clip.mp4"
-        video.write_bytes(b"fake video")
-        output_dir = settings.out_dir / "clip"
-
-        def boom(video_path, output_path, *, ffmpeg_path=None):
-            raise engine.AudioExtractionError("ffmpeg exploded")
-
-        monkeypatch.setattr(engine, "extract_audio", boom)
-
-        job = make_job(store, video, output_dir)
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-
-        with pytest.raises(engine.AudioExtractionError):
-            run_job(job, lambda _p: None)
-
-        assert video.exists()
+        job = make_job(store, _video(tmp_path), output_dir)
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(self._result_with_isolated_word())), job)
+        srt_content = (output_dir / "clip.srt").read_text(encoding="utf-8").lower()
+        assert "lonely" not in srt_content and "hello" in srt_content
 
 
 class TestPunchInWiring:
-    """Punch-in is built in engine/punch.py, but the styling system taught us
-    that a feature can be complete and still unreachable from a real job."""
-
     def test_punch_filter_reaches_burn_when_enabled(self, tmp_path, store, monkeypatch):
         received: dict = {}
-
-        def fake_burn_captions(video_path, ass_path, output_path, *, duration_seconds,
-                               ffmpeg_path=None, fontsdir=None, on_progress=None,
-                               use_nvenc=None, punch_filter=None, **_extra):
-            received["punch_filter"] = punch_filter
-            Path(output_path).write_bytes(b"fake mp4")
-            return Path(output_path)
-
-        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
-        monkeypatch.setattr(
-            engine, "probe_video",
-            lambda *_a, **_k: engine.VideoInfo(1080, 1920, 30.0, 60.0),
-        )
-
+        monkeypatch.setattr(engine, "burn_captions", _fake_burn(received))
+        monkeypatch.setattr(engine, "probe_video", lambda *_a, **_k: engine.VideoInfo(1080, 1920, 30.0, 60.0))
         settings = make_settings(tmp_path)
         settings.punch_mode = "sentence"
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
-        job = make_job(store, video, settings.out_dir / "clip", burn=True)
-        transcriber = FakeTranscriber(_result(["Hello.", "there", "friend", "how"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-        run_job(job, lambda _p: None)
+        job = make_job(store, _video(tmp_path), settings.out_dir / "clip", burn=True)
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["Hello.", "there", "friend", "how"]))), job)
 
-        assert received["punch_filter"] is not None
-        assert "zoompan=" in received["punch_filter"]
-        assert "s=1080x1920" in received["punch_filter"]
+        punch_filter = received["punch_filter"]
+        assert punch_filter  # a non-empty ffmpeg filter chain reached the burn
+        # Either the older zoompan filter or the timestamp-preserving scale/crop chain.
+        assert "zoompan=" in punch_filter or "crop=" in punch_filter
+        assert "1080" in punch_filter and "1920" in punch_filter  # the probed geometry was used
 
     def test_punch_is_off_by_default(self, tmp_path, store, monkeypatch):
-        """It reframes a client's video, so it must never happen silently."""
         received: dict = {}
-
-        def fake_burn_captions(video_path, ass_path, output_path, *, duration_seconds,
-                               ffmpeg_path=None, fontsdir=None, on_progress=None,
-                               use_nvenc=None, punch_filter=None, **_extra):
-            received["punch_filter"] = punch_filter
-            Path(output_path).write_bytes(b"fake mp4")
-            return Path(output_path)
-
-        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
+        monkeypatch.setattr(engine, "burn_captions", _fake_burn(received))
         settings = make_settings(tmp_path)
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
-        job = make_job(store, video, settings.out_dir / "clip", burn=True)
-        transcriber = FakeTranscriber(_result(["Hello.", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-        run_job(job, lambda _p: None)
-
+        job = make_job(store, _video(tmp_path), settings.out_dir / "clip", burn=True)
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["Hello.", "there", "friend"]))), job)
         assert received["punch_filter"] is None
 
     def test_a_broken_probe_still_produces_captions(self, tmp_path, store, monkeypatch):
-        """Captions are the deliverable; the zoom is a flourish. Losing the
-        flourish must never lose the job."""
         received: dict = {}
-
-        def fake_burn_captions(video_path, ass_path, output_path, *, duration_seconds,
-                               ffmpeg_path=None, fontsdir=None, on_progress=None,
-                               use_nvenc=None, punch_filter=None, **_extra):
-            received["punch_filter"] = punch_filter
-            Path(output_path).write_bytes(b"fake mp4")
-            return Path(output_path)
 
         def explode(*_a, **_k):
             raise engine.ProbeError("ffprobe is missing")
 
-        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
+        monkeypatch.setattr(engine, "burn_captions", _fake_burn(received))
         monkeypatch.setattr(engine, "probe_video", explode)
-
         settings = make_settings(tmp_path)
         settings.punch_mode = "sentence"
-        video = tmp_path / "footage" / "clip.mp4"
-        video.parent.mkdir(parents=True)
-        video.write_bytes(b"fake video")
-        job = make_job(store, video, settings.out_dir / "clip", burn=True)
-        transcriber = FakeTranscriber(_result(["Hello.", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-        run_job(job, lambda _p: None)  # must not raise
+        job = make_job(store, _video(tmp_path), settings.out_dir / "clip", burn=True)
+        run_to_completion(build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["Hello.", "there", "friend"]))), job)
 
         assert received["punch_filter"] is None
-        assert (Path(job.output_dir) / f"{Path(job.input_path).stem}.captioned.mp4").exists()
+        assert (Path(job.output_dir) / "clip.captioned.mp4").exists()
