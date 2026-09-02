@@ -27,11 +27,22 @@ choices here:
 from __future__ import annotations
 
 import inspect
+import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
+
+# Devices whose load failure (missing cuBLAS/cuDNN DLLs, driver mismatch)
+# is retried on the CPU. "auto" resolves to cuda when a GPU is present.
+GPU_DEVICES = frozenset({"cuda", "auto"})
+
+
+def default_compute_type(device: str) -> str:
+    return "float16" if device == "cuda" else "int8"
 
 ProgressCallback = Callable[[float, float], None]  # (seconds_done, total_seconds)
 StopCheck = Callable[[], bool]
@@ -154,6 +165,14 @@ class WhisperTranscriber:
             memory) rather than ``WhisperModel.transcribe``. The eager
             path is still used when a call asks for ``vad_filter=False``,
             which the batched pipeline cannot run on audio over 30s.
+        local_files_only: never contact the Hugging Face Hub; load the
+            model from ``download_root`` as it is. Otherwise every launch
+            asks the Hub for a newer revision and may re-download it.
+
+    After a successful load ``effective_device`` and
+    ``effective_compute_type`` say where the model actually runs: a
+    ``cuda``/``auto`` load that fails (missing cuBLAS/cuDNN DLLs, driver
+    mismatch) is retried once on the CPU, and callers can surface that.
     """
 
     def __init__(
@@ -168,18 +187,31 @@ class WhisperTranscriber:
         hallucination_silence_threshold: float | None = 2.0,
         batch_size: int = 8,
         use_batched_pipeline: bool = True,
+        local_files_only: bool = False,
     ) -> None:
         self.model_size = model_size
         self.device = device
-        self.compute_type = compute_type or ("float16" if device == "cuda" else "int8")
+        self.compute_type = compute_type or default_compute_type(device)
         self.download_root = download_root
         self.cpu_threads = cpu_threads if cpu_threads is not None else default_cpu_threads()
         self.condition_on_previous_text = condition_on_previous_text
         self.hallucination_silence_threshold = hallucination_silence_threshold
         self.batch_size = max(1, batch_size)
         self.use_batched_pipeline = use_batched_pipeline
+        self.local_files_only = local_files_only
+        self.effective_device: str | None = None
+        self.effective_compute_type: str | None = None
         self._model = None
         self._pipeline = None
+
+    def _model_kwargs(self, device: str, compute_type: str) -> dict[str, Any]:
+        return {
+            "device": device,
+            "compute_type": compute_type,
+            "cpu_threads": self.cpu_threads,
+            "download_root": str(self.download_root) if self.download_root else None,
+            "local_files_only": self.local_files_only,
+        }
 
     def _load(self):
         if self._model is not None:
@@ -190,17 +222,29 @@ class WhisperTranscriber:
             raise TranscriptionError("faster-whisper is not installed") from exc
 
         try:
-            self._model = WhisperModel(
-                self.model_size,
-                device=self.device,
-                compute_type=self.compute_type,
-                cpu_threads=self.cpu_threads,
-                download_root=str(self.download_root) if self.download_root else None,
-            )
+            self._model = WhisperModel(self.model_size, **self._model_kwargs(self.device, self.compute_type))
+            self.effective_device, self.effective_compute_type = self.device, self.compute_type
+            return self._model
         except Exception as exc:  # faster-whisper raises plain Exception/RuntimeError
+            if self.device not in GPU_DEVICES:
+                raise TranscriptionError(
+                    f"Failed to load Whisper model '{self.model_size}' on {self.device}: {exc}"
+                ) from exc
+            gpu_error = exc
+
+        logger.warning(
+            "Could not load Whisper model '%s' on %s (%s); retrying on the CPU",
+            self.model_size, self.device, gpu_error,
+        )
+        cpu_compute_type = default_compute_type("cpu")
+        try:
+            self._model = WhisperModel(self.model_size, **self._model_kwargs("cpu", cpu_compute_type))
+        except Exception as cpu_exc:
             raise TranscriptionError(
-                f"Failed to load Whisper model '{self.model_size}' on {self.device}: {exc}"
-            ) from exc
+                f"Failed to load Whisper model '{self.model_size}' on {self.device} ({gpu_error}) "
+                f"and on cpu ({cpu_exc})"
+            ) from cpu_exc
+        self.effective_device, self.effective_compute_type = "cpu", cpu_compute_type
         return self._model
 
     def _load_pipeline(self, model):
