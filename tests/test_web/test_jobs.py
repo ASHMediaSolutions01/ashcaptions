@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from ash_captions.web.models import JobStatus
 
 from .fakes import default_style_definition
@@ -101,6 +103,48 @@ class TestSubmitJob:
     def test_rejects_empty_file(self, client):
         res = _submit(client, files={"file": ("clip.mp4", b"", "video/mp4")})
         assert res.status_code == 400
+
+    def test_upload_over_the_size_ceiling_is_413_pointing_at_the_path_field(self, client, app, fake_queue):
+        # The ceiling is judged from Content-Length so a multi-GB body is
+        # never written a second time; the test only needs the header.
+        res = client.post(
+            "/api/jobs",
+            data={"language": "en", "preset": "POP"},
+            files={"file": ("huge.mp4", VIDEO_BYTES, "video/mp4")},
+            headers={"Content-Length": str(2 * 1024 * 1024 * 1024 + 1)},
+        )
+        assert res.status_code == 413
+        assert "Video file location" in res.json()["detail"]
+        assert fake_queue.list_jobs() == []
+        assert list(app.state.incoming_dir.glob("**/*")) == []
+
+    def test_unwritable_incoming_dir_is_a_clean_500_with_no_stray_job(self, client, app, fake_queue, tmp_path):
+        blocker = tmp_path / "blocker"
+        blocker.write_bytes(b"a file where the uploads directory should be")
+        app.state.incoming_dir = blocker  # mkdir under a file raises OSError
+        res = _submit(client)
+        assert res.status_code == 500
+        assert "Couldn't save the upload" in res.json()["detail"]
+        assert fake_queue.list_jobs() == []
+
+    def test_job_list_is_capped_to_the_newest_100(self, client, fake_queue):
+        from ash_captions.web.models import JobOptions
+
+        for i in range(130):
+            fake_queue.submit(Path(f"clip-{i:03d}.mp4"), JobOptions(language="en", preset="POP"))
+        res = client.get("/api/jobs")
+        assert len(res.json()) == 100
+
+    def test_limit_is_passed_down_when_the_queue_accepts_it(self, client, fake_queue):
+        calls = []
+
+        def list_jobs(limit=None):
+            calls.append(limit)
+            return []
+
+        fake_queue.list_jobs = list_jobs
+        client.get("/api/jobs")
+        assert calls == [100]
 
     def test_upload_spanning_multiple_chunks_is_written_intact(self, client, app):
         # Exercises the streaming write path across an internal chunk

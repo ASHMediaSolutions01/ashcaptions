@@ -18,14 +18,22 @@ the length of the source video.
 Runs off the request thread: whisper plus two ffmpeg passes easily take
 several seconds, and spec 7A.3 depends on the request returning immediately
 with a job handle the browser polls, never blocking. One background thread
-per preview job -- previews are infrequent, single-editor, and ephemeral
-(nothing here persists across a restart the way the real job queue does),
-so unlike `pipeline.JobWorker` this doesn't need a persistent, single
-worker queue.
+per preview job, but only one preview at a time (`PreviewBusyError`
+otherwise): previews share one Whisper model and one CPU with the real
+job worker, and an editor mashing "Render" must not fan out N transcriptions.
+Previews are ephemeral -- each new one deletes the previous one's temp
+directory, so a long editing session never accumulates clips.
+
+The transcriber defaults to one built from `Settings` (model size, device,
+bundled model cache) so the preview never silently loads a *different*
+Whisper model from library defaults than the real pipeline uses; pass
+`transcriber=` to share the pipeline's own instance and avoid holding two
+models in memory at all.
 """
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -34,6 +42,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable
 
+from ash_captions.config import Settings, find_binary
 from ash_captions.engine import Card, Transcriber, TranscriptionError, WhisperTranscriber, build_cards
 from ash_captions.styles import (
     DEFAULT_PREVIEW_DURATION_SECONDS,
@@ -43,12 +52,17 @@ from ash_captions.styles import (
     write_ass,
 )
 
-from .interfaces import PreviewNotFoundError, StyleValidationFailedError
+from .interfaces import PreviewBusyError, PreviewNotFoundError, StyleValidationFailedError
 from .models import PreviewJob, PreviewStatus
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_FFMPEG_PATH = Path("bin/ffmpeg.exe")
+
+# How much of ffmpeg's stderr reaches the browser on failure. The real
+# cause is always in the last few lines; the preceding banner/config dump
+# is noise that only makes the editor's error box unreadable.
+STDERR_TAIL_LINES = 3
 
 # Small and bounded on purpose: this only needs to survive an editor flipping
 # through the ~8 shipped styles (plus a few of their own) at one timestamp
@@ -99,7 +113,29 @@ def _run(args: list[str], *, what: str) -> None:
     except OSError as exc:
         raise RuntimeError(f"Failed to launch ffmpeg while {what}: {exc}") from exc
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed while {what} (exit {result.returncode}): {result.stderr}")
+        raise RuntimeError(f"ffmpeg failed while {what} (exit {result.returncode}): {stderr_tail(result.stderr)}")
+
+
+def stderr_tail(stderr: str, lines: int = STDERR_TAIL_LINES) -> str:
+    """The last `lines` non-blank lines of `stderr`, joined -- what an
+    editor can actually read in an error box."""
+    kept = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    return "\n".join(kept[-lines:])
+
+
+def transcriber_from_settings(settings: Settings | None = None) -> Transcriber:
+    """The same model/device/cache the real pipeline uses, so a preview
+    never pulls a second, different model from library defaults."""
+    settings = settings or Settings.load()
+    return WhisperTranscriber(
+        settings.model_size,
+        device=settings.device,
+        download_root=settings.model_cache_dir,
+    )
+
+
+def _default_ffmpeg_path() -> Path:
+    return find_binary("ffmpeg") or DEFAULT_FFMPEG_PATH
 
 
 class InProcessPreviewRenderer:
@@ -107,24 +143,34 @@ class InProcessPreviewRenderer:
     `run_ffmpeg` are injectable so tests can exercise job bookkeeping and
     error handling with no ffmpeg, no whisper model, and no filesystem
     rendering -- the production defaults are the only place any of those
-    are real."""
+    are real.
+
+    Production wiring should pass the pipeline's own `transcriber` so both
+    share one loaded model; with none given, one is built from `settings`
+    (default `Settings.load()`) -- never from `WhisperTranscriber()`'s
+    library defaults."""
 
     def __init__(
         self,
         *,
         transcriber: Transcriber | None = None,
-        ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH,
+        settings: Settings | None = None,
+        ffmpeg_path: Path | str | None = None,
         work_dir: Path | None = None,
         extract_window_audio: ExtractWindowAudio = _default_extract_window_audio,
         run_ffmpeg: RunFfmpeg = _default_run_ffmpeg,
     ) -> None:
-        self._transcriber = transcriber or WhisperTranscriber()
-        self._ffmpeg_path = Path(ffmpeg_path)
+        self._transcriber = transcriber or transcriber_from_settings(settings)
+        self._ffmpeg_path = Path(ffmpeg_path) if ffmpeg_path is not None else _default_ffmpeg_path()
         self._work_dir = Path(work_dir) if work_dir is not None else Path(tempfile.gettempdir()) / "ash-captions-previews"
         self._extract_window_audio = extract_window_audio
         self._run_ffmpeg = run_ffmpeg
         self._lock = threading.Lock()
         self._jobs: dict[str, PreviewJob] = {}
+        # Single-flight: the id of the preview currently rendering, if any,
+        # and the directory of the last one so the next submit can clear it.
+        self._active_job_id: str | None = None
+        self._previous_job_dir: Path | None = None
 
         # An editor flips through styles at the same timestamp far more than
         # they change the timestamp itself, and transcription -- not
@@ -147,7 +193,17 @@ class InProcessPreviewRenderer:
         job_id = uuid.uuid4().hex
         job = PreviewJob(id=job_id, status=PreviewStatus.PENDING)
         with self._lock:
+            if self._active_job_id is not None:
+                raise PreviewBusyError(self._active_job_id)
+            self._active_job_id = job_id
             self._jobs[job_id] = job
+            previous_dir, self._previous_job_dir = self._previous_job_dir, self._work_dir / job_id
+
+        # The previous clip may still be open in the browser's <video>; on
+        # Windows that makes its file undeletable until the tag lets go.
+        # Best effort is fine -- the next submit will try again.
+        if previous_dir is not None:
+            shutil.rmtree(previous_dir, ignore_errors=True)
 
         thread = threading.Thread(
             target=self._run_job,
@@ -201,6 +257,10 @@ class InProcessPreviewRenderer:
         except Exception as exc:  # noqa: BLE001 - any failure must reach the browser as a status, never crash the thread
             logger.warning("preview %s: failed: %s", job_id, exc)
             self._set(job_id, status=PreviewStatus.FAILED, phase=None, error=str(exc))
+        finally:
+            with self._lock:
+                if self._active_job_id == job_id:
+                    self._active_job_id = None
 
     def _cache_key(self, video_path: Path, start_seconds: float, duration_seconds: float) -> CacheKey | None:
         """None means "don't cache this" -- e.g. the file vanished between

@@ -86,9 +86,20 @@
 
   // ---- Loading ----
 
+  async function loadJson(url, what) {
+    const res = await AshApi.request(url);
+    if (!res.ok) throw new Error(await AshApi.errorDetail(res, `Couldn't load ${what}`));
+    return res.json();
+  }
+
   async function loadFonts() {
-    const res = await fetch("/api/fonts");
-    const fonts = await res.json();
+    let fonts;
+    try {
+      fonts = await loadJson("/api/fonts", "the font list");
+    } catch (err) {
+      showSaveStatus(`${err.message}. Refresh the page; if it keeps happening, restart ASH Captions.`, false);
+      return;
+    }
     fontSelect.innerHTML = "";
     for (const font of fonts) {
       const opt = document.createElement("option");
@@ -99,8 +110,12 @@
   }
 
   async function loadStyles(selectAfter) {
-    const res = await fetch("/api/styles");
-    styles = await res.json();
+    try {
+      styles = await loadJson("/api/styles", "the style list");
+    } catch (err) {
+      showSaveStatus(`${err.message}. Refresh the page; if it keeps happening, restart ASH Captions.`, false);
+      return;
+    }
     renderStyleList();
     const toSelect = selectAfter && styles.some((s) => s.name === selectAfter)
       ? selectAfter
@@ -122,11 +137,20 @@
       const tag = pickerTag(style);
       const item = document.createElement("div");
       item.className = "style-item" + (style.name === selectedName ? " selected" : "");
+      item.tabIndex = 0;
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", style.name === selectedName ? "true" : "false");
       item.innerHTML = `
         <span>${escapeHtml(style.name)}</span>
         <span class="tag${tag.cls ? " " + tag.cls : ""}">${tag.text}</span>
       `;
       item.addEventListener("click", () => selectStyle(style.name));
+      item.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          selectStyle(style.name);
+        }
+      });
       styleList.appendChild(item);
     }
   }
@@ -138,8 +162,11 @@
   }
 
   async function selectStyle(name) {
-    const res = await fetch(`/api/styles/${encodeURIComponent(name)}`);
-    if (!res.ok) return;
+    const res = await AshApi.request(`/api/styles/${encodeURIComponent(name)}`);
+    if (!res.ok) {
+      showSaveStatus(await AshApi.errorDetail(res, `Couldn't load "${name}"`), false);
+      return;
+    }
     const style = await res.json();
     selectedName = name;
     draft = JSON.parse(JSON.stringify(style.definition));
@@ -218,14 +245,13 @@
 
   async function saveAs(name) {
     if (!name || !name.trim()) return;
-    const res = await fetch(`/api/styles/${encodeURIComponent(name.trim())}`, {
+    const res = await AshApi.request(`/api/styles/${encodeURIComponent(name.trim())}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft),
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      showSaveStatus(body.detail || "Could not save this style.", false);
+      showSaveStatus(await AshApi.errorDetail(res, "Could not save this style"), false);
       return;
     }
     await loadStyles(name.trim());
@@ -246,10 +272,9 @@
   deleteBtn.addEventListener("click", async () => {
     if (!selectedName) return;
     if (!window.confirm(`Delete "${selectedName}"? This can't be undone.`)) return;
-    const res = await fetch(`/api/styles/${encodeURIComponent(selectedName)}`, { method: "DELETE" });
+    const res = await AshApi.request(`/api/styles/${encodeURIComponent(selectedName)}`, { method: "DELETE" });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      window.alert(body.detail || "Could not delete this style.");
+      window.alert(await AshApi.errorDetail(res, "Could not delete this style"));
       return;
     }
     await loadStyles();
@@ -257,8 +282,11 @@
 
   resetBtn.addEventListener("click", async () => {
     if (!selectedName) return;
-    const res = await fetch(`/api/styles/${encodeURIComponent(selectedName)}?shipped_only=true`);
-    if (!res.ok) return;
+    const res = await AshApi.request(`/api/styles/${encodeURIComponent(selectedName)}?shipped_only=true`);
+    if (!res.ok) {
+      showSaveStatus(await AshApi.errorDetail(res, "Couldn't load the built-in version"), false);
+      return;
+    }
     const style = await res.json();
     draft = JSON.parse(JSON.stringify(style.definition));
     draft.name = selectedName;
@@ -292,15 +320,12 @@
     setPreviewStatus("Starting…", "busy");
 
     try {
-      const res = await fetch("/api/styles/preview", {
+      const res = await AshApi.request("/api/styles/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ video_path: videoPath, start_seconds: startSeconds, style: draft }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Could not start the preview.");
-      }
+      if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Could not start the preview"));
       const job = await res.json();
       pollPreview(job.id);
     } catch (err) {
@@ -319,7 +344,7 @@
     previewPollTimer = setInterval(async () => {
       let job;
       try {
-        const res = await fetch(`/api/styles/preview/${encodeURIComponent(jobId)}`);
+        const res = await AshApi.request(`/api/styles/preview/${encodeURIComponent(jobId)}`);
         if (!res.ok) throw new Error("Lost track of the preview job.");
         job = await res.json();
       } catch (err) {

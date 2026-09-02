@@ -1,6 +1,9 @@
 (function () {
   "use strict";
 
+  const appError = document.getElementById("app-error");
+  const connectionBanner = document.getElementById("connection-banner");
+  const submitForm = document.getElementById("submit-form");
   const pathInput = document.getElementById("path-input");
   const uploadDetails = document.getElementById("upload-details");
   const dropzone = document.getElementById("dropzone");
@@ -18,23 +21,42 @@
   const submitError = document.getElementById("submit-error");
   const jobList = document.getElementById("job-list");
   const emptyQueue = document.getElementById("empty-queue");
-  const updateBanner = document.getElementById("update-banner");
-  const updateBannerDetail = document.getElementById("update-banner-detail");
-  const updateBannerReason = document.getElementById("update-banner-reason");
-  const updateNowBtn = document.getElementById("update-now-btn");
+  const queueHealth = document.getElementById("queue-health");
 
   let languages = [];
   // { type: "path", value: "D:\...\clip.mp4" } or { type: "upload", value: File }
   let selectedSource = null;
-  let queueBusyReason = null; // set from the live job list; overrides the server's snapshot reason
+
+  // ---- Page-level errors: said out loud at the top, never swallowed ----
+
+  function showAppError(message) {
+    appError.textContent = message;
+    appError.hidden = false;
+  }
+
+  function clearAppError() {
+    appError.hidden = true;
+    appError.textContent = "";
+  }
+
+  async function loadJson(url, what) {
+    const res = await AshApi.request(url);
+    if (!res.ok) throw new Error(await AshApi.errorDetail(res, `Couldn't load ${what}`));
+    return res.json();
+  }
 
   // ---- Caption style dropdown (spec 7A) ----
   // Populated from the same style library the style editor manages, so a
   // custom look designed there shows up here too -- not a hardcoded pair.
 
   async function loadPresets() {
-    const res = await fetch("/api/styles");
-    const styles = await res.json();
+    let styles;
+    try {
+      styles = await loadJson("/api/styles", "the caption styles");
+    } catch (err) {
+      showAppError(`${err.message}. Refresh the page; if it keeps happening, restart ASH Captions.`);
+      return;
+    }
     presetSelect.innerHTML = "";
     for (const style of styles) {
       const opt = document.createElement("option");
@@ -79,8 +101,12 @@
   }
 
   async function loadLanguages() {
-    const res = await fetch("/api/languages");
-    languages = await res.json();
+    try {
+      languages = await loadJson("/api/languages", "the language list");
+    } catch (err) {
+      showAppError(`${err.message}. Refresh the page; if it keeps happening, restart ASH Captions.`);
+      return;
+    }
     languageSelect.innerHTML = "";
     for (const lang of languages) {
       const opt = document.createElement("option");
@@ -143,6 +169,13 @@
     if (e.target === chooseBtn) return;
     fileInput.click();
   });
+  dropzone.addEventListener("keydown", (e) => {
+    if (e.target !== dropzone) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
   fileInput.addEventListener("change", () => {
     if (fileInput.files && fileInput.files[0]) showOptionsForUpload(fileInput.files[0]);
   });
@@ -167,8 +200,10 @@
   cancelBtn.addEventListener("click", resetSelection);
 
   // ---- Submit ----
+  // A real <form>, so Enter in the path field starts the job.
 
-  startBtn.addEventListener("click", async () => {
+  submitForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
     if (!selectedSource) return;
     startBtn.disabled = true;
     submitError.style.display = "none";
@@ -176,10 +211,7 @@
     try {
       const res =
         selectedSource.type === "path" ? await submitByPath() : await submitByUpload();
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Could not start this job.");
-      }
+      if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Could not start this job"));
       resetSelection();
       await refreshJobs();
     } catch (err) {
@@ -191,7 +223,7 @@
   });
 
   function submitByPath() {
-    return fetch("/api/jobs/by-path", {
+    return AshApi.request("/api/jobs/by-path", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -213,21 +245,71 @@
     form.append("preset", presetSelect.value);
     form.append("burn_in", burnInCheck.checked ? "true" : "false");
     form.append("translate_to_english", translateCheck.checked ? "true" : "false");
-    return fetch("/api/jobs", { method: "POST", body: form });
+    return AshApi.request("/api/jobs", { method: "POST", body: form });
   }
 
   // ---- Queue rendering ----
 
   const STATUS_LABEL = { pending: "Waiting", running: "Working", done: "Done", failed: "Failed" };
+  const STAGE_LABEL = {
+    extract: "Extracting audio",
+    transcribe: "Transcribing",
+    translate: "Translating to English",
+    postprocess: "Cleaning up the text",
+    write: "Writing captions",
+    cards_and_write: "Writing captions",
+    burn: "Burning captions in",
+  };
+
+  // What the job is doing right now. Prefers the queue's own `stage`;
+  // without one, reads it off the progress budget the pipeline uses
+  // (extract ~5%, transcribe to ~60%, then writing, then burn from ~85%).
+  function stageLabel(job) {
+    if (job.stage) return STAGE_LABEL[job.stage] || job.stage;
+    const pct = (job.progress || 0) * 100;
+    if (pct < 5) return "Extracting audio";
+    if (pct < 60) return "Transcribing";
+    if (job.options && job.options.burn_in && pct >= 85) return "Burning captions in";
+    return "Writing captions";
+  }
+
+  function formatDuration(ms) {
+    const s = Math.max(0, Math.round(ms / 1000));
+    if (s < 60) return `${s} s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    return `${h} h ${m % 60} min`;
+  }
+
+  function parseTime(iso) {
+    const t = iso ? Date.parse(iso) : NaN;
+    return Number.isNaN(t) ? null : t;
+  }
+
+  // Per job: [label, liveSinceTimestamp|null]. Live ones tick every second.
+  function elapsedFor(job) {
+    const started = parseTime(job.started_at) || parseTime(job.created_at);
+    const created = parseTime(job.created_at);
+    const updated = parseTime(job.updated_at);
+    if (job.status === "running") return started ? ["Running for", started] : ["", null];
+    if (job.status === "pending") return created ? ["Waiting for", created] : ["", null];
+    if (started && updated && updated >= started) {
+      const took = formatDuration(updated - started);
+      return [job.status === "done" ? `Finished in ${took}` : `Failed after ${took}`, null];
+    }
+    return ["", null];
+  }
 
   function renderJobs(jobs) {
     // Kept live off the same job snapshot the queue section already
     // renders from, so the Update button proactively disables itself the
     // moment a job starts running, without a second poll of its own.
-    queueBusyReason = (jobs || []).some((j) => j.status === "running")
-      ? "A caption job is still running. Try again when the queue is clear."
-      : null;
-    updateUpdateButtonState();
+    AshUpdates.setQueueBusy(
+      (jobs || []).some((j) => j.status === "running")
+        ? "A caption job is still running. Try again when the queue is clear."
+        : null
+    );
 
     if (!jobs || jobs.length === 0) {
       emptyQueue.style.display = "block";
@@ -239,23 +321,40 @@
     for (const job of jobs) {
       jobList.appendChild(renderJob(job));
     }
+    tickClocks();
   }
 
   function renderJob(job) {
     const el = document.createElement("div");
     el.className = "job " + job.status;
 
-    const pct = Math.round((job.progress || 0) * 100);
+    const pct = job.status === "done" ? 100 : Math.round((job.progress || 0) * 100);
     const label = STATUS_LABEL[job.status] || job.status;
     const opts = job.options || {};
-    const meta = [opts.language, opts.dialect, opts.preset].filter(Boolean).join(" · ");
+    const meta = [opts.language, opts.dialect, opts.preset, opts.burn_in ? "burn-in" : null, opts.translate_to_english ? "+ English" : null]
+      .filter(Boolean)
+      .join(" · ");
+
+    let stageText = "";
+    if (job.status === "running") stageText = `${stageLabel(job)} · ${pct}%`;
+    else if (job.status === "pending") stageText = "Waiting in the queue";
+    else if (job.status === "done") stageText = "Done · 100%";
+    else if (job.status === "failed") stageText = "Failed";
+
+    const [elapsedLabel, since] = elapsedFor(job);
 
     el.innerHTML = `
       <div class="job-top">
         <div class="job-name">${escapeHtml(job.filename)}</div>
         <div class="badge ${job.status}">${label}</div>
       </div>
-      <div class="progress-track"><div class="progress-fill" style="width:${job.status === 'done' ? 100 : pct}%"></div></div>
+      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="job-status-line">
+        <span class="job-stage">${escapeHtml(stageText)}</span>
+        <span class="job-elapsed" ${since ? `data-since="${since}" data-label="${escapeHtml(elapsedLabel)}"` : ""}>${escapeHtml(elapsedLabel)}</span>
+      </div>
       <div class="job-meta">${escapeHtml(meta)}</div>
     `;
 
@@ -268,6 +367,7 @@
       const actions = document.createElement("div");
       actions.className = "job-actions";
       const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
       retryBtn.className = "btn secondary";
       retryBtn.textContent = "Retry";
       retryBtn.addEventListener("click", () => retryJob(job.id, retryBtn));
@@ -287,8 +387,8 @@
   async function retryJob(jobId, btn) {
     btn.disabled = true;
     try {
-      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
-      if (!res.ok) throw new Error("Could not retry this job.");
+      const res = await AshApi.request(`/api/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
+      if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Could not retry this job"));
       await refreshJobs();
     } catch (err) {
       btn.disabled = false;
@@ -297,14 +397,67 @@
   }
 
   async function refreshJobs() {
-    const res = await fetch("/api/jobs");
-    renderJobs(await res.json());
+    try {
+      renderJobs(await loadJson("/api/jobs", "the job list"));
+      clearAppError();
+    } catch (err) {
+      showAppError(`${err.message}. The queue shown may be out of date.`);
+    }
+  }
+
+  // ---- Clocks: "Running for 23 min" / "last check 3 s ago" ----
+  // Ticked client-side once a second between server frames -- a
+  // transcription can go minutes without a progress change, and a
+  // bar that hasn't moved needs to say plainly that time is passing.
+
+  function tickClocks() {
+    const now = Date.now();
+    for (const el of jobList.querySelectorAll(".job-elapsed[data-since]")) {
+      el.textContent = `${el.dataset.label} ${formatDuration(now - Number(el.dataset.since))}`;
+    }
+    renderHealth(now);
+  }
+  setInterval(tickClocks, 1000);
+
+  // ---- Health line (from the `health` SSE event; null fields read as "unknown") ----
+
+  let health = { worker_alive: null, lastPollAt: null, live: false };
+
+  function applyHealth(payload) {
+    const serverNow = parseTime(payload.server_time);
+    const clockOffset = serverNow ? Date.now() - serverNow : 0; // guards against skew
+    const lastPoll = parseTime(payload.last_watcher_poll);
+    health.worker_alive = payload.worker_alive;
+    health.lastPollAt = lastPoll ? lastPoll + clockOffset : null;
+    renderHealth(Date.now());
+  }
+
+  function renderHealth(now) {
+    const worker =
+      health.worker_alive === true ? "running" : health.worker_alive === false ? "stopped" : "unknown";
+    const parts = [`Worker: ${worker}`];
+    if (health.lastPollAt) parts.push(`last check ${formatDuration(now - health.lastPollAt)} ago`);
+    parts.push(health.live ? "live" : "not connected");
+    queueHealth.textContent = parts.join(" · ");
+    queueHealth.classList.toggle("bad", health.worker_alive === false || !health.live);
   }
 
   // ---- Live updates ----
+  // One EventSource for the life of the page. The server heartbeats every
+  // second so an hour of transcription silence never looks like a dead
+  // connection; if it really does drop, the browser reconnects itself and
+  // the banner says so in the meantime.
+
+  let lostContactTimer = null;
 
   function connectEvents() {
     const source = new EventSource("/api/events");
+    source.onopen = () => {
+      if (lostContactTimer) { clearTimeout(lostContactTimer); lostContactTimer = null; }
+      connectionBanner.hidden = true;
+      health.live = true;
+      renderHealth(Date.now());
+    };
     source.onmessage = (evt) => {
       try {
         renderJobs(JSON.parse(evt.data));
@@ -312,109 +465,26 @@
         // ignore malformed frame
       }
     };
+    source.addEventListener("health", (evt) => {
+      try {
+        applyHealth(JSON.parse(evt.data));
+      } catch (err) {
+        // ignore malformed frame
+      }
+    });
     source.onerror = () => {
-      // EventSource retries automatically; nothing to do here.
+      health.live = false;
+      renderHealth(Date.now());
+      // EventSource retries on its own (retry: 2000 from the server). Only
+      // say something if it hasn't come back promptly -- a single blip
+      // during a reconnect shouldn't flash a scary banner.
+      if (!lostContactTimer) {
+        lostContactTimer = setTimeout(() => {
+          lostContactTimer = null;
+          if (source.readyState !== EventSource.OPEN) connectionBanner.hidden = false;
+        }, 2500);
+      }
     };
-  }
-
-  // ---- In-app updates (spec 11.4) ----
-  // The click on "Update now" IS the consent -- deliberately no confirmation
-  // dialog here (a second "are you sure?" just trains people to click
-  // through unread). Applying restarts the app, which is why the button
-  // says so right next to itself rather than behind a dialog.
-
-  function formatMegabytes(bytes) {
-    return `${Math.round(bytes / 1024 / 1024)} MB`;
-  }
-
-  function updateUpdateButtonState() {
-    if (updateBanner.hidden) return;
-    updateNowBtn.disabled = !!queueBusyReason;
-    updateBannerReason.hidden = !queueBusyReason;
-    updateBannerReason.textContent = queueBusyReason || "";
-  }
-
-  async function checkForUpdate() {
-    const res = await fetch("/api/update");
-    if (!res.ok) return;
-    const info = await res.json();
-    if (!info) return;
-
-    updateBannerDetail.textContent =
-      `Version ${info.version} (${formatMegabytes(info.size_bytes)})` + (info.notes ? ` -- ${info.notes}` : "");
-    if (info.blocked_reason) queueBusyReason = info.blocked_reason;
-    updateBanner.hidden = false;
-    updateUpdateButtonState();
-  }
-
-  updateNowBtn.addEventListener("click", async () => {
-    updateNowBtn.disabled = true;
-    updateBannerReason.hidden = false;
-    updateBannerReason.textContent = "Starting the update…";
-
-    try {
-      const res = await fetch("/api/update/apply", { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Could not start the update.");
-      }
-      const job = await res.json();
-      pollUpdateApply(job.id);
-    } catch (err) {
-      updateBannerReason.textContent = err.message;
-      updateNowBtn.disabled = !!queueBusyReason;
-    }
-  });
-
-  const UPDATE_PHASE_LABEL = {
-    pending: "Starting the update…",
-    downloading: "Downloading the update…",
-    applying: "Applying the update…",
-  };
-
-  function pollUpdateApply(jobId) {
-    const timer = setInterval(async () => {
-      let job;
-      try {
-        const res = await fetch(`/api/update/apply/${encodeURIComponent(jobId)}`);
-        if (!res.ok) throw new Error("Lost track of the update.");
-        job = await res.json();
-      } catch (err) {
-        clearInterval(timer);
-        updateBannerReason.textContent = err.message;
-        updateNowBtn.disabled = !!queueBusyReason;
-        return;
-      }
-
-      if (job.status === "done") {
-        clearInterval(timer);
-        updateBannerReason.textContent = "Update applied -- the app is restarting…";
-        waitForRestartThenReload();
-      } else if (job.status === "failed") {
-        clearInterval(timer);
-        updateBannerReason.textContent = job.error || "The update failed.";
-        updateNowBtn.disabled = !!queueBusyReason;
-      } else {
-        updateBannerReason.textContent = UPDATE_PHASE_LABEL[job.status] || "Working…";
-      }
-    }, 1000);
-  }
-
-  function waitForRestartThenReload() {
-    // The app process is about to exit and relaunch (spec 11.4) -- this
-    // page's own connection will drop. Poll for it to come back rather
-    // than making the editor remember to refresh manually.
-    const timer = setInterval(async () => {
-      try {
-        const res = await fetch("/api/jobs", { cache: "no-store" });
-        if (res.ok) {
-          clearInterval(timer);
-          window.location.reload();
-        }
-      } catch (err) {
-        // still restarting; keep waiting
-      }
-    }, 2000);
   }
 
   // ---- Boot ----
@@ -423,5 +493,5 @@
   loadPresets();
   refreshJobs();
   connectEvents();
-  checkForUpdate();
+  AshUpdates.checkForUpdate((message) => { queueHealth.title = message; });
 })();

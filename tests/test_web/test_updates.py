@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ash_captions.web.models import JobOptions, JobStatus, UpdateApplyStatus
 
 from .fakes import FakeUpdateInfo
@@ -110,3 +112,52 @@ def test_poll_apply_job_status(client, fake_update_state, fake_update_applier):
 def test_get_unknown_apply_job_is_404(client):
     res = client.get("/api/update/apply/does-not-exist")
     assert res.status_code == 404
+
+
+class TestSourceCheckoutGate:
+    """On a source checkout (or any non-frozen build) the apply step would
+    robocopy /MIR a release bundle over the git repository. The web layer
+    must therefore never *offer* the update there, and must refuse to apply
+    one even if asked directly."""
+
+    @pytest.fixture
+    def updates_supported(self):
+        return lambda: False
+
+    def test_banner_never_shows_even_when_a_newer_version_was_found(self, client, fake_update_state):
+        fake_update_state.set(FakeUpdateInfo(version="2.0.0"))
+        res = client.get("/api/update")
+        assert res.status_code == 200
+        assert res.json() is None
+
+    def test_apply_is_refused_with_409(self, client, fake_update_state, fake_update_applier):
+        fake_update_state.set(FakeUpdateInfo(version="2.0.0"))
+        res = client.post("/api/update/apply")
+        assert res.status_code == 409
+        assert "source checkout" in res.json()["detail"]
+        assert fake_update_applier.submitted == []
+
+
+def test_default_gate_is_the_runtime_check(fake_queue, fake_catalogue, fake_style_provider, fake_preview_renderer, fake_update_applier, fake_update_state, tmp_path):
+    """With no `updates_supported` injected, create_app() uses
+    runtime.updates_supported() -- which, under pytest (not frozen, inside
+    a git checkout), says no."""
+    from fastapi.testclient import TestClient
+
+    from ash_captions.web.app import create_app
+
+    from .conftest import CLIENT_HEADERS, LOCAL_BASE_URL
+
+    app = create_app(
+        fake_queue,
+        fake_catalogue,
+        style_provider=fake_style_provider,
+        preview_renderer=fake_preview_renderer,
+        update_applier=fake_update_applier,
+        incoming_dir=tmp_path,
+    )
+    app.state.update_state = fake_update_state
+    fake_update_state.set(FakeUpdateInfo(version="2.0.0"))
+    client = TestClient(app, base_url=LOCAL_BASE_URL, headers=CLIENT_HEADERS)
+    assert client.get("/api/update").json() is None
+    assert client.post("/api/update/apply").status_code == 409

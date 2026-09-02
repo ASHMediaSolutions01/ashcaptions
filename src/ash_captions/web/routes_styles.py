@@ -6,9 +6,11 @@ its dependency getters and mounts it, same as `routes_updates.py`.
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 from .interfaces import (
+    PreviewBusyError,
     PreviewNotFoundError,
     PreviewRenderer,
     StyleIsShippedError,
@@ -83,12 +85,19 @@ def build_styles_router(get_style_provider, get_preview_renderer) -> APIRouter:
         """Kicks off a ~3s styled preview render (spec 7A.3) and returns a
         job handle immediately -- rendering takes real seconds, so the
         browser polls GET /api/styles/preview/{id} rather than this route
-        blocking."""
-        video_path = validate_local_path(body.video_path)
+        blocking.
+
+        `validate_local_path` touches the filesystem (exists/open) -- on a
+        network share that can stall for seconds, so it runs off the event
+        loop rather than freezing every other request, the SSE stream
+        included."""
+        video_path = await run_in_threadpool(validate_local_path, body.video_path)
         try:
             return preview_renderer.submit_preview(video_path, body.start_seconds, body.style)
         except StyleValidationFailedError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        except PreviewBusyError:
+            raise HTTPException(status_code=409, detail="A preview is already rendering. Wait for it to finish.")
 
     @router.get("/api/styles/preview/{job_id}", response_model=PreviewJob)
     async def get_preview(

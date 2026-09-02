@@ -181,3 +181,84 @@ def test_get_unknown_preview_raises(tmp_path):
     renderer, _ = _make_renderer(tmp_path)
     with pytest.raises(PreviewNotFoundError):
         renderer.get_preview("does-not-exist")
+
+
+class TestSingleFlight:
+    def test_second_preview_while_one_is_rendering_is_refused(self, tmp_path):
+        import threading
+
+        from ash_captions.web.interfaces import PreviewBusyError
+
+        release = threading.Event()
+
+        def slow_ffmpeg(args):
+            release.wait(5)
+            Path(args[-1]).write_bytes(b"clip bytes")
+
+        renderer, _ = _make_renderer(tmp_path, run_ffmpeg=slow_ffmpeg)
+        first = renderer.submit_preview(tmp_path / "clip.mp4", 0.0, default_style_definition("POP"))
+        with pytest.raises(PreviewBusyError):
+            renderer.submit_preview(tmp_path / "clip.mp4", 0.0, default_style_definition("CLEAN"))
+        release.set()
+        _wait_until_finished(renderer, first.id)
+
+        # Slot freed once the first finished.
+        second = renderer.submit_preview(tmp_path / "clip.mp4", 0.0, default_style_definition("CLEAN"))
+        _wait_until_finished(renderer, second.id)
+        assert renderer.get_preview(second.id).status == PreviewStatus.DONE
+
+    def test_slot_is_freed_even_when_the_preview_fails(self, tmp_path):
+        renderer, _ = _make_renderer(tmp_path, transcriber=_FakeTranscriber(fail=True))
+        failed = renderer.submit_preview(tmp_path / "clip.mp4", 0.0, default_style_definition("POP"))
+        _wait_until_finished(renderer, failed.id)
+        renderer.submit_preview(tmp_path / "clip.mp4", 0.0, default_style_definition("POP"))  # no PreviewBusyError
+
+
+def test_previous_preview_dir_is_deleted_when_the_next_one_starts(tmp_path):
+    renderer, _ = _make_renderer(tmp_path)
+    first = renderer.submit_preview(tmp_path / "clip.mp4", 0.0, default_style_definition("POP"))
+    _wait_until_finished(renderer, first.id)
+    first_dir = Path(renderer.get_preview(first.id).clip_path).parent
+    assert first_dir.is_dir()
+
+    second = renderer.submit_preview(tmp_path / "clip.mp4", 1.0, default_style_definition("POP"))
+    _wait_until_finished(renderer, second.id)
+
+    assert not first_dir.exists()
+    assert Path(renderer.get_preview(second.id).clip_path).is_file()
+
+
+def test_ffmpeg_failure_reaches_the_browser_as_the_last_three_stderr_lines(tmp_path):
+    from ash_captions.web.preview_adapter import stderr_tail
+
+    noise = "\n".join(f"config line {i}" for i in range(40))
+    stderr = noise + "\n\n[libx264] something\nError while opening encoder\nConversion failed!\n"
+    tail = stderr_tail(stderr)
+    assert tail == "[libx264] something\nError while opening encoder\nConversion failed!"
+    assert "config line" not in tail
+
+
+def test_default_transcriber_comes_from_settings_not_library_defaults(tmp_path, monkeypatch):
+    """Regression guard: the preview used to construct WhisperTranscriber()
+    bare -- a second, possibly different model (size/device/cache) from the
+    one the real pipeline loads."""
+    from ash_captions.config import Settings
+    from ash_captions.web import preview_adapter
+
+    monkeypatch.setenv("ASH_CAPTIONS_ROOT", str(tmp_path))
+    settings = Settings(model_size="medium", device="cuda")
+    transcriber = preview_adapter.transcriber_from_settings(settings)
+    assert transcriber.model_size == "medium"
+    assert transcriber.device == "cuda"
+    assert Path(transcriber.download_root) == settings.model_cache_dir
+
+    renderer = preview_adapter.InProcessPreviewRenderer(
+        settings=settings, work_dir=tmp_path, extract_window_audio=_noop_extract, run_ffmpeg=lambda a: None
+    )
+    assert renderer._transcriber.model_size == "medium"
+
+
+def test_injected_transcriber_is_used_as_is(tmp_path):
+    shared = _FakeTranscriber()
+    renderer = InProcessPreviewRenderer(transcriber=shared, work_dir=tmp_path, extract_window_audio=_noop_extract, run_ffmpeg=lambda a: None)
+    assert renderer._transcriber is shared

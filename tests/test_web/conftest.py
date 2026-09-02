@@ -47,6 +47,20 @@ def fake_update_state() -> FakeUpdateState:
 
 
 @pytest.fixture
+def sse_poll_interval() -> float:
+    """Override in a test module to speed up SSE heartbeat tests."""
+    return 1.0
+
+
+@pytest.fixture
+def updates_supported():
+    """Default: behave like an installed build so the update tests can
+    exercise the banner/apply flow. `test_updates.py` overrides this to
+    prove the source-checkout gate."""
+    return lambda: True
+
+
+@pytest.fixture
 def app(
     fake_queue,
     fake_catalogue,
@@ -54,6 +68,8 @@ def app(
     fake_preview_renderer,
     fake_update_applier,
     fake_update_state,
+    sse_poll_interval,
+    updates_supported,
     tmp_path,
 ):
     built = create_app(
@@ -63,6 +79,8 @@ def app(
         preview_renderer=fake_preview_renderer,
         update_applier=fake_update_applier,
         incoming_dir=tmp_path / "uploads",
+        sse_poll_interval=sse_poll_interval,
+        updates_supported=updates_supported,
     )
     # Mirrors production exactly: app/__main__.py sets app.state.update_state
     # itself, after create_app() returns, rather than through it -- see
@@ -71,6 +89,13 @@ def app(
     return built
 
 
+# What the app's own pages send: a loopback Host and the client header
+# every mutating request must carry (see web/security.py). A client built
+# without these -- see test_security.py -- is a foreign page.
+LOCAL_BASE_URL = "http://127.0.0.1:8756"
+CLIENT_HEADERS = {"X-ASH-Client": "1"}
+
+
 @pytest.fixture
 def client(app) -> TestClient:
-    return TestClient(app)
+    return TestClient(app, base_url=LOCAL_BASE_URL, headers=CLIENT_HEADERS)

@@ -4,22 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ASH Captions - Style Editor</title>
-<link rel="stylesheet" href="/static/style.css?v=0.1.1">
-<link rel="stylesheet" href="/static/style_editor.css?v=0.1.1">
+<!-- __VERSION__ is stamped with the running version when served (web/app.py). -->
+<link rel="stylesheet" href="/static/style.css?v=__VERSION__">
+<link rel="stylesheet" href="/static/style_editor.css?v=__VERSION__">
 </head>
 <body>
 
 <header>
   <h1>Style editor</h1>
   <p>Pick a look, tweak it, and see it burned into your own footage before you commit to a job.</p>
-  <a class="back-link" href="/">&larr; Back to captioning</a>
+  <nav class="editor-nav">
+    <a class="back-link" href="/">&larr; Back to captioning</a>
+    <a class="back-link jump-link" href="#preview-card">Jump to the live preview &darr;</a>
+  </nav>
 </header>
 
 <main class="editor-main">
 
   <section class="card picker-card">
     <h2>Styles</h2>
-    <div id="style-list"></div>
+    <div id="style-list" role="listbox" aria-label="Styles"></div>
     <div class="picker-actions">
       <button type="button" class="btn secondary" id="duplicate-btn">Duplicate</button>
       <button type="button" class="btn secondary" id="reset-btn" hidden>Reset to shipped</button>
@@ -95,10 +99,10 @@
       <button type="button" class="btn" id="save-btn">Save</button>
       <button type="button" class="btn secondary" id="save-as-btn">Save as&hellip;</button>
     </div>
-    <div id="save-status"></div>
+    <div id="save-status" role="status"></div>
   </section>
 
-  <section class="card preview-card">
+  <section class="card preview-card" id="preview-card">
     <h2>Live preview</h2>
     <p class="hint">Pick your video, choose a moment with speech in it, and render a real ~3 second clip in this style.</p>
 
@@ -112,7 +116,7 @@
     </div>
 
     <button type="button" class="btn" id="render-btn">Render preview</button>
-    <div id="preview-status"></div>
+    <div id="preview-status" role="status"></div>
 
     <div id="preview-output" hidden>
       <video id="preview-video" controls></video>
@@ -121,6 +125,7 @@
 
 </main>
 
-<script src="/static/style_editor.js?v=0.1.1"></script>
+<script src="/static/api.js?v=__VERSION__"></script>
+<script src="/static/style_editor.js?v=__VERSION__"></script>
 </body>
 </html>

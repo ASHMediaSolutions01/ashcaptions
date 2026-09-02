@@ -34,20 +34,32 @@ from ash_captions.web.models import (
 
 
 class FakeJobQueue:
-    """Implements the `JobQueue` protocol in memory."""
+    """Implements the `JobQueue` protocol in memory.
 
-    def __init__(self, jobs: list[Job] | None = None) -> None:
+    `output_root` mirrors `app.adapter.QueueAdapter`'s `out_dir`: each
+    submitted job gets `output_root/<stem>` as its `output_dir`, so the
+    Review routes can be exercised against real temp files.
+    `worker_alive`/`last_watcher_poll` are the optional health attributes
+    the web layer probes for (None = "not reported").
+    """
+
+    def __init__(self, jobs: list[Job] | None = None, *, output_root: Path | None = None) -> None:
         self._jobs: dict[str, Job] = {j.id: j for j in (jobs or [])}
         self._subscribers: list[asyncio.Queue] = []
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._output_root = output_root
+        self.worker_alive: bool | None = None
+        self.last_watcher_poll: datetime | None = None
 
     def list_jobs(self) -> list[Job]:
-        return sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
+        return sorted(self._jobs.values(), key=lambda j: (j.created_at, j.id), reverse=True)
 
     def get_job(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
     def submit(self, file_path: Path, options: JobOptions) -> Job:
         now = datetime.now(timezone.utc)
+        output_dir = self._output_root / file_path.stem if self._output_root is not None else None
         job = Job(
             id=uuid.uuid4().hex,
             filename=file_path.name,
@@ -57,6 +69,8 @@ class FakeJobQueue:
             error=None,
             created_at=now,
             updated_at=now,
+            input_path=str(file_path),
+            output_dir=str(output_dir) if output_dir is not None else None,
         )
         self._jobs[job.id] = job
         self._notify()
@@ -81,6 +95,7 @@ class FakeJobQueue:
         return updated
 
     async def subscribe(self) -> AsyncIterator[list[Job]]:
+        self._loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
         self._subscribers.append(queue)
         try:
@@ -92,8 +107,23 @@ class FakeJobQueue:
             self._subscribers.remove(queue)
 
     def _notify(self) -> None:
+        """Same marshalling rule as the real `QueueAdapter._notify`: an
+        `asyncio.Queue` may only be touched from its own loop's thread, and
+        `TestClient` runs the app on a different thread from the test."""
         snapshot = self.list_jobs()
-        for subscriber in self._subscribers:
+        loop = self._loop
+        if loop is not None and not loop.is_closed():
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is not loop:
+                loop.call_soon_threadsafe(self._publish, snapshot)
+                return
+        self._publish(snapshot)
+
+    def _publish(self, snapshot: list[Job]) -> None:
+        for subscriber in list(self._subscribers):
             subscriber.put_nowait(snapshot)
 
     # Test helper only -- not part of the JobQueue protocol.

@@ -65,6 +65,18 @@ class JobQueue(Protocol):
         """
         ...
 
+    # Optional extras -- the web layer probes for these with getattr()/a
+    # signature check and degrades gracefully when they're missing:
+    #
+    # * ``list_jobs(limit: int)`` -- when the signature accepts ``limit``,
+    #   the web layer passes 100 so an SSE frame never carries every job
+    #   ever run (``routes_jobs.list_jobs_for_web``).
+    # * ``health() -> object`` with ``worker_alive: bool | None`` and
+    #   ``last_watcher_poll: str | datetime | None`` attributes (or keys),
+    #   or those two as plain attributes on the queue itself -- surfaced
+    #   as GET /api/health and the ``health`` SSE event
+    #   (``routes_events.read_health``).
+
 
 @runtime_checkable
 class LanguageCatalogueProvider(Protocol):
@@ -107,6 +119,12 @@ class StyleIsShippedError(Exception):
 
 class PreviewNotFoundError(Exception):
     """Raised by PreviewRenderer.get_preview() when job_id does not exist."""
+
+
+class PreviewBusyError(Exception):
+    """Raised by PreviewRenderer.submit_preview() while another preview is
+    still rendering -- previews share one Whisper model and one CPU, so
+    they run one at a time. The web layer maps this to a 409."""
 
 
 @runtime_checkable
@@ -162,7 +180,8 @@ class PreviewRenderer(Protocol):
     def submit_preview(self, video_path: Path, start_seconds: float, style: dict[str, Any]) -> PreviewJob:
         """Start rendering a preview clip of `video_path` at `start_seconds`
         with `style` (an in-progress edit) burned in. Raises
-        StyleValidationFailedError if `style` doesn't validate."""
+        StyleValidationFailedError if `style` doesn't validate, and
+        PreviewBusyError if a previous preview is still rendering."""
         ...
 
     def get_preview(self, job_id: str) -> PreviewJob:
