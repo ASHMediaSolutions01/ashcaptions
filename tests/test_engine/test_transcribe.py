@@ -408,3 +408,84 @@ def test_cancellation_is_a_transcription_error_and_defaults_keep_old_fakes_worki
             return TranscriptionResult(segments=(), language="en")
 
     assert isinstance(OldFake(), Transcriber)
+
+
+# ---------------------------------------------------------------------------
+# model loading: offline cache and CPU fallback
+# ---------------------------------------------------------------------------
+
+
+def _loaded_model():
+    model = MagicMock()
+    model.transcribe.return_value = ([], MagicMock(language="en", language_probability=0.9, duration=1.0))
+    return model
+
+
+def test_local_files_only_reaches_the_model(tmp_path, monkeypatch):
+    """A bundled HF cache must be used as-is: without this every launch
+    asks the Hub for a newer revision and re-downloads it."""
+    fake_module = _install_fake_faster_whisper(monkeypatch, _loaded_model())
+    WhisperTranscriber(local_files_only=True, download_root=tmp_path).transcribe(_audio(tmp_path))
+    kwargs = fake_module.WhisperModel.call_args[1]
+    assert kwargs["local_files_only"] is True
+    assert kwargs["download_root"] == str(tmp_path)
+    fake_module.WhisperModel.reset_mock()
+    WhisperTranscriber().transcribe(_audio(tmp_path))
+    assert fake_module.WhisperModel.call_args[1]["local_files_only"] is False
+
+
+def test_effective_device_reports_where_the_model_loaded(tmp_path, monkeypatch):
+    _install_fake_faster_whisper(monkeypatch, _loaded_model())
+    transcriber = WhisperTranscriber(device="cpu")
+    assert transcriber.effective_device is None
+    transcriber.transcribe(_audio(tmp_path))
+    assert (transcriber.effective_device, transcriber.effective_compute_type) == ("cpu", "int8")
+
+
+@pytest.mark.parametrize("requested", ["cuda", "auto"])
+def test_gpu_load_failure_falls_back_to_the_cpu_once(tmp_path, monkeypatch, caplog, requested):
+    """Missing cuBLAS/cuDNN DLLs or a driver mismatch surface as an
+    exception from WhisperModel(); the job must still run, on the CPU."""
+    model = _loaded_model()
+
+    def construct(_size, **kwargs):
+        if kwargs["device"] != "cpu":
+            raise RuntimeError("Library cublas64_12.dll is not found")
+        return model
+
+    fake_module = _install_fake_faster_whisper(monkeypatch, model)
+    fake_module.WhisperModel = MagicMock(side_effect=construct)
+    transcriber = WhisperTranscriber(device=requested)
+
+    with caplog.at_level("WARNING", logger="ash_captions.engine.transcribe"):
+        result = transcriber.transcribe(_audio(tmp_path))
+
+    assert result.language == "en"
+    calls = [c[1] for c in fake_module.WhisperModel.call_args_list]
+    assert [c["device"] for c in calls] == [requested, "cpu"]
+    assert calls[1]["compute_type"] == "int8"
+    assert calls[1]["cpu_threads"] == transcriber.cpu_threads
+    assert (transcriber.effective_device, transcriber.effective_compute_type) == ("cpu", "int8")
+    assert transcriber.device == requested  # the request is preserved for the UI
+    assert "cublas64_12.dll" in caplog.text and requested in caplog.text
+    # loaded once: a later call must not construct again
+    transcriber.transcribe(_audio(tmp_path))
+    assert fake_module.WhisperModel.call_count == 2
+
+
+def test_failure_on_both_devices_is_one_transcription_error(tmp_path, monkeypatch):
+    fake_module = _install_fake_faster_whisper(monkeypatch, _loaded_model())
+    fake_module.WhisperModel = MagicMock(side_effect=[RuntimeError("no cuda"), OSError("no cpu either")])
+    transcriber = WhisperTranscriber(device="cuda")
+    with pytest.raises(TranscriptionError, match="no cuda.*no cpu either"):
+        transcriber.transcribe(_audio(tmp_path))
+    assert transcriber.effective_device is None
+    assert fake_module.WhisperModel.call_count == 2
+
+
+def test_cpu_load_failure_is_not_retried(tmp_path, monkeypatch):
+    fake_module = _install_fake_faster_whisper(monkeypatch, _loaded_model())
+    fake_module.WhisperModel = MagicMock(side_effect=RuntimeError("bad model dir"))
+    with pytest.raises(TranscriptionError, match="on cpu: bad model dir"):
+        WhisperTranscriber(device="cpu").transcribe(_audio(tmp_path))
+    assert fake_module.WhisperModel.call_count == 1
