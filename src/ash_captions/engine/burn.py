@@ -29,11 +29,12 @@ DEFAULT_NVIDIA_SMI_PATH = "nvidia-smi"
 ProgressCallback = Callable[[float], None]  # called with a 0-100 percentage
 
 # Software H.264 encoders in preference order. libx264 is the quality and
-# speed benchmark, but it is GPL, so an LGPL ffmpeg build cannot ship it --
-# BtbN's LGPL build is configured --disable-libx264 and burning with it
-# fails outright with "Unknown encoder 'libx264'". libopenh264 (Cisco, BSD)
-# is the LGPL build's software encoder; h264_mf is Windows MediaFoundation,
-# a last resort that exists on any Windows machine.
+# speed benchmark and is what we ship (BtbN's GPL build). It is GPL, so an
+# LGPL ffmpeg build cannot contain it -- BtbN's LGPL build is configured
+# --disable-libx264 and burning with it fails outright with "Unknown encoder
+# 'libx264'", which is how the tool was first broken. libopenh264 (Cisco,
+# BSD) is the LGPL build's software encoder; h264_mf is Windows
+# MediaFoundation, a last resort that exists on any Windows machine.
 #
 # Which of these is present is a property of the ffmpeg binary we ship, not
 # of this code, so the encoder is probed at run time rather than assumed.
@@ -97,8 +98,8 @@ def select_video_encoder(
     raise BurnInError(
         f"{ffmpeg_path} has no usable H.264 encoder "
         f"(looked for {', '.join(SOFTWARE_H264_ENCODERS)}). "
-        "An LGPL ffmpeg build excludes libx264; use a build that ships one "
-        "of these encoders."
+        "An LGPL ffmpeg build excludes libx264; run scripts/fetch_ffmpeg.py "
+        "to get the GPL build we ship, or use a build with one of these."
     )
 
 

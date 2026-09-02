@@ -49,7 +49,7 @@ def find_binary(name: str) -> Path | None:
 
     Bundled wins deliberately: the spec requires ffmpeg to ship in `bin/` so a
     machine without ffmpeg installed still works, and so we control the build
-    (LGPL static) rather than inheriting whatever is on PATH.
+    (BtbN GPL static) rather than inheriting whatever is on PATH.
     """
     exe = name if name.endswith(".exe") else f"{name}.exe"
     bundled = app_root() / "bin" / exe

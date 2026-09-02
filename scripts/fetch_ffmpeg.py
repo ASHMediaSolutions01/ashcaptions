@@ -4,15 +4,20 @@ Run on Ghazi's build machine only, before `build.py`:
 
     .venv/Scripts/python.exe scripts/fetch_ffmpeg.py
 
-Why BtbN, and why LGPL specifically (spec section 11.1): we ship `ffmpeg.exe`
+Why BtbN, and why the GPL variant (spec section 11.1): we ship `ffmpeg.exe`
 inside our app rather than requiring editors to install it, which means *we*
 are the ones redistributing it -- the GPL/LGPL question is about
 redistributing our app, not about the (unencumbered) captioned video it
-produces. LGPL costs us nothing here: we only lose GPL-only encoders a
-captions tool never needed, and it keeps the licensing question simple should
-it ever come up. BtbN's Windows builds are static (a single self-contained
-.exe, no DLL fan-out to bundle correctly) and are the build most commonly
-pointed to for exactly this "ship ffmpeg with your app" use case.
+produces. We started on LGPL, which excludes libx264 (x264 is GPL), and the
+burn-in fell back to libopenh264. Ghazi chose GPL on 2026-09-02 for libx264:
+better quality per bitrate, `-preset`/`-crf` control, and a far faster CPU
+encode on hour-long renders. The app only ever calls ffmpeg as a separate
+process and is not linked to it, and the source is published under its own
+terms, so shipping a GPL ffmpeg beside it is the ordinary arrangement.
+BtbN's Windows builds are static (a single self-contained .exe, no DLL
+fan-out to bundle correctly) and are the build most commonly pointed to for
+exactly this "ship ffmpeg with your app" use case. `--variant lgpl` still
+works if that ever needs to change back.
 
 This script downloads a zip release asset, pulls just `ffmpeg.exe` and
 `ffprobe.exe` out of it, verifies each actually runs, and records the exact
@@ -44,11 +49,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DEST = REPO_ROOT / "bin"
 
 # BtbN publishes a rolling "latest" release with these predictable asset
-# names. "lgpl" (not "lgpl-shared") is the static build: one self-contained
+# names. "gpl" (not "gpl-shared") is the static build: one self-contained
 # exe per tool, nothing else to bundle correctly.
 RELEASES_API = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest"
 ASSET_NAME_TEMPLATE = "ffmpeg-master-latest-win64-{variant}.zip"
-DEFAULT_VARIANT = "lgpl"
+DEFAULT_VARIANT = "gpl"
 
 BINARY_NAMES = ("ffmpeg.exe", "ffprobe.exe")
 VERSION_FILE_NAME = "ffmpeg-build-info.txt"

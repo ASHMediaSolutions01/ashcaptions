@@ -74,7 +74,7 @@ def test_unknown_keys_are_ignored(root: Path) -> None:
 def test_bundled_binary_wins_over_path(
     root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """We ship our own LGPL ffmpeg rather than inheriting whatever is on PATH."""
+    """We ship our own (GPL static) ffmpeg rather than inheriting whatever is on PATH."""
     bundle = tmp_path / "bundle"
     (bundle / "bin").mkdir(parents=True)
     (bundle / "bin" / "ffmpeg.exe").write_text("stub", encoding="utf-8")

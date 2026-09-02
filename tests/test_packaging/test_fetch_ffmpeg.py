@@ -103,6 +103,6 @@ def test_write_version_file_unresolved_tag(tmp_path):
 
 def test_parse_args_defaults():
     args = fetch_ffmpeg.parse_args([])
-    assert args.variant == "lgpl"
+    assert args.variant == "gpl"
     assert args.dest == fetch_ffmpeg.DEFAULT_DEST
     assert args.url is None

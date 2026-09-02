@@ -411,13 +411,16 @@ compiled extensions — exactly what CTranslate2, numpy and av are.
 here, not a distribution mechanism; its install path surfaces terminal windows.
 
 **ffmpeg:** ship `ffmpeg.exe` and `ffprobe.exe` in `bin\` beside the app, called
-by full path. No system PATH entry. Use **BtbN's LGPL static Windows build**.
+by full path. No system PATH entry. Use **BtbN's GPL static Windows build**.
 
 *Licensing note:* burning captions into a client deliverable triggers nothing
 either way — compiled media output is not a derivative work of the encoder. The
-GPL/LGPL question only concerns redistributing **our app**, which we do not do
-outside the company. LGPL is still the cleaner choice at no real cost; we lose
-only GPL-only encoders, which a captions tool does not need.
+GPL/LGPL question only concerns redistributing **our app**. We began on LGPL
+("we lose only GPL-only encoders, which a captions tool does not need") and
+that turned out to be wrong: the encoder we lost was `libx264`, the one that
+matters for burn-in quality and CPU speed. Switched to GPL on 2026-09-02. The
+app calls ffmpeg as a separate process and never links to it, so the source
+keeps its own licence; the ffmpeg binary carries its own licence text.
 
 ### 11.2 CPU first, GPU as an opt-in second step
 

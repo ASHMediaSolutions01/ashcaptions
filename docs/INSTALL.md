@@ -60,10 +60,10 @@ gh auth login          # once -- release.py relies on gh's own stored auth
 .venv\Scripts\python.exe scripts\fetch_ffmpeg.py
 ```
 
-Downloads BtbN's static **LGPL** Windows build (`ffmpeg.exe` + `ffprobe.exe`
+Downloads BtbN's static **GPL** Windows build (`ffmpeg.exe` + `ffprobe.exe`
 only -- see the licensing note in `scripts/fetch_ffmpeg.py`'s docstring for
-why LGPL, not GPL), verifies each binary actually runs, and writes
-`build\ffmpeg\ffmpeg-build-info.txt` recording the exact version banner of
+why GPL, which is what gets us `libx264`), verifies each binary actually
+runs, and writes `bin\ffmpeg-build-info.txt` recording the exact version banner of
 what you shipped -- keep that file, it's the answer to "which ffmpeg build
 was in the version we sent out in March" six months from now.
 
@@ -289,7 +289,7 @@ the distribution problem the public-repo pattern exists to sidestep.
 ```
 scripts/
   build.py            # onedir PyInstaller build -> dist/AshCaptions*, build-info.json
-  fetch_ffmpeg.py      # BtbN LGPL static build -> build/ffmpeg/{ffmpeg,ffprobe}.exe
+  fetch_ffmpeg.py      # BtbN GPL static build -> bin/{ffmpeg,ffprobe}.exe
   fetch_model.py        # pre-seed a faster-whisper model -> build/models/<size>/
   release.py           # publish dist/ to the public releases repo, write manifest.json
   enable_gpu.ps1        # per-machine GPU opt-in, run by Ghazi only

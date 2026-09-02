@@ -69,7 +69,7 @@ def test_every_shipped_style_loads_and_validates_cleanly():
 
 
 def test_ash_brand_uses_the_real_identity_board_palette(empty_user_dir):
-    # ash-os-v3/brand/ash-limited-brandboard.html --
+    # The Ash identity board (ash-os-v3/brand/ash-limited-brandboard.html) --
     # --void, --bone, --ember. Pinned here so a future placeholder-style
     # "arbitrary colour" edit can't drift this away from the real board
     # without a test catching it.
