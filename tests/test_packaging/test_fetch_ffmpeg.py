@@ -41,11 +41,22 @@ def test_extract_binaries_ok(tmp_path):
 
     found = fetch_ffmpeg.extract_binaries(zip_path, dest_dir)
 
-    assert set(found) == {"ffmpeg.exe", "ffprobe.exe"}
+    assert set(found) == {"ffmpeg.exe", "ffprobe.exe", "LICENSE.txt"}
     assert (dest_dir / "ffmpeg.exe").read_bytes() == b"fake ffmpeg binary"
     assert (dest_dir / "ffprobe.exe").read_bytes() == b"fake ffprobe binary"
-    # nothing else from the archive (LICENSE.txt etc.) is copied out
-    assert set(p.name for p in dest_dir.iterdir()) == {"ffmpeg.exe", "ffprobe.exe"}
+    # The licence text ships beside the binaries it covers (we redistribute
+    # a GPL build); nothing else from the archive (README etc.) is copied.
+    assert (dest_dir / "LICENSE.txt").read_bytes() == b"LGPL"
+    assert set(p.name for p in dest_dir.iterdir()) == {"ffmpeg.exe", "ffprobe.exe", "LICENSE.txt"}
+
+
+def test_extract_binaries_missing_license_raises(tmp_path):
+    zip_path = tmp_path / "ffmpeg.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("x/bin/ffmpeg.exe", b"a")
+        zf.writestr("x/bin/ffprobe.exe", b"b")
+    with pytest.raises(fetch_ffmpeg.FetchError, match="LICENSE.txt"):
+        fetch_ffmpeg.extract_binaries(zip_path, tmp_path / "out")
 
 
 def test_extract_binaries_missing_member_raises(tmp_path):

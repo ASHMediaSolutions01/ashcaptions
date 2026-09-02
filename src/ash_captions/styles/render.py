@@ -31,10 +31,21 @@ Effect -> tag mapping (spec 7A.1):
                                  card's first (entrance) and last (exit)
                                  Dialogue event
   * shake                    -- a ``\\t`` chain on ``\\frz``
-  * glow                     -- ``\\blur`` / a widened, colour-matched
-                                 ``\\bord``
+  * glow                     -- ``\\blur`` + ``\\be`` over a widened,
+                                 colour-matched ``\\bord``/``\\3c`` on the
+                                 active word, restored on the closing tag
   * letter spacing, all-caps -- ``\\fsp``, ``str.upper()``
   * position variants        -- ``\\an`` + margins
+
+Play resolution: ``PlayResX``/``PlayResY`` must match the video the
+captions are burned into, or libass scales every size and margin by the
+ratio (a 1080x1920 script on a 1920x1080 video renders at half the
+intended font size, in the wrong place). ``render_ass``/``write_ass``
+take ``play_res=(width, height)``; callers that know the video (the job
+runner, which probes it; the preview adapter) must pass it. ``None``
+falls back to ``DEFAULT_PLAY_RES`` -- the vertical short-form default --
+for callers that genuinely have no video, like the style editor's
+offline validation.
 
 Text escaping: a literal ``{``, ``}`` or ``\\`` in a transcript is
 replaced with its fullwidth Unicode lookalike (``｛ ｝ ＼``) before any
@@ -51,6 +62,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ..engine.rules import Card
+from .ass_format import (
+    _ALIGNMENT,
+    ass_header,
+    ass_inline_colour,
+    format_ass_time,
+    outline_width,
+    safe_style_name,
+)
 from .schema import Style
 
 DEFAULT_PLAY_RES = (1080, 1920)  # vertical short-form default
@@ -59,7 +78,6 @@ DEFAULT_PLAY_RES = (1080, 1920)  # vertical short-form default
 # inert to the ASS/libass tag parser.
 _ESCAPE_MAP = {"{": "｛", "}": "｝", "\\": "＼"}
 
-_ALIGNMENT = {"bottom": 2, "lower_third": 2, "center": 5, "top": 8}
 
 _RISE_OFFSET_PX = 46
 _SLIDE_OFFSET_PX = 160
@@ -74,13 +92,18 @@ def render_ass(
     cards: Sequence[Card],
     style: Style,
     *,
-    play_res: tuple[int, int] = DEFAULT_PLAY_RES,
+    play_res: tuple[int, int] | None = None,
 ) -> str:
-    """Render animated, word-by-word ASS captions for ``style``."""
-    width, height = play_res
-    base_name = _safe_style_name(style.name)
+    """Render animated, word-by-word ASS captions for ``style``.
+
+    ``play_res`` is the ``(width, height)`` of the video the captions
+    will be burned into (see the module docstring); ``None`` means
+    ``DEFAULT_PLAY_RES``.
+    """
+    width, height = _resolve_play_res(play_res)
+    base_name = safe_style_name(style.name)
     box_name = base_name + "_BOX"
-    header = _ass_header(style, base_name, box_name, width, height)
+    header = ass_header(style, base_name, box_name, width, height)
 
     events: list[str] = []
     for card in cards:
@@ -93,8 +116,9 @@ def write_ass(
     path,
     style: Style,
     *,
-    play_res: tuple[int, int] = DEFAULT_PLAY_RES,
+    play_res: tuple[int, int] | None = None,
 ):
+    """``render_ass`` to a file. ``play_res`` as for ``render_ass``."""
     from pathlib import Path
 
     content = render_ass(cards, style, play_res=play_res)
@@ -102,6 +126,15 @@ def write_ass(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content, encoding="utf-8")
     return out
+
+
+def _resolve_play_res(play_res: tuple[int, int] | None) -> tuple[int, int]:
+    if play_res is None:
+        return DEFAULT_PLAY_RES
+    width, height = play_res
+    if int(width) <= 0 or int(height) <= 0:
+        raise ValueError(f"play_res must be positive (width, height), got {play_res!r}")
+    return int(width), int(height)
 
 
 # ---------------------------------------------------------------------------
@@ -167,11 +200,18 @@ def _karaoke_events(card: Card, style: Style, style_name: str, width: int, heigh
     """One Dialogue event for the whole card: ``\\kf`` needs a single run
     of text so libass can sweep the fill across it (spec 7A.1)."""
     words = card.words
+    count = len(words)
     x, y = _anchor_xy(style, width, height)
     event_ms = max(1, round((card.end - card.start) * 1000))
     parts = []
-    for word in words:
-        duration_cs = max(1, round((word.end - word.start) * 100))
+    for i, word in enumerate(words):
+        # Each \kf run must last until the *next* word starts (the card's
+        # end for the last word), exactly like the per-word events: the
+        # sweep is cumulative from the event start, so sizing runs by
+        # word.end - word.start drops every inter-word gap and the fill
+        # runs progressively ahead of the audio across the card.
+        run_end = words[i + 1].start if i < count - 1 else card.end
+        duration_cs = max(1, round((run_end - word.start) * 100))
         parts.append(f"{{\\kf{duration_cs}}}{_prepare_word_text(word.text, style)}")
     body = " ".join(parts)
     leading = _leading_override(style, x, y, is_first=True, is_last=True, event_ms=event_ms)
@@ -180,7 +220,7 @@ def _karaoke_events(card: Card, style: Style, style_name: str, width: int, heigh
 
 
 def _dialogue_line(start: float, end: float, style_name: str, text: str) -> str:
-    return f"Dialogue: 0,{_format_ass_time(start)},{_format_ass_time(end)},{style_name},,0,0,0,,{text}"
+    return f"Dialogue: 0,{format_ass_time(start)},{format_ass_time(end)},{style_name},,0,0,0,,{text}"
 
 
 # ---------------------------------------------------------------------------
@@ -200,8 +240,8 @@ def _prepare_word_text(text: str, style: Style) -> str:
 
 def _line_text(words: tuple, *, active_index: int, style: Style) -> str:
     """Full sentence, active word wrapped with colour + its effect tags."""
-    text_colour = _ass_inline_colour(style.colors.text)
-    active_colour = _ass_inline_colour(style.colors.active)
+    text_colour = ass_inline_colour(style.colors.text)
+    active_colour = ass_inline_colour(style.colors.active)
     parts = []
     for i, word in enumerate(words):
         word_text = _prepare_word_text(word.text, style)
@@ -241,10 +281,15 @@ def _active_word_tags(style: Style, active_colour: str, text_colour: str) -> tup
         )
         close_tags = f"\\c{text_colour}\\frz0"
     elif effect == "glow":
-        outline_glow = _ass_inline_colour(style.colors.active)
-        open_tags = f"\\c{active_colour}\\3c{outline_glow}\\blur4\\be1"
-        outline = _ass_inline_colour(style.colors.outline)
-        close_tags = f"\\c{text_colour}\\3c{outline}\\blur0\\be0"
+        # A glow is a soft, widened outline in the active colour: widen
+        # \bord so the blur has something to spread, colour it with \3c,
+        # then \blur/\be soften it. The closing tag restores the style's
+        # own outline width and colour for the words that follow.
+        outline_glow = ass_inline_colour(style.colors.active)
+        base_bord = outline_width(style)
+        open_tags = f"\\c{active_colour}\\3c{outline_glow}\\bord{_glow_width(style)}\\blur4\\be1"
+        outline = ass_inline_colour(style.colors.outline)
+        close_tags = f"\\c{text_colour}\\3c{outline}\\bord{base_bord}\\blur0\\be0"
     else:  # "none" -- colour swap only
         open_tags = f"\\c{active_colour}"
         close_tags = f"\\c{text_colour}"
@@ -253,6 +298,14 @@ def _active_word_tags(style: Style, active_colour: str, text_colour: str) -> tup
 
 _POP_HALF_MS = 90
 _SHAKE_QUARTER_MS = 45
+
+
+def _glow_width(style: Style) -> int:
+    """The widened \\bord behind a glowing word: roughly double the base
+    outline, and never less than 3px wider, so the blur reads as a halo
+    rather than a slightly thicker stroke."""
+    base = outline_width(style)
+    return max(base + 3, base * 2)
 
 
 def _pop_scale_tags(style: Style, event_ms: int) -> str:
@@ -273,7 +326,7 @@ def _leading_override(
     if style.letter_spacing:
         tags.append(f"\\fsp{_num(style.letter_spacing)}")
 
-    entrance_tag = _entrance_tag(style, x, y) if is_first else ""
+    entrance_tag = _entrance_tag(style, x, y, event_ms) if is_first else ""
     exit_tag = _exit_tag(style, x, y, event_ms) if is_last else ""
 
     if entrance_tag and exit_tag and _tag_kind(entrance_tag) == _tag_kind(exit_tag):
@@ -285,8 +338,13 @@ def _leading_override(
         # those into one tag; two \move effects can't merge the same way,
         # so entrance wins and the exit motion is dropped for that event.
         if _tag_kind(entrance_tag) == "fad":
-            entrance_ms = style.entrance.duration_ms if style.entrance.effect == "fade" else 0
+            entrance_ms = min(style.entrance.duration_ms, event_ms) if style.entrance.effect == "fade" else 0
             exit_ms = min(style.exit.duration_ms, event_ms) if style.exit.effect == "fade" else 0
+            if entrance_ms + exit_ms > event_ms:
+                # Both halves can't fit; split the event between them so
+                # the word is never invisible for its whole duration.
+                entrance_ms = event_ms // 2
+                exit_ms = event_ms - entrance_ms
             tags.append(f"\\fad({entrance_ms},{exit_ms})")
         else:
             tags.append(entrance_tag)
@@ -302,9 +360,13 @@ def _tag_kind(tag: str) -> str:
     return "fad" if tag.startswith("\\fad(") else "move"
 
 
-def _entrance_tag(style: Style, x: float, y: float) -> str:
+def _entrance_tag(style: Style, x: float, y: float, event_ms: int) -> str:
     effect = style.entrance.effect
-    duration_ms = style.entrance.duration_ms
+    # The first per-word event of a card is often shorter than the
+    # entrance (a 120ms word under a 160ms rise): \fad/\move past the
+    # event's end are simply cut off, so the word never reaches full
+    # opacity or its resting position. Clamp, as _exit_tag does.
+    duration_ms = min(style.entrance.duration_ms, event_ms)
     if effect == "fade" and duration_ms:
         return f"\\fad({duration_ms},0)"
     if effect in ("rise", "slide") and duration_ms:
@@ -345,132 +407,3 @@ def _anchor_xy(style: Style, width: int, height: int) -> tuple[float, float]:
 
 def _num(value: float) -> str:
     return f"{value:.0f}" if float(value).is_integer() else f"{value:.2f}"
-
-
-# ---------------------------------------------------------------------------
-# header
-# ---------------------------------------------------------------------------
-
-
-def _ass_header(style: Style, base_name: str, box_name: str, width: int, height: int) -> str:
-    alignment = _ALIGNMENT[style.layout.position]
-    outline_width = max(1, round(style.size * 0.055))
-    shadow_width = 2 if style.colors.shadow.upper() not in ("#00000000",) else 0
-
-    base_style = _style_field(
-        name=base_name,
-        font=style.font,
-        size=style.size,
-        primary=style.colors.active,
-        secondary=style.colors.text,
-        outline_colour=style.colors.outline,
-        back_colour=style.colors.shadow,
-        border_style=1,
-        outline_width=outline_width,
-        shadow=shadow_width,
-        alignment=alignment,
-        layout=style.layout,
-    )
-    box_padding = max(8, round(style.size * 0.28))
-    box_style = _style_field(
-        name=box_name,
-        font=style.font,
-        size=style.size,
-        primary=style.colors.active,
-        secondary=style.colors.active,
-        outline_colour=style.colors.box,
-        back_colour=style.colors.box,
-        border_style=3,
-        outline_width=box_padding,
-        shadow=0,
-        alignment=alignment,
-        layout=style.layout,
-    )
-
-    return (
-        "[Script Info]\n"
-        "ScriptType: v4.00+\n"
-        f"PlayResX: {width}\n"
-        f"PlayResY: {height}\n"
-        "ScaledBorderAndShadow: yes\n"
-        "\n"
-        "[V4+ Styles]\n"
-        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
-        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
-        "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
-        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"{base_style}\n"
-        f"{box_style}\n"
-        "\n"
-        "[Events]\n"
-        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-    )
-
-
-def _style_field(
-    *,
-    name: str,
-    font: str,
-    size: int,
-    primary: str,
-    secondary: str,
-    outline_colour: str,
-    back_colour: str,
-    border_style: int,
-    outline_width: int,
-    shadow: int,
-    alignment: int,
-    layout,
-) -> str:
-    return (
-        f"Style: {name},{font},{size},"
-        f"{_ass_style_colour(primary)},{_ass_style_colour(secondary)},"
-        f"{_ass_style_colour(outline_colour)},{_ass_style_colour(back_colour)},"
-        f"0,0,0,0,100,100,0,0,"
-        f"{border_style},{outline_width},{shadow},{alignment},"
-        f"{layout.margin_l},{layout.margin_r},{layout.margin_v},1"
-    )
-
-
-def _safe_style_name(name: str) -> str:
-    # ASS Style names can't contain a comma (the format is comma-delimited)
-    # and shouldn't collide with the "_BOX" companion style suffix.
-    return name.replace(",", "").replace(" ", "_") or "STYLE"
-
-
-# ---------------------------------------------------------------------------
-# colour conversion: "#RRGGBB"/"#RRGGBBAA" -> ASS's &H..BGR.. forms
-# ---------------------------------------------------------------------------
-
-
-def _parse_hex(colour: str) -> tuple[int, int, int, int]:
-    body = colour.lstrip("#")
-    if len(body) == 6:
-        r, g, b = (int(body[i : i + 2], 16) for i in (0, 2, 4))
-        a = 255
-    else:
-        r, g, b, a = (int(body[i : i + 2], 16) for i in (0, 2, 4, 6))
-    return r, g, b, a
-
-
-def _ass_style_colour(colour: str) -> str:
-    """``&HAABBGGRR`` for a [V4+ Styles] colour column. ASS alpha is
-    inverted from CSS: 00 is opaque, FF is fully transparent."""
-    r, g, b, a = _parse_hex(colour)
-    ass_alpha = 255 - a
-    return f"&H{ass_alpha:02X}{b:02X}{g:02X}{r:02X}"
-
-
-def _ass_inline_colour(colour: str) -> str:
-    """``&HBBGGRR&`` for an inline ``\\c``/``\\1c``/``\\3c`` override tag."""
-    r, g, b, _a = _parse_hex(colour)
-    return f"&H{b:02X}{g:02X}{r:02X}&"
-
-
-def _format_ass_time(seconds: float) -> str:
-    seconds = max(seconds, 0.0)
-    total_cs = round(seconds * 100)
-    hours, remainder = divmod(total_cs, 360_000)
-    minutes, remainder = divmod(remainder, 6_000)
-    secs, cs = divmod(remainder, 100)
-    return f"{hours}:{minutes:02d}:{secs:02d}.{cs:02d}"

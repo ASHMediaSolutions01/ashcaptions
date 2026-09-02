@@ -146,9 +146,35 @@ def test_publish_release_creates_when_tag_absent(tmp_path, monkeypatch):
     manifest_path = release.publish_release(repo="o/r", dist_dir=tmp_path)
 
     assert calls[0][:2] == ["release", "view"]
-    assert calls[1][:2] == ["release", "create"]
+    assert calls[1][:1] == ["api"]  # empty-repo guard runs before create
+    assert calls[2][:2] == ["release", "create"]
     manifest = read_manifest(manifest_path)
     assert manifest["version"] == "0.4.0"
+
+
+def test_publish_release_refuses_an_empty_releases_repo(tmp_path, monkeypatch):
+    """`gh release create` on a repo with no commits fails with an opaque
+    API error; the script must say what to do instead (seed one commit)."""
+    _fake_build_info(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_run_gh(args):
+        calls.append(args)
+        if args[:2] == ["release", "view"]:
+            return subprocess.CompletedProcess(args, returncode=1, stdout="", stderr="not found")
+        if args[:1] == ["api"]:
+            return subprocess.CompletedProcess(args, returncode=1, stdout="", stderr="HTTP 409: Git Repository is empty.")
+        return subprocess.CompletedProcess(args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(release, "run_gh", fake_run_gh)
+
+    with pytest.raises(release.ReleaseError, match="no commits yet"):
+        release.publish_release(repo="o/r", dist_dir=tmp_path)
+    assert not any(c[:2] == ["release", "create"] for c in calls)
+
+
+def test_build_gh_commits_args():
+    assert release.build_gh_commits_args(repo="o/r") == ["api", "repos/o/r/commits?per_page=1"]
 
 
 def test_publish_release_uploads_when_tag_exists(tmp_path, monkeypatch):
@@ -173,6 +199,8 @@ def test_publish_release_raises_on_gh_failure(tmp_path, monkeypatch):
     _fake_build_info(tmp_path)
 
     def fake_run_gh(args):
+        if args[:1] == ["api"]:  # the repo has commits; it is `release create` that fails
+            return subprocess.CompletedProcess(args, returncode=0, stdout="[]", stderr="")
         return subprocess.CompletedProcess(args, returncode=1, stdout="", stderr="boom")
 
     monkeypatch.setattr(release, "run_gh", fake_run_gh)

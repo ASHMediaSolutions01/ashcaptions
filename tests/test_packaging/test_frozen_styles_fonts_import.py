@@ -18,6 +18,7 @@ assumption that the destination strings are correct.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -174,13 +175,39 @@ except (FileNotFoundError, OSError):
     assert "EXPECTED_MANIFEST_MISSING" in proc.stdout
 
 
-def test_pyinstaller_args_cover_every_app_root_asset_destination():
-    """Audit, run against the real build_pyinstaller_args(): every directory
-    an app_root()-relative lookup reads from (grepped and enumerated by
-    hand against src/ash_captions -- see docs/INSTALL.md's build section)
-    must appear as an --add-data/--add-binary destination. This is the
-    check that would have caught styles/ and assets/fonts/ being missing
-    without needing a real PyInstaller build to notice."""
+_APP_ROOT_CONSUMER = re.compile(r'app_root\(\)\s*/\s*"([^"/]+)"')
+
+
+def app_root_consumer_dirs() -> set[str]:
+    """Every top-level directory some `app_root() / "<dir>"` expression in
+    src/ reads at runtime -- derived by grepping at test time, so a new
+    consumer added tomorrow is audited without anyone editing this test."""
+    found: set[str] = set()
+    for path in (SRC_DIR / "ash_captions").rglob("*.py"):
+        found.update(_APP_ROOT_CONSUMER.findall(path.read_text(encoding="utf-8")))
+    return found
+
+
+def _destination_roots(args: list[str]) -> set[str]:
+    roots = set()
+    for i, arg in enumerate(args):
+        if arg in ("--add-data", "--add-binary"):
+            dest = args[i + 1].split(";", 1)[1]
+            roots.add(dest.replace("\\", "/").split("/", 1)[0])
+    return roots
+
+
+def test_app_root_consumer_grep_finds_the_known_set():
+    """Sanity check on the audit itself: the grep must see the consumers we
+    know about today, or a regex drift would silently audit nothing."""
+    assert {"bin", "models", "scripts", "styles", "assets"} <= app_root_consumer_dirs()
+
+
+def test_pyinstaller_args_cover_every_app_root_consumer_dir():
+    """Audit against the real build_pyinstaller_args(): every directory an
+    app_root()-relative lookup reads from must appear as an --add-data /
+    --add-binary destination. This is the check that would have caught
+    styles/ and assets/fonts/ being missing without a real build."""
     args = build.build_pyinstaller_args(
         entry_script=build.ENTRY_SCRIPT,
         dist_dir=Path("dist"),
@@ -188,21 +215,35 @@ def test_pyinstaller_args_cover_every_app_root_asset_destination():
         spec_dir=Path("build"),
         static_dir=build.STATIC_DIR,
         ffmpeg_binaries=[Path("ffmpeg.exe"), Path("ffprobe.exe")],
-        model_dir=Path("models/small"),
+        ffmpeg_license=Path("LICENSE.txt"),
+        model_dir=Path("models"),
     )
-    destinations = set()
-    for i, arg in enumerate(args):
-        if arg in ("--add-data", "--add-binary"):
-            destinations.add(args[i + 1].split(";", 1)[1])
-
-    # Every app_root()-relative consumer found by:
-    #   grep -rn "app_root()" src/ash_captions --include="*.py"
-    required = {
-        "bin",  # config.py: find_binary() -- ffmpeg.exe/ffprobe.exe
-        "models",  # config.py: Settings.model_cache_dir
-        build.PKGTOOLS_DEST,  # updater.py: _load_pkgtools_manifest()
-        build.STYLES_DEST,  # styles/library.py: shipped_styles_dir()
-        build.FONTS_DEST,  # styles/fonts.py: assets_fonts_dir()
-    }
-    missing = required - destinations
+    missing = app_root_consumer_dirs() - _destination_roots(args)
     assert not missing, f"app_root()-relative asset dirs not bundled: {missing}"
+
+
+def test_default_argv_covers_every_app_root_consumer_dir(tmp_path, monkeypatch):
+    """The same audit through main()'s own argv path -- `scripts/build.py
+    --model-dir build/models` with ffmpeg fetched -- so a default that
+    quietly drops a directory is caught, not just the pure builder."""
+    ffmpeg_dir = tmp_path / "bin"
+    ffmpeg_dir.mkdir()
+    for name in (*build.FFMPEG_BINARIES, build.FFMPEG_LICENSE_FILENAME):
+        (ffmpeg_dir / name).write_bytes(b"x")
+    model_dir = tmp_path / "models"
+    snapshot = model_dir / "models--Systran--faster-whisper-small" / "snapshots" / ("0" * 40)
+    snapshot.mkdir(parents=True)
+    for name in ("config.json", "model.bin", "tokenizer.json"):
+        (snapshot / name).write_bytes(b"x")
+
+    args = build.assemble_pyinstaller_args(
+        build.parse_args(["--dry-run", "--ffmpeg-dir", str(ffmpeg_dir), "--model-dir", str(model_dir)])
+    )
+    missing = app_root_consumer_dirs() - _destination_roots(args)
+    assert not missing, f"default argv does not bundle: {missing}"
+
+    # Without --model-dir the only consumer left uncovered must be models/
+    # (the runtime falls back to a per-machine download -- documented, and
+    # exactly what a shippable build must avoid by passing --model-dir).
+    args = build.assemble_pyinstaller_args(build.parse_args(["--dry-run", "--ffmpeg-dir", str(ffmpeg_dir)]))
+    assert app_root_consumer_dirs() - _destination_roots(args) == {"models"}

@@ -133,3 +133,41 @@ def test_apply_glossary_prefers_longer_phrase_over_shorter_substring():
     text, protected = apply_glossary("I live in New York.", entries)
     assert text == "I live in New York City."
     assert protected == frozenset({"New York City"})
+
+
+# -- compiled-pattern cache (review item 4) ---------------------------------
+
+
+def test_apply_glossary_reuses_compiled_pattern_for_same_entries_object():
+    from ash_captions.languages import glossary as module
+
+    entries = (GlossaryEntry("gazi", "Ghazi"),)
+    module._COMPILED.clear()
+    apply_glossary("gazi one", entries)
+    row = module._COMPILED[id(entries)]
+    apply_glossary("gazi two", entries)
+    assert module._COMPILED[id(entries)] is row
+    assert len(module._COMPILED) == 1
+
+
+def test_apply_glossary_cache_is_bounded():
+    from ash_captions.languages import glossary as module
+
+    module._COMPILED.clear()
+    keep = [(GlossaryEntry(f"t{i}", f"T{i}"),) for i in range(module._COMPILED_MAX + 5)]
+    for entries in keep:
+        apply_glossary("x", entries)
+    assert len(module._COMPILED) == module._COMPILED_MAX
+
+
+def test_apply_glossary_per_word_is_fast_with_preloaded_entries():
+    """15k words against a 200-term glossary must take a fraction of a
+    second, not the 18s that a file read + regex build per word cost."""
+    import time
+
+    entries = tuple(GlossaryEntry(f"term{i}", f"Term{i}") for i in range(200))
+    words = ["hello", "term7", "world", "term199"] * 3750
+    start = time.perf_counter()
+    for w in words:
+        apply_glossary(w, entries)
+    assert time.perf_counter() - start < 2.0

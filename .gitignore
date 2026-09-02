@@ -23,10 +23,14 @@ build/
 # Ruflo/claude-flow runtime state — machine-local, not source
 .claude-flow/
 .swarm/
+# Agent worktrees checked out under the repo itself
+.claude/worktrees/
 
 # Python bytecode and build output
 __pycache__/
 *.py[cod]
 *.egg-info/
 bin/
+# Font files are fetched (python -m ash_captions.styles.fonts download);
+# their licence texts under assets/fonts/licenses/ are committed.
 assets/fonts/*.ttf

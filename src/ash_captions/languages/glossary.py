@@ -20,12 +20,18 @@ value and ``spelling.normalize_spelling``'s ``protected`` parameter.
 A missing or malformed glossary file never raises: it is treated as an
 empty glossary, and malformed individual lines are skipped rather than
 failing the whole file.
+
+Load the file once per job (``load_glossary``) and pass the resulting
+entries to every ``apply_glossary`` / ``languages.postprocess`` call: the
+compiled pattern is cached per entries object, so the per-word calls the
+runner makes cost a regex scan each, not a file read plus a regex build.
 """
 
 from __future__ import annotations
 
 import os
 import re
+from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,6 +91,34 @@ def load_glossary(path: str | os.PathLike[str] | None) -> tuple[GlossaryEntry, .
     return parse_glossary(text)
 
 
+# Compiled (by_match, pattern) per entries object. Keyed on id() and kept
+# alive by holding the entries themselves, so an id can never be recycled
+# to a different object while its cache row exists. Bounded because a
+# long-running app sees a new tuple per job (one per glossary load).
+_COMPILED: OrderedDict[int, tuple[Sequence[GlossaryEntry], dict[str, str], re.Pattern[str] | None]] = (
+    OrderedDict()
+)
+_COMPILED_MAX = 16
+
+
+def _compiled(entries: Sequence[GlossaryEntry]) -> tuple[dict[str, str], re.Pattern[str] | None]:
+    key = id(entries)
+    row = _COMPILED.get(key)
+    if row is not None and row[0] is entries:
+        _COMPILED.move_to_end(key)
+        return row[1], row[2]
+
+    by_match: dict[str, str] = {}
+    for entry in entries:
+        by_match[entry.match.lower()] = entry.replacement
+    pattern = build_alternation(by_match.keys())
+
+    _COMPILED[key] = (entries, by_match, pattern)
+    while len(_COMPILED) > _COMPILED_MAX:
+        _COMPILED.popitem(last=False)
+    return by_match, pattern
+
+
 def apply_glossary(
     text: str, entries: Sequence[GlossaryEntry]
 ) -> tuple[str, frozenset[str]]:
@@ -99,11 +133,7 @@ def apply_glossary(
     if not entries or not text:
         return text, frozenset()
 
-    by_match: dict[str, str] = {}
-    for entry in entries:
-        by_match[entry.match.lower()] = entry.replacement
-
-    pattern = build_alternation(by_match.keys())
+    by_match, pattern = _compiled(entries)
     if pattern is None:
         return text, frozenset()
 

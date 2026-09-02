@@ -19,10 +19,13 @@ fan-out to bundle correctly) and are the build most commonly pointed to for
 exactly this "ship ffmpeg with your app" use case. `--variant lgpl` still
 works if that ever needs to change back.
 
-This script downloads a zip release asset, pulls just `ffmpeg.exe` and
-`ffprobe.exe` out of it, verifies each actually runs, and records the exact
-version banner each binary reports next to them -- "what we shipped", not
-just "the tag we asked for", since a rolling `latest` release can move.
+This script downloads a zip release asset, pulls `ffmpeg.exe`, `ffprobe.exe`
+and the archive's `LICENSE.txt` out of it, verifies each binary actually
+runs, and records the exact version banner each binary reports next to them
+-- "what we shipped", not just "the tag we asked for", since a rolling
+`latest` release can move. The licence text is not optional: we redistribute
+a GPL binary, so `build.py` refuses to ship `bin/` without it (see
+NOTICES.md at the repo root for the full third-party list).
 
 Everything that touches the network lives in `download_file()` and
 `resolve_release_url()`; the rest is pure/local and covered by tests.
@@ -56,6 +59,9 @@ ASSET_NAME_TEMPLATE = "ffmpeg-master-latest-win64-{variant}.zip"
 DEFAULT_VARIANT = "gpl"
 
 BINARY_NAMES = ("ffmpeg.exe", "ffprobe.exe")
+# BtbN's archives carry the licence text at their top level. It ships in
+# bin/ beside the binaries it covers.
+LICENSE_NAME = "LICENSE.txt"
 VERSION_FILE_NAME = "ffmpeg-build-info.txt"
 
 
@@ -136,24 +142,33 @@ def verify_zip_integrity(zip_path: Path) -> None:
 
 
 def extract_binaries(zip_path: Path, dest_dir: Path) -> dict[str, Path]:
-    """Pull just ffmpeg.exe/ffprobe.exe out of the (nested, e.g.
-    `ffmpeg-*/bin/ffmpeg.exe`) archive, flattened into `dest_dir`.
+    """Pull ffmpeg.exe/ffprobe.exe and LICENSE.txt out of the (nested, e.g.
+    `ffmpeg-*/bin/ffmpeg.exe`, `ffmpeg-*/LICENSE.txt`) archive, flattened
+    into `dest_dir`.
 
     Pure filesystem logic given an already-downloaded zip -- exercised in
-    tests against a small synthetic zip, no network involved.
+    tests against a small synthetic zip, no network involved. A missing
+    licence text is an error like a missing binary: we ship a GPL build,
+    and `build.py` refuses a `bin/` without it.
     """
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
+    wanted = (*BINARY_NAMES, LICENSE_NAME)
     found: dict[str, Path] = {}
     with zipfile.ZipFile(zip_path) as zf:
         names_by_basename: dict[str, str] = {}
         for name in zf.namelist():
             basename = Path(name).name
-            if basename in BINARY_NAMES and basename not in names_by_basename:
+            if basename in wanted and basename not in names_by_basename:
                 names_by_basename[basename] = name
         missing = [b for b in BINARY_NAMES if b not in names_by_basename]
         if missing:
             raise FetchError(f"archive {zip_path} is missing expected binaries: {missing}")
+        if LICENSE_NAME not in names_by_basename:
+            raise FetchError(
+                f"archive {zip_path} has no {LICENSE_NAME} -- refusing to ship a GPL ffmpeg "
+                "without its licence text"
+            )
         for basename, member_name in names_by_basename.items():
             out_path = dest_dir / basename
             with zf.open(member_name) as src, out_path.open("wb") as out:
@@ -234,7 +249,9 @@ def main(argv: list[str] | None = None) -> int:
         download_file(resolved.url, zip_path)
 
     verify_zip_integrity(zip_path)
-    binaries = extract_binaries(zip_path, args.dest)
+    extracted = extract_binaries(zip_path, args.dest)
+    binaries = {name: path for name, path in extracted.items() if name in BINARY_NAMES}
+    print(f"  {LICENSE_NAME}: {extracted[LICENSE_NAME]}")
 
     binary_versions = {name: verify_binary_runs(path) for name, path in binaries.items()}
     for name, version in binary_versions.items():

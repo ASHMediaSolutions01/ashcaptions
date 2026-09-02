@@ -13,14 +13,23 @@ name explicitly. This keeps the table short of exhaustive, but safe.
 All matching is word/phrase-boundary aware and case-preserving: "Color" ->
 "Colour", "COLOR" -> "COLOUR". Terms passed in ``protected`` (typically
 the output of ``glossary.apply_glossary``) are left untouched, so a
-glossary-forced brand name or proper noun is never rewritten here.
+glossary-forced brand name or proper noun is never rewritten here. A few
+words that routinely form proper nouns ("Labor Party", "Lincoln Center")
+are additionally left alone when they appear Title-cased mid-sentence --
+see ``_PROPER_NOUN_PRONE``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ._textmatch import build_alternation, find_spans, match_case, overlaps_any
+from ._textmatch import (
+    build_alternation,
+    find_spans,
+    is_sentence_initial,
+    match_case,
+    overlaps_any,
+)
 
 EN_US = "en_US"
 EN_UK = "en_UK"  # British/Commonwealth
@@ -48,7 +57,7 @@ _EN_US_TO_UK: dict[str, str] = {
     "honors": "honours",
     "honorable": "honourable",
     "humor": "humour",
-    "humorous": "humourous",
+    # NB: "humorous" is spelt the same in both conventions -- no entry.
     "labor": "labour",
     "labors": "labours",
     "neighbor": "neighbour",
@@ -185,23 +194,34 @@ _EN_US_TO_UK: dict[str, str] = {
 }
 _EN_UK_TO_US: dict[str, str] = {v: k for k, v in _EN_US_TO_UK.items()}
 
-# Brazilian -> European Portuguese, common everyday words only (not the
-# exhaustive vocabulary divide -- proper-noun-risky or highly ambiguous
-# pairs, e.g. "grama" gram-vs-lawn, are deliberately left out).
+# Words that are at least as often part of a proper noun as a common noun:
+# "Labor Party", "Rockefeller Center", "Chicago Theatre". A Title-case hit
+# on one of these that is *not* the first word of a sentence is left alone
+# -- the capital is the only evidence we have, and rewriting a name is
+# worse than leaving one spelling variant unconverted. Listed as the
+# lowercase form in *either* convention so both directions are covered.
+_PROPER_NOUN_PRONE: frozenset[str] = frozenset({
+    "labor", "labour", "labors", "labours",
+    "center", "centre", "centers", "centres",
+    "theater", "theatre", "theaters", "theatres",
+})
+
+# Brazilian -> European Portuguese, *spelling and everyday lexical* pairs
+# only, and only where the source word has no competing sense. Vocabulary
+# pairs whose source word is also an ordinary adjective or has another
+# common meaning are deliberately absent, however common the pair is in
+# phrasebooks: "gelado" is also "cold" ("um chopp bem gelado" must never
+# become "sorvete"), "sumo" is a sport, "descarga" is any discharge,
+# "comboio" is also a convoy, "aterrar" is also to fill with earth.
 _PT_BR_TO_PT: dict[str, str] = {
     "ônibus": "autocarro",
-    "trem": "comboio",
     "celular": "telemóvel",
     "geladeira": "frigorífico",
-    "sorvete": "gelado",
-    "suco": "sumo",
     "banheiro": "casa de banho",
     "xícara": "chávena",
     "esporte": "desporto",
     "esportes": "desportos",
     "café da manhã": "pequeno-almoço",
-    "aterrissar": "aterrar",
-    "descarga": "autoclismo",
     "trem-bala": "comboio de alta velocidade",
 }
 _PT_PT_TO_BR: dict[str, str] = {v: k for k, v in _PT_BR_TO_PT.items()}
@@ -259,9 +279,24 @@ def normalize_spelling(
         if overlaps_any(span, protected_spans):
             continue
         start, end = span
+        matched = match.group(0)
+        if _looks_like_proper_noun(matched, text, start):
+            continue
         pieces.append(text[last_end:start])
-        replacement = word_map[match.group(0).lower()]
-        pieces.append(match_case(match.group(0), replacement))
+        replacement = word_map[matched.lower()]
+        pieces.append(match_case(matched, replacement))
         last_end = end
     pieces.append(text[last_end:])
     return "".join(pieces)
+
+
+def _looks_like_proper_noun(matched: str, text: str, start: int) -> bool:
+    """A Title-case hit on a proper-noun-prone word that is not
+    sentence-initial ("the Labor Party", "Rockefeller Center") -- see
+    ``_PROPER_NOUN_PRONE``."""
+
+    if matched.lower() not in _PROPER_NOUN_PRONE:
+        return False
+    if not matched[0].isupper() or matched.isupper():
+        return False
+    return not is_sentence_initial(text, start)
