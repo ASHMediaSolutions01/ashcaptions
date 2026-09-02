@@ -115,6 +115,19 @@ class Settings:
     # lets one card bridge a pause the viewer can hear.
     silence_gap_seconds: float = 1.5
 
+    # Punch-in: zoom the footage on chosen words when burning in. Off by
+    # default -- it changes how a client's video is framed, so it is a
+    # deliberate choice rather than something that happens to footage
+    # silently. "sentence" is the sane setting once enabled; see
+    # engine/punch.py for why the trigger is predictable rather than clever.
+    punch_mode: str = "off"  # off | sentence | keyword | both
+    punch_zoom: float = 1.12
+    punch_duration_seconds: float = 1.2
+    # Punching every sentence in fast dialogue is unwatchable, so this is
+    # the minimum gap between two punches.
+    punch_min_spacing_seconds: float = 5.0
+    punch_keywords: tuple[str, ...] = ()
+
     # Housekeeping
     retention_days: int = 30
     port: int = DEFAULT_PORT

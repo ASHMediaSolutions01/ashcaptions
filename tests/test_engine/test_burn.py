@@ -164,8 +164,10 @@ def test_parse_progress_line_returns_none_for_zero_duration():
 def _make_fake_process(progress_lines, returncode=0, stderr=""):
     process = MagicMock()
     process.stdout = iter(progress_lines)
-    process.stderr = MagicMock()
-    process.stderr.read.return_value = stderr
+    # Iterable, not .read(): burn_captions drains stderr line-by-line on a
+    # background thread, because reading it only after the stdout loop
+    # deadlocks against ffmpeg once the pipe buffer fills.
+    process.stderr = iter([stderr] if stderr else [])
     process.wait.return_value = returncode
     return process
 

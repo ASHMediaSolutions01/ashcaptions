@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -167,6 +168,8 @@ def build_burn_command(
     return [
         str(ffmpeg_path),
         "-y",
+        "-hide_banner",
+        "-loglevel", "error",
         "-i", str(video_path),
         "-vf", subtitle_filter,
         *video_codec,
@@ -276,14 +279,35 @@ def burn_captions(
     except OSError as exc:
         raise BurnInError(f"Failed to launch ffmpeg at {ffmpeg_path}: {exc}") from exc
 
+    # stderr MUST be drained concurrently, not after the stdout loop.
+    # ffmpeg writes to both; if stderr's ~64KB pipe buffer fills it blocks,
+    # which stops it emitting progress on stdout, which leaves the loop
+    # below waiting forever. That deadlock hung every real burn-in -- it
+    # stayed hidden because burn-in is off by default, so no job had
+    # exercised this path against a genuine ffmpeg.
+    stderr_chunks: list[str] = []
+
+    def _drain_stderr() -> None:
+        if process.stderr is None:
+            return
+        try:
+            for line in process.stderr:
+                stderr_chunks.append(line)
+        except (OSError, ValueError):
+            pass  # pipe closed as the process exits -- nothing to report
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
     if process.stdout is not None:
         for line in process.stdout:
             percentage = _parse_progress_line(line, duration_seconds)
             if percentage is not None and on_progress is not None:
                 on_progress(percentage)
 
-    stderr_output = process.stderr.read() if process.stderr is not None else ""
     returncode = process.wait()
+    stderr_thread.join(timeout=10)
+    stderr_output = "".join(stderr_chunks)
 
     if returncode != 0:
         raise BurnInError(

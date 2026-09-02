@@ -15,6 +15,7 @@ section 10, 12).
 from __future__ import annotations
 
 import dataclasses
+import logging
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -24,6 +25,15 @@ from ash_captions.config import Settings, find_binary
 from ash_captions.pipeline.db import Job
 
 from .catalogue import dialect_preset_id
+
+log = logging.getLogger(__name__)
+
+
+def _ffprobe_beside(ffmpeg_path: Path) -> Path:
+    """ffprobe ships next to ffmpeg in the bundle, so derive it rather than
+    making the caller configure a second path that can drift out of sync."""
+    candidate = Path(ffmpeg_path).with_name("ffprobe.exe")
+    return candidate if candidate.is_file() else Path("ffprobe")
 
 RunJob = Callable[[Job, Callable[[int], None]], None]
 
@@ -235,6 +245,40 @@ def build_run_job(
                 # bundled-but-not-installed font silently falls back to a
                 # default face on burn-in, defeating the point of bundling
                 # fonts at all.
+                # Punch-in (engine/punch.py). Off unless the studio turned it
+                # on, because it changes how a client's video is framed and
+                # should never happen to footage silently. Any failure to
+                # build it degrades to a normal burn rather than losing the
+                # job: captions are the deliverable, the zoom is a flourish.
+                punch_filter = None
+                if settings.punch_mode != "off":
+                    try:
+                        info = engine.probe_video(
+                            video_path, ffprobe_path=_ffprobe_beside(resolved_ffmpeg)
+                        )
+                        moments = engine.select_punch_moments(
+                            words,
+                            mode=settings.punch_mode,
+                            keywords=tuple(settings.punch_keywords),
+                            duration=settings.punch_duration_seconds,
+                            min_spacing=settings.punch_min_spacing_seconds,
+                            video_duration=info.duration_seconds,
+                        )
+                        punch_filter = engine.build_zoompan_filter(
+                            moments,
+                            width=info.width,
+                            height=info.height,
+                            fps=info.fps,
+                            zoom=settings.punch_zoom,
+                        )
+                        log.info(
+                            "punch-in: %d moment(s) at zoom %.2f",
+                            len(moments), settings.punch_zoom,
+                        )
+                    except Exception:  # noqa: BLE001
+                        log.warning("punch-in unavailable; burning without it", exc_info=True)
+                        punch_filter = None
+
                 engine.burn_captions(
                     video_path,
                     output_dir / f"{stem}.ass",
@@ -242,6 +286,7 @@ def build_run_job(
                     duration_seconds=duration,
                     ffmpeg_path=resolved_ffmpeg,
                     fontsdir=styles.fontsdir_arg(),
+                    punch_filter=punch_filter,
                     on_progress=on_burn_progress,
                 )
                 report(end)

@@ -179,7 +179,8 @@ class TestRunJobOutputs:
 
         def fake_burn_captions(
             video_path, ass_path, output_path, *,
-            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None, use_nvenc=None,
+            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None,
+            use_nvenc=None, **_extra,
         ):
             Path(output_path).write_bytes(b"fake mp4")
             if on_progress is not None:
@@ -219,7 +220,8 @@ class TestRunJobOutputs:
 
         def fake_burn_captions(
             video_path, ass_path, output_path, *,
-            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None, use_nvenc=None,
+            duration_seconds, ffmpeg_path=None, fontsdir=None, on_progress=None,
+            use_nvenc=None, **_extra,
         ):
             received["fontsdir"] = fontsdir
             Path(output_path).write_bytes(b"fake mp4")
@@ -452,3 +454,92 @@ class TestInputDeletionRule:
             run_job(job, lambda _p: None)
 
         assert video.exists()
+
+
+class TestPunchInWiring:
+    """Punch-in is built in engine/punch.py, but the styling system taught us
+    that a feature can be complete and still unreachable from a real job."""
+
+    def test_punch_filter_reaches_burn_when_enabled(self, tmp_path, store, monkeypatch):
+        received: dict = {}
+
+        def fake_burn_captions(video_path, ass_path, output_path, *, duration_seconds,
+                               ffmpeg_path=None, fontsdir=None, on_progress=None,
+                               use_nvenc=None, punch_filter=None, **_extra):
+            received["punch_filter"] = punch_filter
+            Path(output_path).write_bytes(b"fake mp4")
+            return Path(output_path)
+
+        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
+        monkeypatch.setattr(
+            engine, "probe_video",
+            lambda *_a, **_k: engine.VideoInfo(1080, 1920, 30.0, 60.0),
+        )
+
+        settings = make_settings(tmp_path)
+        settings.punch_mode = "sentence"
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        job = make_job(store, video, settings.out_dir / "clip", burn=True)
+        transcriber = FakeTranscriber(_result(["Hello.", "there", "friend", "how"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+        run_job(job, lambda _p: None)
+
+        assert received["punch_filter"] is not None
+        assert "zoompan=" in received["punch_filter"]
+        assert "s=1080x1920" in received["punch_filter"]
+
+    def test_punch_is_off_by_default(self, tmp_path, store, monkeypatch):
+        """It reframes a client's video, so it must never happen silently."""
+        received: dict = {}
+
+        def fake_burn_captions(video_path, ass_path, output_path, *, duration_seconds,
+                               ffmpeg_path=None, fontsdir=None, on_progress=None,
+                               use_nvenc=None, punch_filter=None, **_extra):
+            received["punch_filter"] = punch_filter
+            Path(output_path).write_bytes(b"fake mp4")
+            return Path(output_path)
+
+        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
+        settings = make_settings(tmp_path)
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        job = make_job(store, video, settings.out_dir / "clip", burn=True)
+        transcriber = FakeTranscriber(_result(["Hello.", "there", "friend"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+        run_job(job, lambda _p: None)
+
+        assert received["punch_filter"] is None
+
+    def test_a_broken_probe_still_produces_captions(self, tmp_path, store, monkeypatch):
+        """Captions are the deliverable; the zoom is a flourish. Losing the
+        flourish must never lose the job."""
+        received: dict = {}
+
+        def fake_burn_captions(video_path, ass_path, output_path, *, duration_seconds,
+                               ffmpeg_path=None, fontsdir=None, on_progress=None,
+                               use_nvenc=None, punch_filter=None, **_extra):
+            received["punch_filter"] = punch_filter
+            Path(output_path).write_bytes(b"fake mp4")
+            return Path(output_path)
+
+        def explode(*_a, **_k):
+            raise engine.ProbeError("ffprobe is missing")
+
+        monkeypatch.setattr(engine, "burn_captions", fake_burn_captions)
+        monkeypatch.setattr(engine, "probe_video", explode)
+
+        settings = make_settings(tmp_path)
+        settings.punch_mode = "sentence"
+        video = tmp_path / "footage" / "clip.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"fake video")
+        job = make_job(store, video, settings.out_dir / "clip", burn=True)
+        transcriber = FakeTranscriber(_result(["Hello.", "there", "friend"]))
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
+        run_job(job, lambda _p: None)  # must not raise
+
+        assert received["punch_filter"] is None
+        assert (Path(job.output_dir) / f"{Path(job.input_path).stem}.captioned.mp4").exists()
