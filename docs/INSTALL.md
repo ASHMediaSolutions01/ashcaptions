@@ -48,11 +48,20 @@ computer.
 
 ### One-time setup
 
+The build box runs **Python 3.14** (the interpreter the shipped bundle was
+verified with). Install the pinned build environment, not just the loose
+lower bounds in `pyproject.toml`, so a rebuild in six months gets the same
+faster-whisper / ctranslate2 / PyInstaller that was tested:
+
 ```powershell
-uv venv
-uv pip install -e ".[dev]"
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r scripts\requirements-build.txt -e ".[dev]"
 gh auth login          # once -- release.py relies on gh's own stored auth
 ```
+
+Source runs must be **editable** (`-e`): `styles/` and `assets/` live at the
+repo root and `config.app_root()` resolves relative to the package, so a
+non-editable `pip install .` finds no styles and no fonts.
 
 ### 1. Fetch ffmpeg (once, or whenever you want to refresh it)
 
@@ -60,12 +69,16 @@ gh auth login          # once -- release.py relies on gh's own stored auth
 .venv\Scripts\python.exe scripts\fetch_ffmpeg.py
 ```
 
-Downloads BtbN's static **GPL** Windows build (`ffmpeg.exe` + `ffprobe.exe`
-only -- see the licensing note in `scripts/fetch_ffmpeg.py`'s docstring for
-why GPL, which is what gets us `libx264`), verifies each binary actually
-runs, and writes `bin\ffmpeg-build-info.txt` recording the exact version banner of
-what you shipped -- keep that file, it's the answer to "which ffmpeg build
-was in the version we sent out in March" six months from now.
+Downloads BtbN's static **GPL** Windows build (`ffmpeg.exe`, `ffprobe.exe`
+and the build's `LICENSE.txt` -- see the licensing note in
+`scripts/fetch_ffmpeg.py`'s docstring for why GPL, which is what gets us
+`libx264`), verifies each binary actually runs, and writes
+`bin\ffmpeg-build-info.txt` recording the exact version banner of what you
+shipped -- keep that file, it's the answer to "which ffmpeg build was in the
+version we sent out in March" six months from now. `build.py` refuses to
+bundle a `bin\` without `LICENSE.txt`: we redistribute a GPL binary, so its
+licence text ships beside it, along with the repo's `LICENSE` and
+`NOTICES.md`.
 
 ### 2. Pre-seed the Whisper model (once per model size you ship)
 
@@ -73,21 +86,33 @@ was in the version we sent out in March" six months from now.
 .venv\Scripts\python.exe scripts\fetch_model.py --model-size small
 ```
 
-Downloads the CTranslate2-converted model into `build\models\small\` and
-writes `model-info.txt` there recording the **real** size on disk (the
-spec's tiny/base/small/medium/large-v3 sizes are estimates -- trust this
-file, not that table). Six editors pulling several GB each over the office
-connection on first run is the thing this avoids; see design spec section
-11.3.
+Downloads the CTranslate2-converted model into `build\models\` laid out as
+a **Hugging Face cache root** (`models--Systran--faster-whisper-small/
+snapshots/<sha>/...`, symlinks materialised so PyInstaller and robocopy keep
+the files), and writes `model-info-small.txt` in that root recording the
+**real** size on disk. That layout is what faster-whisper resolves offline;
+the earlier flat `models\small\` layout was silently ignored at run time and
+every editor re-downloaded the model on first job and after every update.
+`tests/test_packaging/test_fetch_model.py` proves the bundled layout resolves
+with the network off. Six editors pulling several GB each over the office
+connection is the thing this avoids; see design spec section 11.3.
 
-Repeat with `--model-size large-v3` for the GPU build, if you're shipping
-one.
+All sizes share the same root; repeat with `--model-size large-v3` for a GPU
+build, if one ever ships.
+
+For a **source run** (an editor following the guide), the same script with
+`--dest models` puts the cache at `<repo>\models\`, which the app prefers
+over `C:\AshCaptions\models` when it exists.
 
 ### 3. Build the bundle
 
 ```powershell
-.venv\Scripts\python.exe scripts\build.py --model-dir build\models\small
+.venv\Scripts\python.exe scripts\build.py --model-dir build\models
 ```
+
+`build.py` validates the model directory is a real HF cache root (it refuses
+the flat layout and unresolved symlinks) and warns when `--model-dir` is
+omitted, since that ships a bundle that downloads ~480 MB per machine.
 
 Produces a PyInstaller **onedir** bundle (not `onefile` -- see `build.py`'s
 docstring) at `dist\AshCaptions\`, zips it to
@@ -141,21 +166,31 @@ Run this **on the editor's machine**, after the standard CPU install from
 `installer\install.ps1` is already working. It:
 
 1. Reports the detected driver's `nvidia-smi` "CUDA Version".
-2. States plainly whether that satisfies ctranslate2 4.5.x's requirement
-   (cuDNN 9 + CUDA >= 12.3) -- and **refuses**, with the reason printed, if
-   it doesn't. It will not produce a machine that fails at the first job
-   with `cudnn_ops64_9.dll is not found`; it makes you fix the driver first.
-3. Only on success, flips `C:\AshCaptions\settings.json` to `device=cuda`,
+2. States plainly whether that satisfies ctranslate2 **4.8.2**'s requirement
+   (cuDNN 9 + CUDA 12) -- and **refuses**, with the reason printed, if it
+   doesn't.
+3. Checks that the cuBLAS 12 / cuDNN 9 DLL set ctranslate2 loads at run time
+   (the list is `scripts/pkgtools/gpu_matrix.py::REQUIRED_CUDA_DLLS`) is
+   present beside `AshCaptions.exe`, in its `ctranslate2\` folder, or on
+   PATH -- and **refuses** if any are missing. The CPU bundle does not ship
+   them, so today the script refuses on every machine, by design: flipping
+   `device=cuda` without them made every job fail at model load.
+4. Only on success, flips `C:\AshCaptions\settings.json` to `device=cuda`,
    `model_size=large-v3`.
 
-`-CheckOnly` reports the decision as JSON without changing anything.
+`-CheckOnly` reports the decision as JSON (including which DLLs are missing)
+without changing anything. Shipping GPU support means a build variant that
+copies the `bin\` folders of the `nvidia-cublas-cu12` and `nvidia-cudnn-cu12`
+wheels beside the exe; that variant does not exist yet. As a safety net, the
+engine falls back to CPU (with a logged warning) if a `cuda` model fails to
+load.
 
 ### Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
 | Control page shows a blank page / 404 | Bundle was built with a stale or missing `web/static/` -- rebuild; `scripts/build.py` should have refused to produce this bundle in the first place. |
-| `cudnn_ops64_9.dll is not found` | `enable_gpu.ps1` was skipped, or its refusal was overridden by hand. Re-run it and follow what it says. |
+| `cudnn_ops64_9.dll is not found` / jobs fall back to CPU after GPU opt-in | The CUDA DLLs are not beside the exe. `enable_gpu.ps1` refuses in that state; a hand-edited `settings.json` saying `cuda` gets the CPU fallback instead. Re-run the script and follow what it says. |
 | Six "Windows protected your PC" messages on rollout day | Expected -- the exe is unsigned (spec section 11.4/15). Brief the team ahead of time; code signing is only worth it if this becomes a real recurring complaint, not pre-emptively. |
 | `gh` publish fails with an auth error | `gh auth login` on the build machine, not a token in a file -- this repo's scripts never read or write one. |
 | Install works but nothing starts at logon | Check `Get-ScheduledTask -TaskName AshCaptionsTray` -- if `install.ps1` was run under a different Windows user than the one who logs in day-to-day, the (per-user) task is registered for the wrong account. |
@@ -268,8 +303,12 @@ necessary.
 
 ## Two-repo model (spec section 11.4)
 
-- **`ASHMediaSolutions01/ashcaptions`** (this repo, private) -- source. Never
-  contains client data, glossaries, or secrets.
+- **`ASHMediaSolutions01/ashcaptions`** (this repo, **public** since
+  2026-09-02 so editors can clone it without an account) -- source. Never
+  contains client data, glossaries, secrets, or client footage; the history
+  was rewritten before the flip to remove a client frame from a screenshot.
+  The code is published under the all-rights-reserved `LICENSE`, not open
+  source.
 - **`ASHMediaSolutions01/ashcaptions-releases`** (public) -- built artifacts
   and `manifest.json` only. No source, no secrets, nothing an attacker gains
   anything from. Because it's public, `install.ps1` and the app-side updater
@@ -290,12 +329,16 @@ the distribution problem the public-repo pattern exists to sidestep.
 scripts/
   build.py            # onedir PyInstaller build -> dist/AshCaptions*, build-info.json
   fetch_ffmpeg.py      # BtbN GPL static build -> bin/{ffmpeg,ffprobe}.exe
-  fetch_model.py        # pre-seed a faster-whisper model -> build/models/<size>/
+  fetch_model.py        # pre-seed a faster-whisper model -> build/models/ (HF cache root)
+  requirements-build.txt # pip freeze of the verified build environment
   release.py           # publish dist/ to the public releases repo, write manifest.json
   enable_gpu.ps1        # per-machine GPU opt-in, run by Ghazi only
   pkgtools/
     manifest.py          # manifest schema: build / validate / read / compare versions
     gpu_matrix.py         # the CUDA/cuDNN decision table, pure Python mirror of enable_gpu.ps1
+
+LICENSE                  # all rights reserved -- published, not open source
+NOTICES.md               # third-party licences shipped in the bundle (ffmpeg, fonts, ...)
 
 installer/
   install.ps1            # the actual installer -- CPU-only, idempotent, per-user
