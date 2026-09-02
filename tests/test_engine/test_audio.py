@@ -99,3 +99,28 @@ def test_raises_typed_error_on_os_error_launching_ffmpeg(tmp_path):
         mock_run.side_effect = OSError("access denied")
         with pytest.raises(AudioExtractionError, match="Failed to launch"):
             extract_audio(video, output, ffmpeg_path=ffmpeg)
+
+
+def test_runs_headless_and_takes_only_the_first_audio_stream(tmp_path):
+    """A tray app has no console for ffmpeg to poll, and a camera file with
+    two audio tracks must not have them chosen by "best"."""
+    import subprocess as sp
+    import sys
+
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"not a real video")
+    output = tmp_path / "out.wav"
+
+    with patch("ash_captions.engine.audio.subprocess.run") as mock_run:
+        mock_run.return_value = sp.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        extract_audio(video, output, ffmpeg_path=tmp_path / "ffmpeg.exe")
+
+    argv, kwargs = mock_run.call_args[0][0], mock_run.call_args[1]
+    for flag in ("-nostdin", "-nostats", "-hide_banner"):
+        assert flag in argv
+    assert argv[argv.index("-loglevel") + 1] == "error"
+    assert argv[argv.index("-map") + 1] == "0:a:0"
+    assert argv.index("-i") < argv.index("-map")  # an input option must precede the output
+    assert kwargs["stdin"] is sp.DEVNULL
+    if sys.platform == "win32":
+        assert kwargs["creationflags"] == sp.CREATE_NO_WINDOW

@@ -17,6 +17,7 @@ import pytest
 from ash_captions.engine.transcribe import (
     Segment,
     Transcriber,
+    TranscriptionCancelled,
     TranscriptionError,
     TranscriptionResult,
     Word,
@@ -196,3 +197,214 @@ def test_model_is_loaded_once_and_reused(tmp_path, monkeypatch):
     transcriber.translate(audio)
 
     fake_module.WhisperModel.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# long-audio behaviour: batched pipeline, progress, cancellation, clamping
+# ---------------------------------------------------------------------------
+
+
+class _FakePipeline:
+    """Stands in for faster_whisper.BatchedInferencePipeline with the real
+    keyword set of 1.2 (no **kwargs), so unsupported options would TypeError."""
+
+    created: list["_FakePipeline"] = []
+
+    def __init__(self, model):
+        self.model = model
+        self.calls: list[dict] = []
+        self.segments: list = []
+        self.info = MagicMock(language="en", language_probability=0.8, duration=100.0)
+        _FakePipeline.created.append(self)
+
+    def transcribe(self, audio, language=None, task="transcribe", initial_prompt=None, word_timestamps=False,
+                   vad_filter=True, batch_size=8, condition_on_previous_text=True,
+                   hallucination_silence_threshold=None):
+        self.calls.append(dict(audio=audio, language=language, task=task, initial_prompt=initial_prompt,
+                               word_timestamps=word_timestamps, vad_filter=vad_filter, batch_size=batch_size,
+                               condition_on_previous_text=condition_on_previous_text,
+                               hallucination_silence_threshold=hallucination_silence_threshold))
+        return iter(self.segments), self.info
+
+
+def _install_fake_with_pipeline(monkeypatch, model_instance):
+    fake_module = _install_fake_faster_whisper(monkeypatch, model_instance)
+    fake_module.BatchedInferencePipeline = _FakePipeline
+    _FakePipeline.created.clear()
+    return fake_module
+
+
+def _audio(tmp_path):
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"fake")
+    return audio
+
+
+def test_uses_the_batched_pipeline_with_bounded_memory_settings(tmp_path, monkeypatch):
+    """WhisperModel.transcribe computes one log-mel STFT for the whole file
+    (5 GB at 90 minutes); the batched pipeline works per VAD chunk."""
+    model = MagicMock()
+    _install_fake_with_pipeline(monkeypatch, model)
+
+    transcriber = WhisperTranscriber(batch_size=4)
+    result = transcriber.transcribe(_audio(tmp_path), language="es", initial_prompt="Ash")
+
+    model.transcribe.assert_not_called()
+    (pipeline,) = _FakePipeline.created
+    assert pipeline.model is model
+    call = pipeline.calls[0]
+    assert call["language"] == "es" and call["task"] == "transcribe" and call["initial_prompt"] == "Ash"
+    assert call["word_timestamps"] is True and call["vad_filter"] is True and call["batch_size"] == 4
+    assert call["condition_on_previous_text"] is False
+    assert call["hallucination_silence_threshold"] == 2.0
+    assert result.language == "en"
+
+
+def test_pipeline_is_built_once_and_reused(tmp_path, monkeypatch):
+    _install_fake_with_pipeline(monkeypatch, MagicMock())
+    transcriber = WhisperTranscriber()
+    transcriber.transcribe(_audio(tmp_path))
+    transcriber.translate(_audio(tmp_path))
+    assert len(_FakePipeline.created) == 1
+    assert [c["task"] for c in _FakePipeline.created[0].calls] == ["transcribe", "translate"]
+
+
+def test_vad_off_uses_the_eager_model_which_can_run_without_vad(tmp_path, monkeypatch):
+    model = MagicMock()
+    model.transcribe.return_value = ([], MagicMock(language="en", language_probability=0.9, duration=1.0))
+    _install_fake_with_pipeline(monkeypatch, model)
+    WhisperTranscriber().transcribe(_audio(tmp_path), vad_filter=False)
+    model.transcribe.assert_called_once()
+    assert _FakePipeline.created == []
+
+
+def test_batched_pipeline_can_be_switched_off(tmp_path, monkeypatch):
+    model = MagicMock()
+    model.transcribe.return_value = ([], MagicMock(language="en", language_probability=0.9, duration=1.0))
+    _install_fake_with_pipeline(monkeypatch, model)
+    WhisperTranscriber(use_batched_pipeline=False).transcribe(_audio(tmp_path))
+    model.transcribe.assert_called_once()
+    assert _FakePipeline.created == []
+
+
+def test_hallucination_controls_reach_the_eager_model_by_default(tmp_path, monkeypatch):
+    model = MagicMock()
+    model.transcribe.return_value = ([], MagicMock(language="en", language_probability=0.9, duration=1.0))
+    _install_fake_faster_whisper(monkeypatch, model)
+    WhisperTranscriber().transcribe(_audio(tmp_path))
+    kwargs = model.transcribe.call_args[1]
+    assert kwargs["condition_on_previous_text"] is False
+    assert kwargs["hallucination_silence_threshold"] == 2.0
+    assert kwargs["vad_filter"] is True
+
+
+def test_options_the_installed_backend_does_not_accept_are_dropped(tmp_path, monkeypatch):
+    """faster-whisper renames keyword arguments across releases; an
+    unknown one is a TypeError before any audio is read."""
+    seen = {}
+
+    class OldPipeline(_FakePipeline):
+        def transcribe(self, audio, language=None, task="transcribe", word_timestamps=False, vad_filter=True):
+            seen.update(language=language, task=task, word_timestamps=word_timestamps, vad_filter=vad_filter)
+            return iter([]), self.info
+
+    fake_module = _install_fake_faster_whisper(monkeypatch, MagicMock())
+    fake_module.BatchedInferencePipeline = OldPipeline
+    WhisperTranscriber().transcribe(_audio(tmp_path), language="en", initial_prompt="dropped")
+    assert seen == {"language": "en", "task": "transcribe", "word_timestamps": True, "vad_filter": True}
+
+
+def test_cpu_threads_default_is_capped_and_passed_to_the_model(tmp_path, monkeypatch):
+    fake_module = _install_fake_faster_whisper(monkeypatch, MagicMock(
+        transcribe=MagicMock(return_value=([], MagicMock(language="en", duration=1.0)))
+    ))
+    monkeypatch.setattr("ash_captions.engine.transcribe.os.cpu_count", lambda: 64)
+    WhisperTranscriber().transcribe(_audio(tmp_path))
+    assert fake_module.WhisperModel.call_args[1]["cpu_threads"] == 16
+    fake_module.WhisperModel.reset_mock()
+    WhisperTranscriber(cpu_threads=6).transcribe(_audio(tmp_path))
+    assert fake_module.WhisperModel.call_args[1]["cpu_threads"] == 6
+
+
+def test_on_progress_is_called_per_segment_with_the_total_from_info(tmp_path, monkeypatch):
+    _install_fake_with_pipeline(monkeypatch, MagicMock())
+    transcriber = WhisperTranscriber()
+    transcriber._load()
+    pipeline = transcriber._load_pipeline(transcriber._model)
+    pipeline.segments = [
+        _fake_segment("one", 0.0, 12.5, [_fake_word(" one", 0.0, 12.5)]),
+        _fake_segment("two", 30.0, 47.0, [_fake_word(" two", 30.0, 47.0)]),
+    ]
+    updates = []
+    transcriber.transcribe(_audio(tmp_path), on_progress=lambda done, total: updates.append((done, total)))
+    assert updates == [(12.5, 100.0), (47.0, 100.0), (100.0, 100.0)]
+
+
+def test_should_stop_cancels_between_segments(tmp_path, monkeypatch):
+    _install_fake_with_pipeline(monkeypatch, MagicMock())
+    transcriber = WhisperTranscriber()
+    transcriber._load()
+    pipeline = transcriber._load_pipeline(transcriber._model)
+    consumed = []
+
+    def segments():
+        for i in range(10):
+            consumed.append(i)
+            yield _fake_segment(f"s{i}", i * 10.0, i * 10.0 + 5, [_fake_word(f" s{i}", i * 10.0, i * 10.0 + 5)])
+
+    pipeline.segments = segments()
+    polls = []
+
+    def should_stop():
+        polls.append(1)
+        return len(polls) == 3
+
+    with pytest.raises(TranscriptionCancelled):
+        transcriber.transcribe(_audio(tmp_path), should_stop=should_stop)
+    assert consumed == [0, 1, 2]
+
+
+def test_errors_raised_while_decoding_are_wrapped(tmp_path, monkeypatch):
+    """faster-whisper decodes lazily: the failure surfaces on iteration,
+    not on the call, and used to escape the TranscriptionError wrapper."""
+    _install_fake_with_pipeline(monkeypatch, MagicMock())
+    transcriber = WhisperTranscriber()
+    transcriber._load()
+    pipeline = transcriber._load_pipeline(transcriber._model)
+
+    def segments():
+        yield _fake_segment("ok", 0.0, 1.0, [])
+        raise RuntimeError("CUDA fell over")
+
+    pipeline.segments = segments()
+    with pytest.raises(TranscriptionError, match="CUDA fell over"):
+        transcriber.transcribe(_audio(tmp_path))
+
+
+def test_word_timestamps_are_clamped_monotonic_across_segments(tmp_path, monkeypatch):
+    """At VAD chunk boundaries faster-whisper emits a word starting before
+    the previous one ended, which became overlapping SRT cues."""
+    _install_fake_with_pipeline(monkeypatch, MagicMock())
+    transcriber = WhisperTranscriber()
+    transcriber._load()
+    pipeline = transcriber._load_pipeline(transcriber._model)
+    pipeline.segments = [
+        _fake_segment("a b", 0.0, 2.0, [_fake_word(" a", 0.0, 1.0), _fake_word(" b", 0.8, 1.6)]),
+        _fake_segment("c d", 1.5, 3.0, [_fake_word(" c", 1.4, 1.5), _fake_word(" d", 2.0, 1.9)]),
+    ]
+    words = transcriber.transcribe(_audio(tmp_path)).words
+    assert [(w.start, w.end) for w in words] == [(0.0, 1.0), (1.0, 1.6), (1.6, 1.6), (2.0, 2.0)]
+    assert all(later.start >= earlier.end for earlier, later in zip(words, words[1:]))
+
+
+def test_cancellation_is_a_transcription_error_and_defaults_keep_old_fakes_working():
+    assert issubclass(TranscriptionCancelled, TranscriptionError)
+
+    class OldFake:
+        def transcribe(self, audio_path, *, language=None, initial_prompt=None, vad_filter=True):
+            return TranscriptionResult(segments=(), language="en")
+
+        def translate(self, audio_path, *, language=None, initial_prompt=None, vad_filter=True):
+            return TranscriptionResult(segments=(), language="en")
+
+    assert isinstance(OldFake(), Transcriber)

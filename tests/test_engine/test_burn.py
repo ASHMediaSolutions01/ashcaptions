@@ -1,21 +1,61 @@
-"""Tests for ash_captions.engine.burn.
+"""Tests for ash_captions.engine.burn: command construction and encoder choice.
 
-No real ffmpeg or nvidia-smi is invoked: subprocess is mocked throughout.
+No real ffmpeg or nvidia-smi is invoked. Running a burn (process handling,
+cancellation, the .part rename) is covered in test_burn_process.py.
 """
 from __future__ import annotations
 
 import subprocess
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from ash_captions.engine import burn
 from ash_captions.engine.burn import (
+    BITRATE_1080P,
+    BITRATE_4K,
+    CAPTIONS_FILENAME,
+    FILTER_SCRIPT_FILENAME,
+    MIN_BITRATE,
     BurnInError,
+    _escape_path_for_filtergraph,
     _parse_progress_line,
+    audio_args,
     build_burn_command,
-    burn_captions,
+    build_filtergraph,
     detect_nvenc,
+    encoder_args,
+    filter_file_option,
+    part_path_for,
+    software_bitrate,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_caches():
+    burn._encoder_cache.clear()
+    burn._version_cache.clear()
+    burn._nvenc_test_cache.clear()
+    yield
+    burn._encoder_cache.clear()
+    burn._version_cache.clear()
+    burn._nvenc_test_cache.clear()
+
+
+def _ass(tmp_path: Path, name: str = "subs.ass") -> Path:
+    path = tmp_path / name
+    path.write_text("[Script Info]\nTitle: t\n", encoding="utf-8")
+    return path
+
+
+def _command(tmp_path: Path, **overrides) -> list[str]:
+    options = dict(
+        work_dir=tmp_path / "work",
+        ffmpeg_path=tmp_path / "ffmpeg.exe",  # does not exist: probing fails, defaults apply
+    )
+    options.update(overrides)
+    return build_burn_command(tmp_path / "in.mp4", _ass(tmp_path), tmp_path / "out.mp4", **options)
 
 
 # ---------------------------------------------------------------------------
@@ -36,8 +76,7 @@ def test_detect_nvenc_false_when_nvidia_smi_fails():
 
 
 def test_detect_nvenc_false_when_nvidia_smi_missing():
-    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
-        mock_run.side_effect = FileNotFoundError()
+    with patch("ash_captions.engine.burn.subprocess.run", side_effect=FileNotFoundError()):
         assert detect_nvenc() is False
 
 
@@ -48,87 +87,239 @@ def test_detect_nvenc_false_on_timeout():
 
 
 # ---------------------------------------------------------------------------
-# build_burn_command
+# encoder selection
 # ---------------------------------------------------------------------------
 
 
-def test_build_burn_command_uses_libx264_by_default(tmp_path):
-    args = build_burn_command(
-        tmp_path / "in.mp4", tmp_path / "subs.ass", tmp_path / "out.mp4", ffmpeg_path=tmp_path / "ffmpeg.exe"
-    )
-    assert "-c:v" in args
+def test_falls_back_to_libx264_when_the_binary_cannot_be_probed(tmp_path):
+    """Not "by default": a missing binary means probing failed, and the
+    historical default is the best guess left."""
+    args = _command(tmp_path)
     assert args[args.index("-c:v") + 1] == "libx264"
 
 
-def test_build_burn_command_uses_nvenc_when_requested(tmp_path):
-    args = build_burn_command(
-        tmp_path / "in.mp4",
-        tmp_path / "subs.ass",
-        tmp_path / "out.mp4",
-        ffmpeg_path=tmp_path / "ffmpeg.exe",
-        use_nvenc=True,
-    )
+def test_trusts_an_nvenc_request_when_the_binary_cannot_be_probed(tmp_path):
+    args = _command(tmp_path, use_nvenc=True)
     assert args[args.index("-c:v") + 1] == "h264_nvenc"
 
 
-def test_build_burn_command_escapes_colons_and_backslashes_in_subtitle_path():
+def test_nvenc_request_falls_back_to_software_when_the_test_encode_fails(monkeypatch, tmp_path):
+    """nvidia-smi being present says there is a driver, not that this ffmpeg
+    can drive it; that mismatch used to fail at the start of every burn."""
+    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"h264_nvenc", "libx264"}))
+    monkeypatch.setattr(burn, "nvenc_encode_works", lambda _p: False)
+    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=True) == "libx264"
+
+
+def test_nvenc_is_used_when_the_test_encode_passes(monkeypatch, tmp_path):
+    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"h264_nvenc", "libx264"}))
+    monkeypatch.setattr(burn, "nvenc_encode_works", lambda _p: True)
+    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=True) == "h264_nvenc"
+
+
+def test_nvenc_encode_test_result_is_cached_per_binary(tmp_path):
+    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        assert burn.nvenc_encode_works(tmp_path / "ffmpeg.exe") is True
+        assert burn.nvenc_encode_works(tmp_path / "ffmpeg.exe") is True
+    assert mock_run.call_count == 1
+    argv = mock_run.call_args[0][0]
+    assert "h264_nvenc" in argv and "-nostdin" in argv and "-frames:v" in argv
+    assert mock_run.call_args[1]["timeout"] == 20
+
+
+def test_selects_a_software_encoder_the_build_actually_has(monkeypatch, tmp_path):
+    """An LGPL ffmpeg has no libx264 -- x264 is GPL, so the LGPL build is
+    configured --disable-libx264. h264_mf (High profile) beats libopenh264
+    (baseline only) as the fallback."""
+    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"libopenh264", "h264_mf"}))
+    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "h264_mf"
+
+
+def test_prefers_libx264_when_the_build_has_it(monkeypatch, tmp_path):
+    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"libx264", "libopenh264", "h264_mf"}))
+    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "libx264"
+
+
+def test_raises_a_named_error_when_no_h264_encoder_exists(monkeypatch, tmp_path):
+    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"vp9", "aac"}))
+    with pytest.raises(BurnInError, match="no usable H.264 encoder"):
+        burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False)
+
+
+def test_probe_failure_falls_back_rather_than_blocking_a_burn(tmp_path):
+    assert burn.available_encoders(tmp_path / "definitely-not-here.exe") == frozenset()
+    assert burn.select_video_encoder(tmp_path / "definitely-not-here.exe") == "libx264"
+
+
+# ---------------------------------------------------------------------------
+# encoder / audio flags
+# ---------------------------------------------------------------------------
+
+
+def test_libx264_gets_explicit_quality_settings():
+    assert encoder_args("libx264") == ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"]
+
+
+def test_nvenc_gets_explicit_quality_settings():
+    args = encoder_args("h264_nvenc")
+    assert args[:2] == ["-c:v", "h264_nvenc"]
+    for flag, value in (("-preset", "p5"), ("-rc", "vbr"), ("-cq", "19"), ("-b:v", "0"), ("-pix_fmt", "yuv420p")):
+        assert args[args.index(flag) + 1] == value
+
+
+@pytest.mark.parametrize("encoder", ["h264_mf", "libopenh264"])
+def test_bitrate_encoders_get_a_bitrate_scaled_by_pixels(encoder):
+    at_1080p = encoder_args(encoder, width=1920, height=1080)
+    at_4k = encoder_args(encoder, width=3840, height=2160)
+    assert at_1080p[at_1080p.index("-b:v") + 1] == str(BITRATE_1080P)
+    assert at_4k[at_4k.index("-b:v") + 1] == str(BITRATE_4K)
+    assert at_1080p[-2:] == ["-pix_fmt", "yuv420p"]
+
+
+def test_bitrate_is_linear_in_pixels_and_never_silly():
+    assert software_bitrate(0, 0) == BITRATE_1080P  # unknown size: assume 1080p
+    assert BITRATE_1080P < software_bitrate(2560, 1440) < BITRATE_4K
+    assert software_bitrate(1280, 720) < BITRATE_1080P
+    assert software_bitrate(320, 240) == MIN_BITRATE
+
+
+@pytest.mark.parametrize("codec", [None, "aac", "AAC", "mp3"])
+def test_mp4_friendly_audio_is_copied(codec):
+    assert audio_args(codec) == ["-c:a", "copy"]
+
+
+@pytest.mark.parametrize("codec", ["pcm_s16le", "opus", "flac", "vorbis"])
+def test_other_audio_is_reencoded_to_aac(codec):
+    assert audio_args(codec) == ["-c:a", "aac", "-b:a", "192k"]
+
+
+def test_burn_command_reencodes_audio_from_the_probe(tmp_path):
+    args = _command(tmp_path, audio_codec="pcm_s16le")
+    assert args[args.index("-c:a") + 1] == "aac"
+
+
+# ---------------------------------------------------------------------------
+# filtergraph file and work directory
+# ---------------------------------------------------------------------------
+
+
+def test_filtergraph_is_written_to_a_file_and_referenced_not_passed(tmp_path):
+    args = _command(tmp_path)
+    assert "-vf" not in args
+    assert args[args.index("-/filter:v") + 1] == FILTER_SCRIPT_FILENAME
+    script = tmp_path / "work" / FILTER_SCRIPT_FILENAME
+    assert script.read_text(encoding="utf-8") == f"ass={CAPTIONS_FILENAME}"
+
+
+def test_ass_file_is_copied_under_a_fixed_name(tmp_path):
+    source = _ass(tmp_path, "Client's take 1, part=2 [final].ass")
+    build_burn_command(
+        tmp_path / "in.mp4", source, tmp_path / "out.mp4", work_dir=tmp_path / "work", ffmpeg_path=tmp_path / "f.exe"
+    )
+    assert (tmp_path / "work" / CAPTIONS_FILENAME).read_bytes() == source.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Client's reel (v2)", "take 1, part=2; [final] 100%", "Espa\u00f1ol \u00f1 \u65e5\u672c", "colon: in dir"],
+)
+def test_user_paths_never_reach_the_filtergraph(tmp_path, name):
+    """An apostrophe closes the quoted filename and turns the rest of the
+    path into filter syntax; a comma or colon splits it. None of it may
+    be in the graph at all."""
+    folder = tmp_path / name.replace(":", "_")
+    folder.mkdir()
+    ass = _ass(folder, f"{name.replace(':', '_')}.ass")
+    video = folder / f"{name.replace(':', '_')}.mp4"
     args = build_burn_command(
-        "C:/videos/in.mp4",
-        r"C:\Users\editor\out dir\subs.ass",
-        "C:/videos/out.mp4",
-        ffmpeg_path="bin/ffmpeg.exe",
+        video, ass, folder / "out.mp4", work_dir=tmp_path / "work", ffmpeg_path=tmp_path / "ffmpeg.exe"
     )
-    vf = args[args.index("-vf") + 1]
-    assert vf == r"ass='C\:/Users/editor/out dir/subs.ass'"
+    script = (tmp_path / "work" / FILTER_SCRIPT_FILENAME).read_text(encoding="utf-8")
+    assert script == f"ass={CAPTIONS_FILENAME}"
+    assert str(video) in args  # the input path is an argv element, never filter text
 
 
-def test_build_burn_command_omits_fontsdir_by_default(tmp_path):
-    args = build_burn_command(
-        tmp_path / "in.mp4", tmp_path / "subs.ass", tmp_path / "out.mp4", ffmpeg_path=tmp_path / "ffmpeg.exe"
-    )
-    vf = args[args.index("-vf") + 1]
-    assert "fontsdir" not in vf
+def test_fontsdir_is_escaped_in_the_script(tmp_path):
+    _command(tmp_path, fontsdir=r"C:\Program Files\Ash Captions\fonts")
+    script = (tmp_path / "work" / FILTER_SCRIPT_FILENAME).read_text(encoding="utf-8")
+    assert script == r"ass=captions.ass:fontsdir='C\:/Program Files/Ash Captions/fonts'"
 
 
-def test_build_burn_command_with_fontsdir_none_is_byte_identical_to_omitting_it(tmp_path):
-    with_none = build_burn_command(
-        "C:/videos/in.mp4", r"C:\subs\out.ass", "C:/videos/out.mp4", ffmpeg_path="bin/ffmpeg.exe", fontsdir=None
-    )
-    without_param = build_burn_command(
-        "C:/videos/in.mp4", r"C:\subs\out.ass", "C:/videos/out.mp4", ffmpeg_path="bin/ffmpeg.exe"
-    )
-    assert with_none == without_param
+def test_apostrophe_in_fontsdir_survives_both_parsing_levels():
+    """The graph parser strips quotes and keeps backslashes; the option
+    parser then applies them. An apostrophe therefore closes the quote,
+    is written as an escaped backslash plus escaped quote, and reopens."""
+    assert _escape_path_for_filtergraph(Path(r"C:\Users\O'Brien\fonts")) == r"C\:/Users/O'\\\''Brien/fonts"
 
 
-def test_build_burn_command_emits_fontsdir_in_the_ass_filter():
-    args = build_burn_command(
-        "C:/videos/in.mp4",
-        "C:/videos/subs.ass",
-        "C:/videos/out.mp4",
-        ffmpeg_path="bin/ffmpeg.exe",
-        fontsdir=r"C:\AshCaptions\assets\fonts",
-    )
-    vf = args[args.index("-vf") + 1]
-    assert vf.startswith("ass='C\\:/videos/subs.ass':fontsdir='")
-    assert "AshCaptions/assets/fonts" in vf
+def test_punch_filter_comes_before_the_subtitles(tmp_path):
+    _command(tmp_path, punch_filter="scale=w='iw':h='ih':eval=frame,crop=w=iw:h=ih")
+    script = (tmp_path / "work" / FILTER_SCRIPT_FILENAME).read_text(encoding="utf-8")
+    assert script == "scale=w='iw':h='ih':eval=frame,crop=w=iw:h=ih,ass=captions.ass"
+    assert build_filtergraph(punch_filter=None) == "ass=captions.ass"
 
 
-def test_build_burn_command_escapes_colons_and_backslashes_in_fontsdir():
-    args = build_burn_command(
-        "in.mp4", "subs.ass", "out.mp4", ffmpeg_path="ffmpeg.exe", fontsdir=r"C:\Program Files\Ash Captions\fonts"
-    )
-    vf = args[args.index("-vf") + 1]
-    assert vf == (
-        r"ass='subs.ass':fontsdir='C\:/Program Files/Ash Captions/fonts'"
-    )
-
-
-def test_build_burn_command_reports_progress_via_stdout_pipe(tmp_path):
-    args = build_burn_command(
-        tmp_path / "in.mp4", tmp_path / "subs.ass", tmp_path / "out.mp4", ffmpeg_path=tmp_path / "ffmpeg.exe"
-    )
-    assert "-progress" in args
+def test_command_shape(tmp_path):
+    args = _command(tmp_path)
+    assert args[0] == str((tmp_path / "ffmpeg.exe").resolve())
+    for flag in ("-nostdin", "-hide_banner", "-y"):
+        assert flag in args
+    assert args[args.index("-i") + 1] == str((tmp_path / "in.mp4").resolve())
+    maps = [args[i + 1] for i, a in enumerate(args) if a == "-map"]
+    assert maps == ["0:v:0", "0:a:0?"]
     assert args[args.index("-progress") + 1] == "pipe:1"
+    assert "-nostats" in args
+    assert "faststart" not in " ".join(args)
+
+
+def test_output_is_the_part_file_not_the_final_name(tmp_path):
+    args = _command(tmp_path)
+    assert args[-1] == str(part_path_for((tmp_path / "out.mp4").resolve()))
+    assert args[-1].endswith("out.part.mp4")
+
+
+def test_part_path_for_keeps_directory_and_container():
+    assert part_path_for(Path("C:/jobs/talk.captioned.mp4")) == Path("C:/jobs/talk.captioned.part.mp4")
+    assert part_path_for(Path("C:/jobs/noext")) == Path("C:/jobs/noext.part.mp4")
+
+
+def test_missing_ass_raises_before_staging(tmp_path):
+    with pytest.raises(BurnInError, match="Subtitle file not found"):
+        build_burn_command(
+            tmp_path / "in.mp4", tmp_path / "nope.ass", tmp_path / "out.mp4",
+            work_dir=tmp_path / "work", ffmpeg_path=tmp_path / "ffmpeg.exe",
+        )
+    assert not (tmp_path / "work").exists()
+
+
+def test_bare_ffmpeg_name_is_left_for_path_lookup(tmp_path):
+    args = build_burn_command(
+        tmp_path / "in.mp4", _ass(tmp_path), tmp_path / "out.mp4", work_dir=tmp_path / "work", ffmpeg_path="ffmpeg"
+    )
+    assert args[0] == "ffmpeg"
+
+
+# ---------------------------------------------------------------------------
+# filter file option per ffmpeg version
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("major", "expected"), [(None, "-/filter:v"), (7, "-/filter:v"), (8, "-/filter:v"), (6, "-filter_script:v")])
+def test_filter_file_option_follows_the_ffmpeg_version(monkeypatch, major, expected):
+    monkeypatch.setattr(burn, "ffmpeg_major_version", lambda _p: major)
+    assert filter_file_option("ffmpeg") == expected
+
+
+@pytest.mark.parametrize(
+    ("banner", "expected"),
+    [("ffmpeg version 6.1.1-full_build Copyright", 6), ("ffmpeg version n7.0 Copyright", 7),
+     ("ffmpeg version N-126386-gc27482a18d-20260901 Copyright", None), ("", None)],
+)
+def test_ffmpeg_major_version_parses_release_and_git_banners(banner, expected):
+    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=banner, stderr="")
+        assert burn.ffmpeg_major_version("ffmpeg-x") == expected
 
 
 # ---------------------------------------------------------------------------
@@ -154,182 +345,3 @@ def test_parse_progress_line_ignores_unrelated_lines():
 
 def test_parse_progress_line_returns_none_for_zero_duration():
     assert _parse_progress_line("out_time_us=1000000", duration_seconds=0.0) is None
-
-
-# ---------------------------------------------------------------------------
-# burn_captions
-# ---------------------------------------------------------------------------
-
-
-def _make_fake_process(progress_lines, returncode=0, stderr=""):
-    process = MagicMock()
-    process.stdout = iter(progress_lines)
-    # Iterable, not .read(): burn_captions drains stderr line-by-line on a
-    # background thread, because reading it only after the stdout loop
-    # deadlocks against ffmpeg once the pipe buffer fills.
-    process.stderr = iter([stderr] if stderr else [])
-    process.wait.return_value = returncode
-    return process
-
-
-def test_burn_captions_raises_if_video_missing(tmp_path):
-    ass = tmp_path / "subs.ass"
-    ass.write_text("[Script Info]")
-
-    with pytest.raises(BurnInError, match="Input video not found"):
-        burn_captions(tmp_path / "missing.mp4", ass, tmp_path / "out.mp4", duration_seconds=10.0)
-
-
-def test_burn_captions_raises_if_ass_missing(tmp_path):
-    video = tmp_path / "in.mp4"
-    video.write_bytes(b"fake")
-
-    with pytest.raises(BurnInError, match="Subtitle file not found"):
-        burn_captions(video, tmp_path / "missing.ass", tmp_path / "out.mp4", duration_seconds=10.0)
-
-
-def test_burn_captions_does_not_invoke_ffmpeg_when_inputs_missing(tmp_path):
-    with patch("ash_captions.engine.burn.subprocess.Popen") as mock_popen:
-        with pytest.raises(BurnInError):
-            burn_captions(tmp_path / "missing.mp4", tmp_path / "missing.ass", tmp_path / "out.mp4", duration_seconds=10.0)
-    mock_popen.assert_not_called()
-
-
-def test_burn_captions_reports_progress_and_returns_output_path(tmp_path):
-    video = tmp_path / "in.mp4"
-    video.write_bytes(b"fake")
-    ass = tmp_path / "subs.ass"
-    ass.write_text("[Script Info]")
-    output = tmp_path / "out" / "captioned.mp4"
-
-    fake_process = _make_fake_process(["out_time_us=2500000\n", "out_time_us=5000000\n"], returncode=0)
-
-    progress_updates = []
-    with patch("ash_captions.engine.burn.subprocess.Popen", return_value=fake_process) as mock_popen, patch(
-        "ash_captions.engine.burn.detect_nvenc", return_value=False
-    ):
-        result = burn_captions(
-            video, ass, output, duration_seconds=10.0, ffmpeg_path=tmp_path / "ffmpeg.exe",
-            on_progress=progress_updates.append,
-        )
-
-    assert result == output
-    assert progress_updates == [25.0, 50.0]
-    # Exactly one *burn* invocation. Popen is also used to probe the binary
-    # for available encoders (an LGPL ffmpeg has no libx264), so asserting a
-    # single Popen call overall would be asserting an implementation detail.
-    burn_calls = [c for c in mock_popen.call_args_list if "-encoders" not in c[0][0]]
-    assert len(burn_calls) == 1
-    assert output.parent.is_dir()
-
-
-def test_burn_captions_threads_fontsdir_into_the_command(tmp_path):
-    video = tmp_path / "in.mp4"
-    video.write_bytes(b"fake")
-    ass = tmp_path / "subs.ass"
-    ass.write_text("[Script Info]")
-    fonts_dir = tmp_path / "assets" / "fonts"
-
-    fake_process = _make_fake_process([], returncode=0)
-
-    with patch("ash_captions.engine.burn.subprocess.Popen", return_value=fake_process) as mock_popen, patch(
-        "ash_captions.engine.burn.detect_nvenc", return_value=False
-    ):
-        burn_captions(
-            video, ass, tmp_path / "out.mp4", duration_seconds=10.0, ffmpeg_path=tmp_path / "ffmpeg.exe",
-            fontsdir=fonts_dir,
-        )
-
-    called_args = mock_popen.call_args[0][0]
-    vf = called_args[called_args.index("-vf") + 1]
-    assert "fontsdir=" in vf
-    assert "fonts" in vf
-
-
-def test_burn_captions_auto_detects_nvenc(tmp_path):
-    video = tmp_path / "in.mp4"
-    video.write_bytes(b"fake")
-    ass = tmp_path / "subs.ass"
-    ass.write_text("[Script Info]")
-
-    fake_process = _make_fake_process([], returncode=0)
-
-    with patch("ash_captions.engine.burn.subprocess.Popen", return_value=fake_process) as mock_popen, patch(
-        "ash_captions.engine.burn.detect_nvenc", return_value=True
-    ):
-        burn_captions(video, ass, tmp_path / "out.mp4", duration_seconds=10.0, ffmpeg_path=tmp_path / "ffmpeg.exe")
-
-    called_args = mock_popen.call_args[0][0]
-    assert called_args[called_args.index("-c:v") + 1] == "h264_nvenc"
-
-
-def test_burn_captions_raises_typed_error_with_stderr_on_failure(tmp_path):
-    video = tmp_path / "in.mp4"
-    video.write_bytes(b"fake")
-    ass = tmp_path / "subs.ass"
-    ass.write_text("[Script Info]")
-
-    fake_process = _make_fake_process([], returncode=1, stderr="Unknown encoder 'h264_nvenc'")
-
-    with patch("ash_captions.engine.burn.subprocess.Popen", return_value=fake_process), patch(
-        "ash_captions.engine.burn.detect_nvenc", return_value=False
-    ):
-        with pytest.raises(BurnInError) as exc_info:
-            burn_captions(video, ass, tmp_path / "out.mp4", duration_seconds=10.0, ffmpeg_path=tmp_path / "ffmpeg.exe")
-
-    assert exc_info.value.returncode == 1
-    assert "Unknown encoder" in exc_info.value.stderr
-
-
-def test_burn_captions_raises_typed_error_when_ffmpeg_missing(tmp_path):
-    video = tmp_path / "in.mp4"
-    video.write_bytes(b"fake")
-    ass = tmp_path / "subs.ass"
-    ass.write_text("[Script Info]")
-
-    with patch("ash_captions.engine.burn.subprocess.Popen", side_effect=OSError("not found")):
-        with pytest.raises(BurnInError, match="Failed to launch"):
-            burn_captions(video, ass, tmp_path / "out.mp4", duration_seconds=10.0, ffmpeg_path=tmp_path / "missing.exe")
-
-
-def test_selects_a_software_encoder_the_build_actually_has(monkeypatch, tmp_path):
-    """An LGPL ffmpeg has no libx264 -- x264 is GPL, so the LGPL build is
-    configured --disable-libx264. Burning hardcoded libx264 failed outright
-    with "Unknown encoder". The encoder must come from the real binary."""
-    from ash_captions.engine import burn
-
-    burn._encoder_cache.clear()
-    monkeypatch.setattr(
-        burn, "available_encoders", lambda _p: frozenset({"libopenh264", "h264_mf"})
-    )
-    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "libopenh264"
-
-
-def test_prefers_libx264_when_the_build_has_it(monkeypatch, tmp_path):
-    from ash_captions.engine import burn
-
-    burn._encoder_cache.clear()
-    monkeypatch.setattr(
-        burn, "available_encoders", lambda _p: frozenset({"libx264", "libopenh264"})
-    )
-    assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "libx264"
-
-
-def test_raises_a_named_error_when_no_h264_encoder_exists(monkeypatch, tmp_path):
-    """Better than letting ffmpeg fail later with its own vaguer message."""
-    from ash_captions.engine import burn
-
-    burn._encoder_cache.clear()
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"vp9", "aac"}))
-    with pytest.raises(burn.BurnInError, match="no usable H.264 encoder"):
-        burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False)
-
-
-def test_probe_failure_falls_back_rather_than_blocking_a_burn(tmp_path):
-    """Probing is a convenience: a missing binary must not stop us building
-    a command, or every mocked test and offline run would break."""
-    from ash_captions.engine import burn
-
-    burn._encoder_cache.clear()
-    assert burn.available_encoders(tmp_path / "definitely-not-here.exe") == frozenset()
-    assert burn.select_video_encoder(tmp_path / "definitely-not-here.exe") == "libx264"

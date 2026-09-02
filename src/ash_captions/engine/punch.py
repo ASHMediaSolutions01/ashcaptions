@@ -10,12 +10,12 @@ moments; punching on the first word of a sentence gives a rhythm an
 editor can look at once and trust for the next fifty videos. Keywords
 are the opt-in for emphasis that matters to a particular client.
 
-Implementation note: a filter must emit a constant frame size, so an
-animated ``crop`` is not an option -- its ``w``/``h`` would change per
-frame, which ffmpeg rejects. ``zoompan`` exists for exactly this: it
-zooms while emitting a fixed ``s=WxH``. The filter is placed *before*
-the subtitle filter so captions are drawn on top at their true size,
-rather than being magnified along with the picture.
+Implementation note: the zoom is a per-frame ``scale`` (sized by an
+expression of the frame's timestamp) followed by a fixed-size centre
+``crop``, so the output size is constant while every frame keeps its
+input timestamp (see ``build_punch_filter``). The filter is placed
+*before* the subtitle filter so captions are drawn on top at their true
+size, rather than being magnified along with the picture.
 """
 
 from __future__ import annotations
@@ -125,27 +125,43 @@ def select_punch_moments(
     return moments
 
 
-def build_zoompan_filter(
+def build_punch_filter(
     moments: list[PunchMoment] | tuple[PunchMoment, ...],
     *,
-    width: int,
-    height: int,
-    fps: float,
     zoom: float = 1.12,
     ease_seconds: float = 0.18,
 ) -> str | None:
-    """Build the ``zoompan`` filter, or ``None`` when there is nothing to do.
+    """Build the ``scale,crop`` punch-in chain, or ``None`` when there is
+    nothing to do.
 
-    Returning ``None`` rather than an identity filter matters: a zoompan
-    pass re-encodes every frame even at zoom 1.0, so a video with no
-    punches should not pay for one.
+    Returning ``None`` rather than an identity filter matters: a filter
+    pass that touches every frame costs time on a 90-minute 4K master,
+    so a video with no punches should not pay for one.
+
+    The chain is ``scale=w='iw*Z(t)':h='ih*ow/iw':eval=frame`` followed by
+    ``crop=w=iw:h=ih:x='iw*(Z(t)-1)/2':y='x*ih/iw'``:
+
+    * ``scale`` with ``eval=frame`` re-evaluates its size per frame from
+      the frame's own timestamp ``t``, so the zoom follows *time*, not a
+      frame counter, and every frame keeps its input timestamp. That is
+      what keeps a variable-frame-rate phone recording in sync with its
+      copied audio over 90 minutes -- ``zoompan`` regenerated timestamps
+      from a constant ``fps`` and drifted on exactly those files.
+    * Outside a punch ``Z(t)`` is exactly 1, and ``scale`` passes such
+      frames through untouched.
+    * ``crop``'s size is fixed when the graph is configured (``t`` is
+      unset then, so ``scale`` reports the source size) and only its
+      offset is re-evaluated per frame. Taking the size from the stream
+      itself rather than from a probe means a phone video with a
+      rotation tag -- which ffmpeg auto-rotates on decode, swapping the
+      probed width and height -- cannot be cropped to the wrong shape.
+      The offset is computed from the envelope rather than from
+      ``crop``'s own ``in_w``, which is captured at config time and
+      would otherwise leave every punched frame cropped top-left.
     """
     if not moments:
         return None
-    if width <= 0 or height <= 0:
-        raise ValueError("width and height must be positive to build a zoom filter")
 
-    effective_fps = fps if fps > 0 else 30.0
     zoom = max(1.0, zoom)
     if zoom == 1.0:
         return None
@@ -157,17 +173,59 @@ def build_zoompan_filter(
         # the window. Without the ramps the zoom is a hard jump, which reads
         # as a glitch rather than an emphasis on a talking head.
         terms.append(
-            f"between(it,{moment.start:.3f},{moment.end:.3f})"
-            f"*min(1,(it-{moment.start:.3f})/{ease:.3f})"
-            f"*min(1,({moment.end:.3f}-it)/{ease:.3f})"
+            f"between(t,{moment.start:.3f},{moment.end:.3f})"
+            f"*min(1,(t-{moment.start:.3f})/{ease:.3f})"
+            f"*min(1,({moment.end:.3f}-t)/{ease:.3f})"
         )
 
-    envelope = "+".join(terms)
-    zoom_expr = f"1+{zoom - 1:.4f}*max(0,{envelope})"
+    envelope = _balanced_sum(terms)
+    excess = f"{zoom - 1:.4f}*max(0,{envelope})"  # Z(t) - 1
 
+    # ``crop`` cannot see the incoming frame's size (its ``in_w`` is fixed
+    # at graph config), so the centre offset is computed from the same
+    # envelope: the scaled frame is ``iw*Z`` wide, the crop ``iw`` wide,
+    # so it starts at ``iw*(Z-1)/2``. ``h`` and ``y`` derive from the
+    # already-computed ``ow``/``x`` so a 700-moment envelope is walked
+    # twice per frame, not four times.
     return (
-        f"zoompan=z='{zoom_expr}'"
-        ":x='iw/2-(iw/zoom/2)'"
-        ":y='ih/2-(ih/zoom/2)'"
-        f":d=1:s={width}x{height}:fps={effective_fps:g}"
+        f"scale=w='iw*(1+{excess})'"
+        ":h='ih*ow/iw'"
+        ":eval=frame"
+        f",crop=w=iw:h=ih:x='iw*({excess})/2':y='x*ih/iw'"
     )
+
+
+# ffmpeg's expression parser recurses once per ``+`` and refuses to go
+# deeper than 100 levels, so a flat ``a+b+c+...`` envelope fails to parse
+# somewhere past 80 terms -- a 7-minute talk at 5s spacing. Summing in a
+# balanced tree keeps the depth logarithmic: ~40 levels for 900 moments.
+_SUM_LEAF_TERMS = 16
+
+
+def _balanced_sum(terms: list[str]) -> str:
+    if len(terms) <= _SUM_LEAF_TERMS:
+        return "+".join(terms)
+    middle = len(terms) // 2
+    return f"({_balanced_sum(terms[:middle])})+({_balanced_sum(terms[middle:])})"
+
+
+def build_zoompan_filter(
+    moments: list[PunchMoment] | tuple[PunchMoment, ...],
+    *,
+    width: int,
+    height: int,
+    fps: float,
+    zoom: float = 1.12,
+    ease_seconds: float = 0.18,
+) -> str | None:
+    """Compatibility name for ``build_punch_filter``.
+
+    The punch used to be a ``zoompan`` filter that had to be told the
+    output size and frame rate. It no longer is (see ``build_punch_filter``
+    for why), so ``width``/``height`` are only validated and ``fps`` is
+    ignored; callers that already pass them keep working unchanged.
+    """
+    if moments and (width <= 0 or height <= 0):
+        raise ValueError("width and height must be positive to build a zoom filter")
+    del fps  # the scale/crop chain follows frame timestamps, not a rate
+    return build_punch_filter(moments, zoom=zoom, ease_seconds=ease_seconds)

@@ -7,34 +7,44 @@ without breaking callers:
 
     from ash_captions.engine import (
         extract_audio, AudioExtractionError,
-        Word, Segment, TranscriptionResult, Transcriber, WhisperTranscriber, TranscriptionError,
+        Word, Segment, TranscriptionResult, Transcriber, WhisperTranscriber,
+        TranscriptionError, TranscriptionCancelled,
         Card, build_cards,
         render_srt, write_srt, render_ass, write_ass, render_txt, write_txt, AssPreset, CLEAN, POP,
-        detect_nvenc, build_burn_command, burn_captions, BurnInError,
+        probe_video, VideoInfo, ProbeError,
+        select_punch_moments, build_punch_filter,
+        detect_nvenc, build_burn_command, burn_captions, BurnInError, BurnCancelled,
+        active_processes, kill_active_processes,
     )
 """
 from .audio import AudioExtractionError, DEFAULT_FFMPEG_PATH, extract_audio
-from .probe import ProbeError, VideoInfo, probe_video
+from .ffmpeg_process import active_processes, kill_active_processes
+from .probe import ProbeError, VideoInfo, ffprobe_beside, probe_video
 from .punch import (
     MAX_DURATION_SECONDS,
     MIN_DURATION_SECONDS,
     PunchMode,
     PunchMoment,
+    build_punch_filter,
     build_zoompan_filter,
     select_punch_moments,
 )
 from .burn import (
+    BurnCancelled,
     BurnInError,
     available_encoders,
     build_burn_command,
     burn_captions,
     detect_nvenc,
+    nvenc_encode_works,
+    part_path_for,
     select_video_encoder,
 )
 from .rules import Card, build_cards
 from .transcribe import (
     Segment,
     Transcriber,
+    TranscriptionCancelled,
     TranscriptionError,
     TranscriptionResult,
     WhisperTranscriber,
@@ -62,6 +72,7 @@ __all__ = [
     "Transcriber",
     "WhisperTranscriber",
     "TranscriptionError",
+    "TranscriptionCancelled",
     "Card",
     "build_cards",
     "render_srt",
@@ -74,16 +85,25 @@ __all__ = [
     "CLEAN",
     "POP",
     "detect_nvenc",
+    "nvenc_encode_works",
     "probe_video",
+    "ffprobe_beside",
     "VideoInfo",
     "ProbeError",
     "PunchMode",
     "PunchMoment",
+    "MIN_DURATION_SECONDS",
+    "MAX_DURATION_SECONDS",
     "select_punch_moments",
+    "build_punch_filter",
     "build_zoompan_filter",
     "available_encoders",
     "select_video_encoder",
     "build_burn_command",
     "burn_captions",
+    "part_path_for",
     "BurnInError",
+    "BurnCancelled",
+    "active_processes",
+    "kill_active_processes",
 ]
