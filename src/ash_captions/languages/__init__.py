@@ -10,9 +10,13 @@ Public interface:
 * ``resolve`` -- turn a (language, dialect) choice into a
   ``ResolvedDialect`` carrying the Whisper language code and priming
   prompt the engine needs to kick off transcription.
+* ``load_glossary_entries`` -- read a client glossary file once per job.
 * ``postprocess`` -- run the full post-processing chain (dialect glossary,
   then client glossary, then spelling normalisation) over transcribed
   text, for the engine to call once transcription finishes.
+* ``postprocess_words`` -- the same chain over a sequence of word-timed
+  tokens, so multi-word glossary phrases can fire across word boundaries
+  without disturbing per-word timing.
 
 Also re-exported for direct use: ``GlossaryEntry``, ``load_glossary``,
 ``apply_glossary`` (``glossary.py``); ``normalize_spelling`` and the
@@ -24,6 +28,7 @@ and ``DialectPreset`` for typing call sites.
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .catalog import (
@@ -57,8 +62,10 @@ __all__ = [
     "list_dialects",
     "list_languages",
     "load_glossary",
+    "load_glossary_entries",
     "normalize_spelling",
     "postprocess",
+    "postprocess_words",
     "resolve",
 ]
 
@@ -117,14 +124,32 @@ def resolve(language_code: str, preset_id: str | None = None) -> ResolvedDialect
     )
 
 
+def load_glossary_entries(
+    path: str | os.PathLike[str] | None,
+) -> tuple[GlossaryEntry, ...]:
+    """Read a client glossary file once, for passing as ``entries=`` to
+    every ``postprocess`` call of a job. Never raises: a missing,
+    unreadable or malformed file is an empty glossary."""
+
+    return load_glossary(path)
+
+
 def postprocess(
     text: str,
     resolved: ResolvedDialect,
     client_glossary_path: str | os.PathLike[str] | None = None,
+    *,
+    entries: Sequence[GlossaryEntry] | None = None,
 ) -> str:
     """Run the post-processing chain over transcribed text: dialect
     glossary corrections, then the client's own glossary corrections,
     then spelling normalisation toward the resolved dialect's convention.
+
+    Pass the client glossary either as ``entries`` (already loaded with
+    ``load_glossary_entries`` -- the right choice when this runs once per
+    word, since it avoids a file read per call) or as
+    ``client_glossary_path`` (read on every call). ``entries`` wins when
+    both are given.
 
     Both glossary passes protect their inserted terms from the spelling
     pass that follows. A missing or malformed client glossary file is
@@ -141,9 +166,45 @@ def postprocess(
         text, inserted = apply_glossary(text, resolved.dialect.glossary_entries)
         protected |= inserted
 
-    client_entries = load_glossary(client_glossary_path)
+    client_entries = entries if entries is not None else load_glossary(client_glossary_path)
     if client_entries:
         text, inserted = apply_glossary(text, client_entries)
         protected |= inserted
 
     return normalize_spelling(text, resolved.spelling_convention, protected=protected)
+
+
+def postprocess_words(
+    words: Sequence[str],
+    resolved: ResolvedDialect,
+    client_glossary_path: str | os.PathLike[str] | None = None,
+    *,
+    entries: Sequence[GlossaryEntry] | None = None,
+) -> tuple[str, ...]:
+    """``postprocess`` for word-timed tokens, keeping one output token per
+    input token so the caller's timings still line up.
+
+    The tokens are joined with single spaces and post-processed as one
+    run of text, which lets a multi-word glossary phrase ("ash captions
+    => ASH Captions") match across word boundaries -- something a
+    per-word call can never see. When a correction changes the number of
+    whitespace-separated tokens (e.g. "New York => NYC"), or any input
+    token itself contains whitespace, the joined result cannot be mapped
+    back onto the input timings, so this falls back to processing each
+    token on its own -- the same result the per-word path always gave.
+    """
+
+    if not words:
+        return ()
+    if any(not word or any(ch.isspace() for ch in word) for word in words):
+        return tuple(
+            postprocess(word, resolved, client_glossary_path, entries=entries) for word in words
+        )
+
+    joined = postprocess(" ".join(words), resolved, client_glossary_path, entries=entries)
+    tokens = joined.split(" ")
+    if len(tokens) == len(words) and all(tokens):
+        return tuple(tokens)
+    return tuple(
+        postprocess(word, resolved, client_glossary_path, entries=entries) for word in words
+    )

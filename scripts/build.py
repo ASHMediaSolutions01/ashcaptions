@@ -2,7 +2,7 @@
 
 Run on Ghazi's build machine only -- never on an editor's PC. Usage:
 
-    .venv/Scripts/python.exe scripts/build.py
+    .venv/Scripts/python.exe scripts/build.py --model-dir build/models
     .venv/Scripts/python.exe scripts/build.py --dry-run   # print the
         PyInstaller command without running it or requiring PyInstaller
         to be installed
@@ -23,9 +23,11 @@ never requires PyInstaller to be installed.
 from __future__ import annotations
 
 import argparse
-import shutil
+import importlib.util
+import json
 import sys
 import zipfile
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,31 +60,35 @@ REQUIRED_STATIC_FILES = ("index.html", "app.js", "style.css")
 # rather than a second implementation that could disagree with the one
 # scripts/release.py was built against. It looks for these files at
 # `app_root() / "scripts" / "pkgtools"` and silently no-ops the update check
-# if they are missing -- so the bundle must actually ship them, or six
-# machines never learn an update exists and the failure looks exactly like
-# "no network," never like a bug.
+# if they are missing -- so the bundle must actually ship them.
 REQUIRED_PKGTOOLS_FILES = ("__init__.py", "manifest.py", "gpu_matrix.py")
-# Destination inside the bundle, relative to its root -- must match what
-# `updater._load_pkgtools_manifest()` looks for via `app_root() / "scripts"`.
 PKGTOOLS_DEST = "scripts/pkgtools"
 
-# styles/library.py's shipped_styles_dir() == app_root() / "styles". Without
-# this, list_styles() finds nothing and every job silently falls back to the
-# default style -- no error, no log an editor would ever see, just the
-# entire styling feature quietly absent from the shipped product.
-STYLES_DEST = "styles"
-
+# styles/library.py's shipped_styles_dir() == app_root() / "styles" and
 # styles/fonts.py's assets_fonts_dir() == app_root() / "assets" / "fonts".
-# manifest.json is the part that MUST ship -- it is what style validation
-# reads, committed and offline. The actual .ttf files are fetched separately
-# (`python -m ash_captions.styles.fonts download`, not a scripts/ concern)
-# and ship if present at build time, but are not required for the build to
-# proceed -- without manifest.json, though, validation rejects every font by
-# design, so that file failing to ship must fail the build.
+STYLES_DEST = "styles"
 FONTS_DEST = "assets/fonts"
 FONT_MANIFEST_FILENAME = "manifest.json"
 
 FFMPEG_BINARIES = ("ffmpeg.exe", "ffprobe.exe")
+# fetch_ffmpeg.py extracts BtbN's licence text beside the binaries; we
+# redistribute a GPL ffmpeg, so a bin/ without it must not ship.
+FFMPEG_LICENSE_FILENAME = "LICENSE.txt"
+
+# Shipped at the bundle root: our own terms and the third-party notices
+# (which point at bin/LICENSE.txt and assets/fonts/licenses/).
+LICENSE_PATH = REPO_ROOT / "LICENSE"
+NOTICES_PATH = REPO_ROOT / "NOTICES.md"
+NOTICE_FILES: tuple[Path, ...] = (LICENSE_PATH, NOTICES_PATH)
+
+# --collect-all targets that are collected only when importable: PyAV is a
+# faster-whisper dependency in a normal install, but PyInstaller aborts on a
+# --collect-all for a package that is not there, and a dry run must not.
+OPTIONAL_COLLECT_ALL = ("av",)
+
+# The bundled Whisper model is an HF cache root (see fetch_model.py): the
+# runtime hands app_root()/models to faster-whisper as its cache_dir.
+MODEL_SNAPSHOT_GLOB = "models--*/snapshots/*/model.bin"
 
 
 class BuildError(Exception):
@@ -90,12 +96,8 @@ class BuildError(Exception):
 
 
 def read_project_version(pyproject_path: Path = PYPROJECT_PATH) -> str:
-    """Read `[project].version` out of pyproject.toml.
-
-    We do not edit pyproject.toml (out of scope, owned elsewhere) -- this
-    just reads the version that is the single source of truth there, so the
-    build, the manifest and the app itself never disagree.
-    """
+    """Read `[project].version` out of pyproject.toml -- the single source
+    of truth the build, the manifest and the app must all agree on."""
     import tomllib
 
     with Path(pyproject_path).open("rb") as f:
@@ -123,10 +125,9 @@ def validate_static_assets(static_dir: Path = STATIC_DIR) -> None:
 
 
 def validate_pkgtools_assets(pkgtools_dir: Path = PKGTOOLS_DIR) -> None:
-    """Fail loudly, before invoking PyInstaller, if the shared manifest/
-    version-comparison logic the in-app updater reuses is missing --
-    otherwise the bundle builds fine and the update checker just silently
-    never works on any of six machines. See REQUIRED_PKGTOOLS_FILES above."""
+    """Fail loudly if the shared manifest/version-comparison logic the
+    in-app updater reuses is missing -- otherwise the bundle builds fine and
+    the update checker just silently never works on any of six machines."""
     pkgtools_dir = Path(pkgtools_dir)
     if not pkgtools_dir.is_dir():
         raise BuildError(
@@ -157,10 +158,11 @@ def validate_fonts_assets(fonts_dir: Path = FONTS_DIR) -> None:
     """Fail loudly if assets/fonts/manifest.json is missing -- style
     validation reads it to know which fonts are bundled, and rejects every
     font by design when it can't find the manifest at all. The .ttf files
-    themselves are not required here: they're fetched separately
-    (`python -m ash_captions.styles.fonts download`) and ship if present,
-    but their absence is not a reason to fail a build -- a missing
-    manifest is."""
+    are fetched separately (`python -m ash_captions.styles.fonts download`)
+    and ship if present; their absence is not a reason to fail a build. The
+    licence text each manifest row promises IS required: we redistribute
+    those fonts, and the manifest's `license_file` is where NOTICES.md
+    sends anyone who asks under what terms."""
     fonts_dir = Path(fonts_dir)
     if not fonts_dir.is_dir():
         raise BuildError(
@@ -173,14 +175,53 @@ def validate_fonts_assets(fonts_dir: Path = FONTS_DIR) -> None:
         raise BuildError(
             f"{manifest} not found -- style validation rejects every font without it."
         )
+    rows = json.loads(manifest.read_text(encoding="utf-8")).get("fonts", [])
+    missing_licenses = sorted(
+        {row["license_file"] for row in rows if row.get("license_file") and not (fonts_dir / row["license_file"]).is_file()}
+    )
+    if missing_licenses:
+        raise BuildError(
+            f"font licence texts named by {manifest} are missing: {missing_licenses}\n"
+            "Run `python -m ash_captions.styles.fonts licenses` (they are committed; a full "
+            "checkout has them)."
+        )
+
+
+def validate_notice_files(paths: Sequence[Path] = NOTICE_FILES) -> None:
+    """LICENSE and NOTICES.md ship at the bundle root; a bundle without
+    them redistributes GPL/OFL/MIT components with no notice at all."""
+    missing = [str(p) for p in paths if not Path(p).is_file()]
+    if missing:
+        raise BuildError(f"notice files missing (they must ship in the bundle): {missing}")
+
+
+def validate_model_cache(model_dir: Path) -> None:
+    """`--model-dir` must be the HF cache root fetch_model.py produces --
+    the only layout faster-whisper resolves offline. The flat layout an
+    older fetch_model.py wrote (`models/small/model.bin`) is exactly the bug
+    that made every install ignore the bundled model and re-download it."""
+    model_dir = Path(model_dir)
+    if not model_dir.is_dir():
+        raise BuildError(f"--model-dir does not exist: {model_dir}")
+    snapshots = sorted(model_dir.glob(MODEL_SNAPSHOT_GLOB))
+    if not snapshots:
+        raise BuildError(
+            f"--model-dir {model_dir} holds no models--*/snapshots/<hash>/model.bin -- not an HF "
+            "cache root. Re-run scripts/fetch_model.py and pass its --dest (default build/models)."
+        )
+    linked = [p for snapshot in snapshots for p in snapshot.parent.iterdir() if p.is_symlink()]
+    if linked:
+        raise BuildError(
+            f"--model-dir {model_dir} still contains symlinked snapshot files (e.g. {linked[0]}); "
+            "neither PyInstaller nor the installer preserves them. Re-run scripts/fetch_model.py, "
+            "which materialises them."
+        )
 
 
 def discover_ffmpeg_binaries(ffmpeg_dir: Path) -> list[Path]:
-    """Locate ffmpeg.exe/ffprobe.exe fetched by `fetch_ffmpeg.py`.
-
-    Raises BuildError if either is missing -- a bundle without them fails
-    every job with an obscure "file not found" instead of a build-time error.
-    """
+    """Locate ffmpeg.exe/ffprobe.exe fetched by `fetch_ffmpeg.py`. Raises
+    BuildError if either is missing -- a bundle without them fails every
+    job with an obscure "file not found" instead of a build-time error."""
     ffmpeg_dir = Path(ffmpeg_dir)
     found = []
     missing = []
@@ -196,6 +237,29 @@ def discover_ffmpeg_binaries(ffmpeg_dir: Path) -> list[Path]:
     return found
 
 
+def discover_ffmpeg_license(ffmpeg_dir: Path) -> Path:
+    """The licence text fetch_ffmpeg.py extracts beside the binaries."""
+    path = Path(ffmpeg_dir) / FFMPEG_LICENSE_FILENAME
+    if not path.is_file():
+        raise BuildError(
+            f"{path} not found -- the shipped ffmpeg is GPL and must carry its licence text. "
+            "Re-run scripts/fetch_ffmpeg.py (it extracts LICENSE.txt from BtbN's archive)."
+        )
+    return path
+
+
+def available_optional_modules(names: Sequence[str] = OPTIONAL_COLLECT_ALL) -> tuple[str, ...]:
+    """The subset of `names` importable in this environment."""
+    found = []
+    for name in names:
+        try:
+            if importlib.util.find_spec(name) is not None:
+                found.append(name)
+        except (ImportError, ValueError):
+            continue
+    return tuple(found)
+
+
 def build_pyinstaller_args(
     *,
     entry_script: Path,
@@ -207,17 +271,18 @@ def build_pyinstaller_args(
     styles_dir: Path = STYLES_DIR,
     fonts_dir: Path = FONTS_DIR,
     ffmpeg_binaries: list[Path] | None = None,
+    ffmpeg_license: Path | None = None,
     model_dir: Path | None = None,
+    notice_files: Sequence[Path] = NOTICE_FILES,
+    collect_all_optional: Sequence[str] = (),
     app_name: str = APP_NAME,
     console: bool = True,
 ) -> list[str]:
     """Build the argv PyInstaller.__main__.run() expects, for a onedir build.
 
     Pure and side-effect-free -- easy to unit test without PyInstaller
-    installed. `console=True` keeps a console window for now; the tray app
-    can flip this to windowed once it manages its own log file (see
-    config.py's `log_path` -- errors must stay reachable from the tray menu
-    per spec section 12 either way).
+    installed. `collect_all_optional` is the probed subset of
+    OPTIONAL_COLLECT_ALL (see `available_optional_modules`).
     """
     args: list[str] = [
         str(entry_script),
@@ -230,32 +295,33 @@ def build_pyinstaller_args(
         "--specpath", str(spec_dir),
         "--console" if console else "--windowed",
         # PyInstaller >=6 defaults onedir to a `_internal/` subdirectory for
-        # everything but the exe. config.py's `app_root()` (bin/ffmpeg.exe,
-        # models/) and every app_root()-relative lookup below (scripts/,
-        # styles/, assets/fonts/) both assume the flat, pre-6.0 layout --
-        # everything sitting directly beside the exe. Restore that instead
-        # of quietly breaking every one of those lookups at once.
+        # everything but the exe. config.py's `app_root()` and every
+        # app_root()-relative lookup below assume the flat layout --
+        # everything sitting directly beside the exe. Restore that.
         "--contents-directory", ".",
         # Compiled extensions with data files PyInstaller's default hooks
         # under-collect; belt and suspenders beats a bundle that imports
         # fine on the build box and fails on an editor's PC.
         "--collect-all", "faster_whisper",
         "--collect-all", "ctranslate2",
-        "--collect-all", "av",
+    ]
+    for module in collect_all_optional:
+        args += ["--collect-all", module]
+    args += [
         "--collect-submodules", "uvicorn",
         "--add-data", f"{static_dir};ash_captions/web/static",
-        # src/ash_captions/app/updater.py imports this at runtime from
-        # `app_root() / "scripts" / "pkgtools"` -- see REQUIRED_PKGTOOLS_FILES
-        # above for why this is not optional the way ffmpeg/model bundling is.
+        # updater.py imports this at runtime from app_root()/scripts/pkgtools.
         "--add-data", f"{pkgtools_dir};{PKGTOOLS_DEST}",
-        # styles/library.py's shipped_styles_dir() and styles/fonts.py's
-        # assets_fonts_dir() both read from app_root() at runtime -- required,
-        # not optional, exactly like static/ above. See STYLES_DEST/FONTS_DEST.
+        # styles/library.py and styles/fonts.py read these from app_root().
         "--add-data", f"{styles_dir};{STYLES_DEST}",
         "--add-data", f"{fonts_dir};{FONTS_DEST}",
     ]
+    for notice in notice_files:
+        args += ["--add-data", f"{notice};."]
     for binary in ffmpeg_binaries or []:
         args += ["--add-binary", f"{binary};bin"]
+    if ffmpeg_license is not None:
+        args += ["--add-data", f"{ffmpeg_license};bin"]
     if model_dir is not None:
         args += ["--add-data", f"{model_dir};models"]
     return args
@@ -286,10 +352,8 @@ def zip_bundle(bundle_dir: Path, dest_zip: Path) -> Path:
 
 def write_build_info(dist_dir: Path, *, version: str, zip_path: Path) -> Path:
     """Write a local build receipt: version, build date, sha256 and size of
-    the zipped bundle. This is NOT the release manifest -- it has no download
-    URL yet, since that only exists once `release.py` uploads it. `release.py`
-    reads this file to build the real manifest.
-    """
+    the zipped bundle. NOT the release manifest -- it has no download URL
+    until `release.py` uploads it and reads this file to build the real one."""
     artifact: Artifact = build_artifact(zip_path, url="pending-release")
     info = {
         "version": version,
@@ -299,8 +363,6 @@ def write_build_info(dist_dir: Path, *, version: str, zip_path: Path) -> Path:
         "size_bytes": artifact.size_bytes,
     }
     out_path = Path(dist_dir) / "build-info.json"
-    import json
-
     out_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     return out_path
 
@@ -314,13 +376,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--ffmpeg-dir",
         type=Path,
         default=REPO_ROOT / "bin",  # where fetch_ffmpeg.py puts them, and where config.find_binary looks
-        help="Directory containing ffmpeg.exe/ffprobe.exe (see fetch_ffmpeg.py).",
+        help="Directory containing ffmpeg.exe/ffprobe.exe/LICENSE.txt (see fetch_ffmpeg.py).",
     )
     parser.add_argument(
         "--model-dir",
         type=Path,
         default=None,
-        help="Pre-seeded model directory to bundle into models/ (see fetch_model.py).",
+        help="HF cache root produced by fetch_model.py (default build/models) to bundle as models/.",
     )
     parser.add_argument(
         "--skip-ffmpeg",
@@ -341,46 +403,57 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-
+def assemble_pyinstaller_args(args: argparse.Namespace) -> list[str]:
+    """Validate the checkout and turn parsed CLI args into the PyInstaller
+    argv -- everything `main()` does before deciding whether to run it."""
     validate_static_assets(STATIC_DIR)
     validate_pkgtools_assets(PKGTOOLS_DIR)
     validate_styles_assets(STYLES_DIR)
     validate_fonts_assets(FONTS_DIR)
-    version = read_project_version(PYPROJECT_PATH)
+    validate_notice_files(NOTICE_FILES)
 
     ffmpeg_binaries: list[Path] = []
+    ffmpeg_license: Path | None = None
     if not args.skip_ffmpeg:
         ffmpeg_binaries = discover_ffmpeg_binaries(args.ffmpeg_dir)
+        ffmpeg_license = discover_ffmpeg_license(args.ffmpeg_dir)
     elif not args.dry_run:
         print("WARNING: --skip-ffmpeg set; this bundle cannot be shipped.", file=sys.stderr)
 
-    if args.model_dir is not None and not args.model_dir.is_dir():
-        raise BuildError(f"--model-dir does not exist: {args.model_dir}")
+    if args.model_dir is not None:
+        validate_model_cache(args.model_dir)
+    elif not args.dry_run:
+        print(
+            "WARNING: no --model-dir; the bundle ships no Whisper model and every "
+            "machine downloads its own on first run.",
+            file=sys.stderr,
+        )
 
-    pyinstaller_args = build_pyinstaller_args(
+    return build_pyinstaller_args(
         entry_script=ENTRY_SCRIPT,
         dist_dir=args.dist_dir,
         work_dir=args.work_dir,
         spec_dir=args.spec_dir,
         static_dir=STATIC_DIR,
         ffmpeg_binaries=ffmpeg_binaries,
+        ffmpeg_license=ffmpeg_license,
         model_dir=args.model_dir,
+        collect_all_optional=available_optional_modules(),
         console=not args.windowed,
     )
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    version = read_project_version(PYPROJECT_PATH)
+    pyinstaller_args = assemble_pyinstaller_args(args)
 
     if args.dry_run:
         print("pyinstaller " + " ".join(pyinstaller_args))
         return 0
 
     if not ENTRY_SCRIPT.is_file():
-        raise BuildError(
-            f"entry point not found: {ENTRY_SCRIPT}\n"
-            "src/ash_captions/__main__.py is owned by another part of this "
-            "project (pyproject.toml's [project.scripts] entry) -- build "
-            "once it lands."
-        )
+        raise BuildError(f"entry point not found: {ENTRY_SCRIPT}")
 
     run_pyinstaller(pyinstaller_args)
 

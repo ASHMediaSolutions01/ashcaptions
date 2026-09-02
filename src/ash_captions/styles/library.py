@@ -106,13 +106,55 @@ def resolve_style(
 def save_user_style(style: Style, *, user_dir: Path | None = None) -> Path:
     """Write a validated style to the user styles directory, keyed by a
     filename derived from its name. Used by the style editor's save
-    action (spec 7A.3)."""
+    action (spec 7A.3).
+
+    Written atomically (temp file + ``os.replace``) so a crash or a
+    concurrent read mid-write can never leave a half-written JSON file
+    that ``list_styles`` then skips as invalid -- silently losing the
+    look the editor just saved.
+
+    Raises ``ValueError`` (the web layer turns it into a 400) when the
+    name's slug is a Windows reserved device name (``CON``, ``NUL``,
+    ``COM1``...; those paths are not files on Windows at all) or when it
+    collides with a *different* existing style name that slugifies the
+    same way (``"Hype!"`` vs ``"hype"``) -- otherwise saving one would
+    silently overwrite the other's file.
+    """
     directory = user_dir or user_styles_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    filename = _slugify(style.name) + ".json"
-    path = directory / filename
-    path.write_text(json.dumps(style.to_dict(), indent=2) + "\n", encoding="utf-8")
+    slug = _slugify(style.name)
+    if slug.upper() in _WINDOWS_RESERVED_NAMES:
+        raise ValueError(f"style name {style.name!r} is a reserved Windows device name")
+    path = directory / f"{slug}.json"
+    existing = _existing_style_name(path)
+    if existing is not None and existing != style.name and existing.casefold() != style.name.casefold():
+        raise ValueError(
+            f"style name {style.name!r} would overwrite the saved style {existing!r} "
+            f"(both save as {path.name})"
+        )
+    payload = json.dumps(style.to_dict(), indent=2) + "\n"
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(payload, encoding="utf-8")
+    os.replace(tmp_path, path)
     return path
+
+
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+
+def _existing_style_name(path: Path) -> str | None:
+    """The ``name`` of the style already saved at ``path``, or None if
+    there is no readable style there."""
+    if not path.is_file():
+        return None
+    try:
+        return load_style_file(path).name
+    except (StyleValidationError, OSError, json.JSONDecodeError, KeyError, TypeError):
+        return None
 
 
 def delete_user_style(name: str, *, user_dir: Path | None = None) -> bool:

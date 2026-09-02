@@ -3,31 +3,44 @@
     The opt-in GPU step. Run by Ghazi, per-machine, never by an editor.
 
 .DESCRIPTION
-    Design spec section 11.2: ctranslate2 >= 4.5.0 requires cuDNN 9 and
-    CUDA >= 12.3. Across six PCs with six different GPUs and driver
-    vintages, that version matrix is the single most likely thing to turn
-    rollout into a support week -- so every machine installs CPU-only by
-    default (installer/install.ps1), and GPU is switched on afterwards, one
-    machine at a time, with eyes on the actual driver version.
+    Design spec section 11.2: ctranslate2 4.8.x (the pinned build) requires
+    cuDNN 9 + cuBLAS 12 and a driver supporting CUDA >= 12.3. Across six PCs
+    with six different GPUs and driver vintages, that version matrix is the
+    single most likely thing to turn rollout into a support week -- so every
+    machine installs CPU-only by default (installer/install.ps1), and GPU is
+    switched on afterwards, one machine at a time, with eyes on the actual
+    driver version AND on the actual DLLs present.
 
-    A driver's "CUDA Version" (from `nvidia-smi`) is the newest CUDA runtime
-    it can run -- CUDA is backward compatible -- so comparing that single
-    number against 12.3 is sufficient to know whether our one pinned GPU
-    build (ctranslate2 4.5.x + its matching cuDNN 9 wheel; see
-    scripts/pkgtools/gpu_matrix.py for the same table in Python) will work
-    here. Below that threshold this script REFUSES and explains why, rather
-    than installing a build that fails at the first job with
-    `cudnn_ops64_9.dll is not found`.
+    Two checks, both must pass:
 
-    Only on success does it flip the running config to device=cuda and
+    1. Driver. A driver's "CUDA Version" (from `nvidia-smi`) is the newest
+       CUDA runtime it can run -- CUDA is backward compatible -- so comparing
+       that single number against 12.3 says whether our CUDA-12 wheels can
+       work here.
+    2. Runtime DLLs. The CPU bundle ships NO cuBLAS and only the thin
+       `cudnn64_9.dll` loader inside the ctranslate2 package: ctranslate2.dll
+       loads `cublas64_12.dll` at runtime and that loader pulls in the
+       `cudnn_*64_9.dll` sub-libraries. Every DLL in $RequiredCudaDlls must
+       be beside AshCaptions.exe (or on PATH), or the first job dies with
+       `cudnn_ops64_9.dll is not found`. Until a GPU build ships them this
+       refuses everywhere -- which is the truthful answer, not a bug.
+
+    Only when both pass does it flip the running config to device=cuda and
     model=large-v3, by editing C:\AshCaptions\settings.json directly (the
-    same file config.py's Settings.load()/save() reads and writes) --
-    no Python invocation needed on the editor's machine, since it does not
-    have the dev environment.
+    same file config.py's Settings.load()/save() reads and writes) -- no
+    Python invocation needed on the editor's machine.
+
+    scripts/pkgtools/gpu_matrix.py holds the same decision table in Python
+    and the test suite cross-checks the two.
 
 .PARAMETER CheckOnly
-    Report the decision as JSON without changing settings.json or installing
-    any GPU package. Also the mode the automated test suite drives.
+    Report the decision as JSON without changing settings.json. Also the
+    mode the automated test suite drives.
+
+.PARAMETER InstallDir
+    Where AshCaptions.exe is installed (installer/install.ps1's default is
+    %LOCALAPPDATA%\AshCaptions). The DLL check looks here, in the bundled
+    ctranslate2\ package folder beside it, and on PATH.
 
 .PARAMETER SimulateCudaVersion
     Pretend nvidia-smi reported this "CUDA Version" string (e.g. "12.4"),
@@ -35,8 +48,11 @@
     without real GPU hardware.
 
 .PARAMETER SimulateNoGpu
-    Pretend nvidia-smi is not present / reports no GPU. For testing the
-    "no GPU" branch without needing a machine that actually lacks one.
+    Pretend nvidia-smi is not present / reports no GPU.
+
+.PARAMETER SimulateDllsPresent
+    Pretend every required CUDA DLL was found. For testing the driver half
+    of the decision table in isolation.
 
 .PARAMETER SettingsPath
     Override C:\AshCaptions\settings.json -- used by tests so this script
@@ -45,19 +61,35 @@
 [CmdletBinding()]
 param(
     [switch]$CheckOnly,
+    [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'AshCaptions'),
     [string]$SimulateCudaVersion,
     [switch]$SimulateNoGpu,
+    [switch]$SimulateDllsPresent,
     [string]$SettingsPath = 'C:\AshCaptions\settings.json'
 )
 
 $ErrorActionPreference = 'Stop'
 
 # The one combination our GPU build ships -- keep this in lockstep with
-# scripts/pkgtools/gpu_matrix.py's PINNED_* / MIN_DRIVER_CUDA_VERSION.
-$PinnedCtranslate2Version = '4.5.0'
+# scripts/pkgtools/gpu_matrix.py's PINNED_* / MIN_DRIVER_CUDA_VERSION /
+# REQUIRED_CUDA_DLLS (test_enable_gpu_ps1.py checks they agree).
+$PinnedCtranslate2Version = '4.8.2'
 $PinnedCudnnMajor = 9
+$PinnedCublasMajor = 12
 $MinDriverCudaVersion = [Version]'12.3'
 $GpuModelSize = 'large-v3'
+$RequiredCudaDlls = @(
+    'cublas64_12.dll',
+    'cublasLt64_12.dll',
+    'cudnn64_9.dll',
+    'cudnn_ops64_9.dll',
+    'cudnn_cnn64_9.dll',
+    'cudnn_adv64_9.dll',
+    'cudnn_graph64_9.dll',
+    'cudnn_engines_precompiled64_9.dll',
+    'cudnn_engines_runtime_compiled64_9.dll',
+    'cudnn_heuristic64_9.dll'
+)
 
 function Get-GpuInfo {
     <# Returns a hashtable: Present (bool), Name, CudaVersion (raw string as
@@ -98,11 +130,44 @@ function Get-GpuInfo {
     return [ordered]@{ Present = $true; Name = $name.Trim(); CudaVersion = $cudaVersion }
 }
 
+function Get-CudaDllStatus {
+    <# Returns a hashtable: Required, Searched (directories), Missing. The
+       search set is the install dir, the ctranslate2 package folder the
+       bundle places beside the exe, and every PATH entry -- the places
+       LoadLibrary will actually look. #>
+    param([string]$InstallDir, [switch]$SimulateDllsPresent)
+
+    if ($SimulateDllsPresent) {
+        return [ordered]@{ Required = $RequiredCudaDlls; Searched = @('(simulated)'); Missing = @() }
+    }
+
+    $searched = @()
+    if ($InstallDir) {
+        $searched += $InstallDir
+        $searched += (Join-Path $InstallDir 'ctranslate2')
+    }
+    foreach ($entry in ($env:PATH -split ';')) {
+        if ($entry -and $entry.Trim()) { $searched += $entry.Trim() }
+    }
+
+    $present = @{}
+    foreach ($dir in $searched) {
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        try {
+            Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | ForEach-Object {
+                $present[$_.Name.ToLowerInvariant()] = $true
+            }
+        } catch { }
+    }
+    $missing = @($RequiredCudaDlls | Where-Object { -not $present.ContainsKey($_.ToLowerInvariant()) })
+    return [ordered]@{ Required = $RequiredCudaDlls; Searched = $searched; Missing = $missing }
+}
+
 function Test-GpuSupport {
     <# Pure decision function -- mirrors
        scripts/pkgtools/gpu_matrix.py:evaluate_gpu_support() so both
        implementations can be tested against the same cases. #>
-    param([hashtable]$Gpu)
+    param([hashtable]$Gpu, [hashtable]$Dlls)
 
     if (-not $Gpu.Present) {
         return [ordered]@{
@@ -139,11 +204,23 @@ function Test-GpuSupport {
         }
     }
 
+    if ($Dlls.Missing.Count -gt 0) {
+        return [ordered]@{
+            supported = $false
+            reason    = "Driver supports CUDA $($Gpu.CudaVersion), but the installed bundle has no CUDA runtime: " +
+                        "missing $($Dlls.Missing -join ', '). The CPU build ships no cuBLAS $PinnedCublasMajor / " +
+                        "cuDNN $PinnedCudnnMajor libraries, so device=cuda would fail at the first job with " +
+                        "'cudnn_ops64_9.dll is not found'. Copy the DLLs from NVIDIA's nvidia-cublas-cu12 and " +
+                        "nvidia-cudnn-cu12 wheels (their bin\ folders) beside AshCaptions.exe in $InstallDir, " +
+                        "then re-run this script."
+        }
+    }
+
     return [ordered]@{
         supported = $true
-        reason    = "Driver supports CUDA $($Gpu.CudaVersion) >= required $MinDriverCudaVersion -- safe to " +
-                    "install ctranslate2 $PinnedCtranslate2Version with cuDNN $PinnedCudnnMajor and switch to " +
-                    "device=cuda, model=$GpuModelSize."
+        reason    = "Driver supports CUDA $($Gpu.CudaVersion) >= required $MinDriverCudaVersion and every " +
+                    "cuBLAS $PinnedCublasMajor / cuDNN $PinnedCudnnMajor DLL ctranslate2 $PinnedCtranslate2Version " +
+                    "loads is present -- safe to switch to device=cuda, model=$GpuModelSize."
     }
 }
 
@@ -174,10 +251,15 @@ function Set-GpuConfig {
 # --- main --------------------------------------------------------------
 
 $gpu = Get-GpuInfo -SimulateCudaVersion $SimulateCudaVersion -SimulateNoGpu:$SimulateNoGpu
-$decision = Test-GpuSupport -Gpu $gpu
+$dlls = Get-CudaDllStatus -InstallDir $InstallDir -SimulateDllsPresent:$SimulateDllsPresent
+$decision = Test-GpuSupport -Gpu $gpu -Dlls $dlls
 
 if ($CheckOnly) {
-    [ordered]@{ gpu = $gpu; decision = $decision } | ConvertTo-Json -Depth 4
+    [ordered]@{
+        gpu      = $gpu
+        dlls     = [ordered]@{ required = $dlls.Required; missing = $dlls.Missing }
+        decision = $decision
+    } | ConvertTo-Json -Depth 4
     exit 0
 }
 
@@ -190,6 +272,11 @@ if ($gpu.Present) {
 } else {
     Write-Host "No NVIDIA GPU detected."
 }
+if ($dlls.Missing.Count -gt 0) {
+    Write-Host "CUDA runtime DLLs missing beside $InstallDir\AshCaptions.exe: $($dlls.Missing -join ', ')"
+} else {
+    Write-Host "CUDA runtime DLLs: all $($dlls.Required.Count) present."
+}
 Write-Host ""
 
 if (-not $decision.supported) {
@@ -201,10 +288,6 @@ if (-not $decision.supported) {
 }
 
 Write-Host $decision.reason -ForegroundColor Green
-Write-Host ""
-Write-Host "NOTE: this script updates settings.json only. Installing the GPU" -ForegroundColor Yellow
-Write-Host "package set itself (ctranslate2 $PinnedCtranslate2Version's CUDA/cuDNN wheels) is a" -ForegroundColor Yellow
-Write-Host "separate step against the GPU build -- see docs/INSTALL.md." -ForegroundColor Yellow
 Write-Host ""
 
 Set-GpuConfig -SettingsPath $SettingsPath -ModelSize $GpuModelSize

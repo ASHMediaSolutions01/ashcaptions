@@ -32,6 +32,23 @@ URL.
 plain `scripts/release.py` with no flags does the right thing -- but stays
 overridable, since a hardcoded-only value would be wrong the day the repo
 ever moves.
+
+Two GitHub behaviours worth knowing before the first and the second run:
+
+* A brand-new releases repo has no commits, and `gh release create` on an
+  empty repository fails (GitHub cannot create the tag). This script checks
+  for that up front and stops with instructions rather than a bare API error:
+  seed the repo with one commit (any README will do) and re-run.
+* Re-running for a version that already has a release re-uploads the assets
+  with `--clobber`, which *replaces* same-named assets. That is deliberate --
+  fixing a broken build must not be blocked by a tag existing -- but note the
+  consequences: the artifact zip and manifest.json for that tag change under
+  installs that already downloaded them (the manifest's sha256 changes with
+  the zip, so an in-progress `install.ps1` download can fail verification and
+  should simply be re-run), and the `latest/download/manifest.json` alias
+  keeps pointing at whichever release is *newest*, so re-publishing an old
+  version does not roll the fleet back. Bump the version for anything that
+  has already reached an editor's machine.
 """
 
 from __future__ import annotations
@@ -131,6 +148,29 @@ def tag_already_released(*, repo: str, tag: str) -> bool:
     return result.returncode == 0
 
 
+def build_gh_commits_args(*, repo: str) -> list[str]:
+    """Argv (without the leading "gh") to ask whether `repo` has any commit
+    at all -- GitHub answers 409 "Git Repository is empty" when it does not,
+    and `gh release create` fails on such a repo with a much less helpful
+    message."""
+    return ["api", f"repos/{repo}/commits?per_page=1"]
+
+
+EMPTY_REPO_HINT = (
+    "the releases repo {repo} has no commits yet, so GitHub cannot create a release "
+    "tag on it. Seed it once with any commit, e.g.:\n"
+    "    git clone https://github.com/{repo}.git && cd ashcaptions-releases\n"
+    "    echo \"# ASH Captions releases\" > README.md && git add README.md\n"
+    "    git commit -m \"Initial commit\" && git push\n"
+    "then re-run scripts/release.py."
+)
+
+
+def repo_has_commits(*, repo: str) -> bool:
+    result = run_gh(build_gh_commits_args(repo=repo))
+    return result.returncode == 0
+
+
 def publish_release(
     *,
     repo: str,
@@ -159,6 +199,8 @@ def publish_release(
         print(f"Release {tag} already exists on {repo}; uploading assets with --clobber")
         result = run_gh(build_gh_upload_args(repo=repo, tag=tag, asset_paths=asset_paths))
     else:
+        if not repo_has_commits(repo=repo):
+            raise ReleaseError(EMPTY_REPO_HINT.format(repo=repo))
         print(f"Creating release {tag} on {repo}")
         result = run_gh(
             build_gh_create_args(

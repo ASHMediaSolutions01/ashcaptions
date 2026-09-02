@@ -190,3 +190,55 @@ def test_is_shipped_style_true_for_a_built_in_look():
 
 def test_is_shipped_style_false_for_a_user_only_style(tmp_path):
     assert is_shipped_style("Some User Style") is False
+
+
+# -- save_user_style hardening (review item 15) ----------------------------
+
+
+def test_save_user_style_is_atomic_and_leaves_no_temp_file(tmp_path):
+    user_dir = tmp_path / "user_styles"
+    style = Style.from_dict({"name": "Atomic Look", "font": "Rubik"})
+
+    path = save_user_style(style, user_dir=user_dir)
+
+    assert path.is_file()
+    assert sorted(p.name for p in user_dir.iterdir()) == ["atomic-look.json"]
+
+
+def test_save_user_style_resaving_same_name_overwrites(tmp_path):
+    user_dir = tmp_path / "user_styles"
+    save_user_style(Style.from_dict({"name": "Same Look", "font": "Rubik", "size": 60}), user_dir=user_dir)
+    path = save_user_style(Style.from_dict({"name": "Same Look", "font": "Rubik", "size": 90}), user_dir=user_dir)
+    assert load_style_file(path).size == 90
+
+
+def test_save_user_style_allows_case_only_rename_of_same_style(tmp_path):
+    user_dir = tmp_path / "user_styles"
+    save_user_style(Style.from_dict({"name": "hype", "font": "Rubik"}), user_dir=user_dir)
+    path = save_user_style(Style.from_dict({"name": "HYPE", "font": "Rubik"}), user_dir=user_dir)
+    assert load_style_file(path).name == "HYPE"
+
+
+def test_save_user_style_rejects_slug_collision_with_a_different_name(tmp_path):
+    user_dir = tmp_path / "user_styles"
+    first = save_user_style(Style.from_dict({"name": "Hype!", "font": "Rubik", "size": 60}), user_dir=user_dir)
+
+    with pytest.raises(ValueError, match="would overwrite"):
+        save_user_style(Style.from_dict({"name": "Hype?", "font": "Rubik", "size": 90}), user_dir=user_dir)
+
+    assert load_style_file(first).size == 60  # the original survives untouched
+
+
+@pytest.mark.parametrize("name", ["CON", "con", "Nul", "COM1", "lpt9", "AUX", "PRN"])
+def test_save_user_style_rejects_windows_reserved_names(tmp_path, name):
+    user_dir = tmp_path / "user_styles"
+    with pytest.raises(ValueError, match="reserved"):
+        save_user_style(Style.from_dict({"name": name, "font": "Rubik"}), user_dir=user_dir)
+    assert not list(user_dir.glob("*.json"))
+
+
+def test_save_user_style_reserved_check_is_on_the_slug_not_the_raw_name(tmp_path):
+    user_dir = tmp_path / "user_styles"
+    save_user_style(Style.from_dict({"name": "Con Artist", "font": "Rubik"}), user_dir=user_dir)
+    with pytest.raises(ValueError, match="reserved"):
+        save_user_style(Style.from_dict({"name": "CON!", "font": "Rubik"}), user_dir=user_dir)

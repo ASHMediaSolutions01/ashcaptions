@@ -124,5 +124,64 @@ def test_pt_pt_to_br_converts_autocarro_to_onibus():
     assert normalize_spelling("Pegue o autocarro", PT_BR) == "Pegue o ônibus"
 
 
-def test_pt_multiword_phrase_conversion_preserves_case():
-    assert normalize_spelling("Café Da Manhã", PT_PT) == "Pequeno-Almoço"
+def test_pt_multiword_phrase_conversion_capitalises_only_the_first_letter():
+    assert normalize_spelling("Café Da Manhã", PT_PT) == "Pequeno-almoço"
+    assert normalize_spelling("Banheiro limpo", PT_PT) == "Casa de banho limpo"
+
+
+# -- review item 5: wrong / dangerous table entries ----------------------------
+
+
+def test_humorous_is_never_rewritten():
+    # "humorous" is the correct spelling in both conventions.
+    assert normalize_spelling("a humorous take", EN_UK) == "a humorous take"
+    assert normalize_spelling("a humourous take", EN_US) == "a humourous take"
+    assert normalize_spelling("good humor", EN_UK) == "good humour"
+
+
+@pytest.mark.parametrize(
+    ("text", "convention"),
+    [
+        ("um chopp bem gelado", PT_BR),
+        ("um chopp bem gelado", PT_PT),
+        ("o sumo japonês", PT_BR),
+        ("a descarga elétrica", PT_PT),
+        ("o comboio de camiões", PT_BR),
+        ("vamos aterrar o terreno", PT_BR),
+        ("tomei um suco", PT_PT),
+        ("o trem passou", PT_PT),
+    ],
+)
+def test_ambiguous_pt_vocabulary_pairs_are_not_in_the_table(text, convention):
+    assert normalize_spelling(text, convention) == text
+
+
+def test_pt_unambiguous_pairs_still_convert():
+    assert normalize_spelling("o celular tocou", PT_PT) == "o telemóvel tocou"
+    assert normalize_spelling("o telemóvel tocou", PT_BR) == "o celular tocou"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "He joined the Labor Party in May.",
+        "We met at Rockefeller Center.",
+        "Tickets for the Chicago Theater sold out.",
+        "The Labour Party lost.",
+        "See you at Lincoln Centre.",
+    ],
+)
+def test_title_case_proper_noun_prone_words_survive_mid_sentence(text):
+    assert normalize_spelling(text, EN_UK) == text
+    assert normalize_spelling(text, EN_US) == text
+
+
+def test_proper_noun_prone_words_still_convert_when_lowercase_or_sentence_initial():
+    assert normalize_spelling("the labor market", EN_UK) == "the labour market"
+    assert normalize_spelling("Labor is cheap.", EN_UK) == "Labour is cheap."
+    assert normalize_spelling("Done. Center it.", EN_UK) == "Done. Centre it."
+    assert normalize_spelling("THE LABOR MARKET", EN_UK) == "THE LABOUR MARKET"
+
+
+def test_non_proper_noun_prone_title_case_still_converts_mid_sentence():
+    assert normalize_spelling("the Color Purple", EN_UK) == "the Colour Purple"

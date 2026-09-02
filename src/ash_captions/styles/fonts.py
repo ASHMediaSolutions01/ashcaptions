@@ -13,13 +13,24 @@ This module has two jobs, kept deliberately separate:
    validate a style's ``font`` field with no network access and no
    dependency on the actual .ttf files being present. This is what
    ``schema.py`` and the test suite use.
-2. ``download_fonts()`` actually fetches the .ttf files from Google
-   Fonts into this directory. It touches the network, so it must never
-   run during tests and nothing here needs it to have run.
+2. ``download_fonts()`` actually fetches the .ttf files (and each
+   family's licence text) from Google Fonts into this directory. It
+   touches the network, so it must never run during tests and nothing
+   here needs it to have run.
 
 Also provides ``fontsdir_arg()``: the ffmpeg wiring so libass finds the
 bundled fonts by directory instead of needing them installed into
 Windows (spec 7A.4 / 8).
+
+Manifest ``family`` names are the *face* names libass matches on -- the
+font file's own family name (OpenType name ID 1), not the Google Fonts
+catalogue name. Google serves weight variants as instanced files whose
+family name carries the weight ("Baloo 2 SemiBold", "Fredoka Medium"),
+and libass matches on that name only: a style asking for "Baloo 2"
+against a file named "Baloo 2 SemiBold" silently renders in Arial. So a
+manifest row is exactly what a style must write, and ``find_font_entry``
+matches it exactly -- there is no prefix or base-family fallback that
+could validate a name libass will then fail to find.
 """
 from __future__ import annotations
 
@@ -30,15 +41,22 @@ from functools import lru_cache
 from pathlib import Path
 
 MANIFEST_FILENAME = "manifest.json"
+LICENSES_SUBDIR = "licenses"
 
-# Old User-Agent string that Google's fonts.googleapis.com CSS endpoint
-# still recognises as "does not support woff2", so it serves plain .ttf
-# instead of .woff2 -- the standard, widely used trick for fetching real
-# TTF files from the Google Fonts CSS API without a build toolchain.
-_LEGACY_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/534.30 "
-    "(KHTML, like Gecko) Chrome/12.0.742.112 Safari/534.30"
-)
+# A non-browser User-Agent makes Google's CSS endpoint serve plain .ttf
+# files (``format('truetype')``). Any browser-like UA -- including the
+# "legacy Chrome" string often suggested for this -- gets .woff instead,
+# which then ships under a .ttf name: libass (via FreeType) happens to
+# read WOFF, but nothing else that is handed a "TrueType" file does.
+_USER_AGENT = "AshCaptions-font-fetch/1.0 (+https://github.com/ASHMediaSolutions01/ashcaptions)"
+
+# Magic numbers of the sfnt containers a .ttf may legitimately hold.
+_SFNT_MAGICS = (b"\x00\x01\x00\x00", b"true", b"OTTO")
+
+_LICENSE_TREE = "https://raw.githubusercontent.com/google/fonts/main"
+# Google's fonts repo keeps each family under a directory named for its
+# licence, with the licence text at a fixed filename per licence type.
+_LICENSE_LAYOUT = {"OFL": ("ofl", "OFL.txt"), "APACHE": ("apache", "LICENSE.txt"), "UFL": ("ufl", "UFL.txt")}
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,24 +123,13 @@ def list_font_families(*, path: Path | None = None) -> tuple[str, ...]:
 def find_font_entry(font_name: str, *, path: Path | None = None) -> FontEntry | None:
     """Resolve a style's ``font`` field to the manifest entry it names.
 
-    Matches the exact family first (``"Inter"``), then a family used as a
-    prefix with a trailing weight/variant word (``"Montserrat ExtraBold"``
-    matching family ``"Montserrat ExtraBold"`` exactly, or -- if no exact
-    entry exists for that combination -- falling back to the base family
-    ``"Montserrat"``). This mirrors how the style JSON in spec 7A.2 names
-    fonts: a full face name that may or may not have its own manifest row.
+    Exact match only: the manifest lists face names as libass sees them,
+    so anything looser would validate a name that renders as Arial.
     """
-    entries = load_manifest(path=path)
-    by_family = {entry.family: entry for entry in entries}
-    if font_name in by_family:
-        return by_family[font_name]
-    # Fall back to the base family for a "Family Weight" style name that
-    # has no dedicated manifest row of its own.
-    for entry in entries:
-        if font_name.startswith(entry.family + " "):
+    for entry in load_manifest(path=path):
+        if entry.family == font_name:
             return entry
-    base_family = font_name.split(" ")[0]
-    return by_family.get(base_family)
+    return None
 
 
 def is_font_bundled(font_name: str, *, path: Path | None = None) -> bool:
@@ -142,7 +149,8 @@ def download_fonts(
     families: list[str] | None = None,
     overwrite: bool = False,
 ) -> list[Path]:
-    """Fetch the bundled .ttf files from Google Fonts.
+    """Fetch the bundled .ttf files -- and each family's licence text --
+    from Google Fonts.
 
     Never called by the test suite and never required for it to pass --
     validation and rendering only need ``manifest.json``, which is
@@ -151,10 +159,7 @@ def download_fonts(
     """
     target_dir = dest or assets_fonts_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
-    entries = load_manifest()
-    if families is not None:
-        wanted = set(families)
-        entries = tuple(e for e in entries if e.family in wanted)
+    entries = _selected_entries(families)
 
     written: list[Path] = []
     failed: list[tuple[str, str]] = []
@@ -163,34 +168,13 @@ def download_fonts(
         if out_path.exists() and not overwrite:
             written.append(out_path)
             continue
-        css_url = (
-            "https://fonts.googleapis.com/css2?family="
-            + _google_family(entry).replace(" ", "+")
-            + f":wght@{entry.weight}&display=swap"
-        )
         # One family failing must never abandon the rest. Google Fonts
         # returns 400 for some family/weight combinations, and aborting
         # there left a real install with 6 of 24 faces -- every style then
         # silently falling back to a system font, which is exactly what
         # bundling exists to prevent.
         try:
-            css_request = urllib.request.Request(
-                css_url, headers={"User-Agent": _LEGACY_USER_AGENT}
-            )
-            with urllib.request.urlopen(css_request, timeout=30) as response:  # noqa: S310
-                css_text = response.read().decode("utf-8")
-            font_url = _extract_font_url(css_text)
-            if font_url is None:
-                raise RuntimeError(
-                    f"no font file URL in the Google Fonts CSS response "
-                    f"for {entry.family!r}"
-                )
-            font_request = urllib.request.Request(
-                font_url, headers={"User-Agent": _LEGACY_USER_AGENT}
-            )
-            with urllib.request.urlopen(font_request, timeout=30) as response:  # noqa: S310
-                data = response.read()
-            out_path.write_bytes(data)
+            out_path.write_bytes(_fetch_font_bytes(entry))
         except Exception as exc:  # noqa: BLE001 -- any failure, keep going
             failed.append((entry.family, str(exc)))
             continue
@@ -202,13 +186,88 @@ def download_fonts(
             f"WARNING: {len(failed)} of {len(entries)} fonts could not be "
             f"downloaded and will fall back to a system face: {detail}"
         )
+    download_licenses(dest=target_dir, families=families, overwrite=overwrite)
     return written
+
+
+def download_licenses(
+    *,
+    dest: Path | None = None,
+    families: list[str] | None = None,
+    overwrite: bool = False,
+) -> list[Path]:
+    """Fetch each family's licence text (OFL / Apache / UFL) into
+    ``<dest>/licenses/``, at the path the manifest's ``license_file``
+    names. A failure is reported and skipped, never raised: a missing
+    licence must not abort a font fetch, but it must not go unnoticed
+    either, so the build's notice check (``scripts/build.py``) is what
+    ultimately refuses to ship without them.
+    """
+    target_dir = dest or assets_fonts_dir()
+    written: list[Path] = []
+    failed: list[tuple[str, str]] = []
+    seen: set[Path] = set()
+    for entry in _selected_entries(families):
+        out_path = target_dir / entry.license_file
+        if out_path in seen:
+            continue
+        seen.add(out_path)
+        if out_path.exists() and not overwrite:
+            written.append(out_path)
+            continue
+        try:
+            url = _license_url(entry)
+            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+            with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
+                text = response.read().decode("utf-8")
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(text, encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001 -- report, keep going
+            failed.append((entry.family, str(exc)))
+            continue
+        written.append(out_path)
+    if failed:
+        detail = "; ".join(f"{family} ({reason})" for family, reason in failed)
+        print(f"WARNING: {len(failed)} font licence file(s) could not be downloaded: {detail}")
+    return written
+
+
+def _selected_entries(families: list[str] | None) -> tuple[FontEntry, ...]:
+    entries = load_manifest()
+    if families is None:
+        return entries
+    wanted = set(families)
+    return tuple(e for e in entries if e.family in wanted)
+
+
+def _fetch_font_bytes(entry: FontEntry) -> bytes:
+    css_url = (
+        "https://fonts.googleapis.com/css2?family="
+        + _google_family(entry).replace(" ", "+")
+        + f":wght@{entry.weight}&display=swap"
+    )
+    css_request = urllib.request.Request(css_url, headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(css_request, timeout=30) as response:  # noqa: S310
+        css_text = response.read().decode("utf-8")
+    font_url = _extract_font_url(css_text)
+    if font_url is None:
+        raise RuntimeError(
+            f"no font file URL in the Google Fonts CSS response for {entry.family!r}"
+        )
+    font_request = urllib.request.Request(font_url, headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(font_request, timeout=30) as response:  # noqa: S310
+        data = response.read()
+    if not data.startswith(_SFNT_MAGICS):
+        raise RuntimeError(
+            f"Google served {entry.family!r} as {data[:4]!r}, not a TrueType/OpenType file"
+        )
+    return data
 
 
 def _google_family(entry: FontEntry) -> str:
     """The family name Google Fonts' CSS API expects.
 
-    Our manifest names weight variants as distinct families -- "Montserrat
+    Our manifest names faces as libass sees them -- "Montserrat
     ExtraBold" -- because that is how a style refers to them. Google has
     one family plus a ``wght`` axis, so asking for family="Montserrat
     ExtraBold" returns HTTP 400. The manifest's ``source`` specimen URL
@@ -222,6 +281,17 @@ def _google_family(entry: FontEntry) -> str:
         if slug:
             return slug.replace("+", " ").replace("%20", " ")
     return entry.family
+
+
+def _license_url(entry: FontEntry) -> str:
+    """Where the google/fonts repo keeps this family's licence text."""
+    key = entry.license.upper().split("-", 1)[0]
+    try:
+        directory, filename = _LICENSE_LAYOUT[key]
+    except KeyError:
+        raise RuntimeError(f"no known licence layout for {entry.license!r}") from None
+    slug = _google_family(entry).replace(" ", "").lower()
+    return f"{_LICENSE_TREE}/{directory}/{slug}/{filename}"
 
 
 def _extract_font_url(css_text: str) -> str | None:
@@ -239,8 +309,12 @@ def _extract_font_url(css_text: str) -> str | None:
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "download":
+    command = sys.argv[1] if len(sys.argv) > 1 else ""
+    if command == "download":
         paths = download_fonts()
         print(f"wrote {len(paths)} font file(s) to {assets_fonts_dir()}")
+    elif command == "licenses":
+        paths = download_licenses()
+        print(f"wrote {len(paths)} licence file(s) to {assets_fonts_dir() / LICENSES_SUBDIR}")
     else:
-        print("usage: python -m ash_captions.styles.fonts download")
+        print("usage: python -m ash_captions.styles.fonts download|licenses")

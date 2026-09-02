@@ -296,3 +296,92 @@ def test_same_name_different_effects_render_differently():
     out_shake = render_ass(sample_cards(), shake)
 
     assert out_pop != out_shake
+
+
+# ---------------------------------------------------------------------------
+# review fixes: play_res, karaoke timing, glow outline, entrance clamp
+# ---------------------------------------------------------------------------
+
+
+def _dialogue_lines(out):
+    return [line for line in out.splitlines() if line.startswith("Dialogue:")]
+
+
+def test_play_res_none_means_default_and_write_ass_accepts_it(tmp_path):
+    style = Style.from_dict({"name": "BASIC"}, check_font=False)
+    assert render_ass(sample_cards(), style, play_res=None) == render_ass(sample_cards(), style)
+    path = write_ass(sample_cards(), tmp_path / "x.ass", style, play_res=(1920, 1080))
+    text = path.read_text(encoding="utf-8")
+    assert "PlayResX: 1920" in text and "PlayResY: 1080" in text
+
+
+def test_play_res_rejects_non_positive():
+    import pytest
+
+    style = Style.from_dict({"name": "BASIC"}, check_font=False)
+    with pytest.raises(ValueError):
+        render_ass(sample_cards(), style, play_res=(0, 1080))
+
+
+def test_landscape_play_res_moves_bottom_anchor_with_the_frame():
+    style = Style.from_dict(
+        {"name": "X", "entrance": {"effect": "rise", "duration_ms": 150}, "layout": {"margin_v": 100}},
+        check_font=False,
+    )
+    portrait = render_ass([card([word("one", 0.0, 0.5)])], style, play_res=(1080, 1920))
+    landscape = render_ass([card([word("one", 0.0, 0.5)])], style, play_res=(1920, 1080))
+    assert "\\move(540,1866,540,1820" in portrait
+    assert "\\move(960,1026,960,980" in landscape
+
+
+def test_karaoke_kf_runs_span_to_the_next_word_start_not_the_word_end():
+    """A \\kf run is measured from the end of the previous run, so sizing
+    it by word.end - word.start drops every inter-word gap and the sweep
+    runs progressively ahead of the audio. Runs must end where the next
+    word starts (the card end for the last word)."""
+    style = Style.from_dict({"name": "K", "active_word": {"effect": "karaoke"}}, check_font=False)
+    cards = [card([word("one", 0.0, 0.3), word("two", 0.5, 0.8), word("three", 1.0, 1.4)])]
+    out = render_ass(cards, style)
+    assert "{\\kf50}one" in out  # 0.0 -> 0.5 (next word start), not 30
+    assert "{\\kf50}two" in out  # 0.5 -> 1.0
+    assert "{\\kf40}three" in out  # 1.0 -> card end 1.4
+
+
+def test_glow_widens_and_restores_the_outline():
+    style = Style.from_dict({"name": "G", "size": 80, "active_word": {"effect": "glow"}}, check_font=False)
+    out = render_ass([card([word("one", 0.0, 0.3), word("two", 0.3, 0.6)])], style)
+    base = max(1, round(80 * 0.055))  # 4
+    assert f"\\bord{max(base + 3, base * 2)}\\blur4\\be1" in out
+    assert f"\\bord{base}\\blur0\\be0" in out
+    style_line = next(l for l in out.splitlines() if l.startswith("Style: G,"))
+    assert style_line.split(",")[16] == str(base)  # header Outline column matches the restore value
+
+
+def test_entrance_fade_is_clamped_to_a_short_first_event():
+    style = Style.from_dict({"name": "E", "entrance": {"effect": "fade", "duration_ms": 400}}, check_font=False)
+    out = render_ass([card([word("one", 0.0, 0.12), word("two", 0.12, 1.0)])], style)
+    assert "\\fad(120,0)" in _dialogue_lines(out)[0]
+    assert "\\fad(400" not in out
+
+
+def test_entrance_rise_is_clamped_to_a_short_first_event():
+    style = Style.from_dict({"name": "E", "entrance": {"effect": "rise", "duration_ms": 400}}, check_font=False)
+    out = render_ass([card([word("one", 0.0, 0.1), word("two", 0.1, 1.0)])], style)
+    first = _dialogue_lines(out)[0]
+    assert first.count("\\move(") == 1
+    assert first.split("\\move(")[1].split(")")[0].endswith(",0,100")
+
+
+def test_merged_fade_on_a_one_word_card_never_exceeds_the_event():
+    style = Style.from_dict(
+        {"name": "E", "entrance": {"effect": "fade", "duration_ms": 300}, "exit": {"effect": "fade", "duration_ms": 300}},
+        check_font=False,
+    )
+    out = render_ass([card([word("one", 0.0, 0.2)])], style)
+    assert "\\fad(100,100)" in out
+
+
+def test_entrance_unaffected_when_event_is_long_enough():
+    style = Style.from_dict({"name": "E", "entrance": {"effect": "fade", "duration_ms": 200}}, check_font=False)
+    out = render_ass([card([word("one", 0.0, 1.0), word("two", 1.0, 2.0)])], style)
+    assert "\\fad(200,0)" in _dialogue_lines(out)[0]

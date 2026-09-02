@@ -140,3 +140,71 @@ def test_postprocess_empty_text_returns_empty():
 def test_resolved_dialect_is_a_plain_dataclass_instance():
     resolved = resolve("en", "us")
     assert isinstance(resolved, ResolvedDialect)
+
+
+# -- entries= and postprocess_words (review item 4) ---------------------------
+
+
+def test_postprocess_accepts_preloaded_entries(tmp_path):
+    from ash_captions.languages import load_glossary_entries
+
+    glossary_path = tmp_path / "glossary.txt"
+    glossary_path.write_text("gazi => Ghazi\n", encoding="utf-8")
+    entries = load_glossary_entries(glossary_path)
+    resolved = resolve("en", "uk")
+    assert postprocess("gazi picked the color.", resolved, entries=entries) == "Ghazi picked the colour."
+
+
+def test_postprocess_entries_win_over_path(tmp_path):
+    from ash_captions.languages import GlossaryEntry
+
+    glossary_path = tmp_path / "glossary.txt"
+    glossary_path.write_text("gazi => WRONG\n", encoding="utf-8")
+    resolved = resolve("en", "uk")
+    result = postprocess(
+        "gazi", resolved, client_glossary_path=glossary_path, entries=(GlossaryEntry("gazi", "Ghazi"),)
+    )
+    assert result == "Ghazi"
+
+
+def test_postprocess_empty_entries_means_no_client_glossary(tmp_path):
+    glossary_path = tmp_path / "glossary.txt"
+    glossary_path.write_text("gazi => Ghazi\n", encoding="utf-8")
+    resolved = resolve("en", "uk")
+    assert postprocess("gazi", resolved, client_glossary_path=glossary_path, entries=()) == "gazi"
+
+
+def test_postprocess_words_matches_multi_word_phrase_across_tokens():
+    from ash_captions.languages import GlossaryEntry, postprocess_words
+
+    entries = (GlossaryEntry("ash captions", "ASH Captions"),)
+    resolved = resolve("en", "uk")
+    out = postprocess_words(["welcome", "to", "ash", "captions", "color"], resolved, entries=entries)
+    assert out == ("welcome", "to", "ASH", "Captions", "colour")
+
+
+def test_postprocess_words_falls_back_per_word_when_token_count_changes():
+    from ash_captions.languages import GlossaryEntry, postprocess_words
+
+    entries = (GlossaryEntry("new york", "NYC"), GlossaryEntry("gazi", "Ghazi"))
+    resolved = resolve("en", "us")
+    out = postprocess_words(["gazi", "in", "new", "york"], resolved, entries=entries)
+    assert out == ("Ghazi", "in", "new", "york")
+
+
+def test_postprocess_words_keeps_one_output_per_input():
+    from ash_captions.languages import postprocess_words
+
+    resolved = resolve("en", "uk")
+    words = ["the", "color", "of", "the", "center"]
+    out = postprocess_words(words, resolved)
+    assert len(out) == len(words)
+    assert out == ("the", "colour", "of", "the", "centre")
+
+
+def test_postprocess_words_empty_and_whitespace_tokens():
+    from ash_captions.languages import postprocess_words
+
+    resolved = resolve("en", "uk")
+    assert postprocess_words([], resolved) == ()
+    assert postprocess_words(["color", "a b"], resolved) == ("colour", "a b")
