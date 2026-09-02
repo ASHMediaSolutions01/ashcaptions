@@ -43,7 +43,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ash_captions.config import Settings, find_binary
-from ash_captions.engine import Card, Transcriber, TranscriptionError, WhisperTranscriber, build_cards
+from ash_captions.engine import (
+    Card,
+    Transcriber,
+    TranscriptionError,
+    WhisperTranscriber,
+    build_cards,
+    ffprobe_beside,
+    probe_video,
+)
 from ash_captions.styles import (
     DEFAULT_PREVIEW_DURATION_SECONDS,
     StyleValidationError,
@@ -227,6 +235,19 @@ class InProcessPreviewRenderer:
         with self._lock:
             self._jobs[job_id] = self._jobs[job_id].model_copy(update=fields)
 
+    def _play_res_for(self, video_path: Path) -> tuple[int, int] | None:
+        """The source frame size, so the preview's captions are the size the
+        burn will produce. ``write_ass`` defaults to portrait 1080x1920;
+        on a 16:9 file that default renders every style at ~56% of its
+        designed size, so the preview would lie. ``None`` (probe failed)
+        keeps the default rather than failing the preview."""
+        try:
+            info = probe_video(video_path, ffprobe_path=ffprobe_beside(self._ffmpeg_path))
+        except Exception as exc:  # noqa: BLE001 - a preview must never fail on the probe alone
+            logger.warning("preview: could not probe %s (%s); using default PlayRes", video_path, exc)
+            return None
+        return (info.width, info.height)
+
     def _run_job(self, job_id: str, video_path: Path, start_seconds: float, style: Any) -> None:
         job_dir = self._work_dir / job_id
         duration_seconds = DEFAULT_PREVIEW_DURATION_SECONDS
@@ -237,7 +258,7 @@ class InProcessPreviewRenderer:
 
             self._set(job_id, status=PreviewStatus.RUNNING, phase="rendering")
             ass_path = job_dir / "preview.ass"
-            write_ass(cards, ass_path, style)
+            write_ass(cards, ass_path, style, play_res=self._play_res_for(video_path))
 
             clip_path = job_dir / "preview.mp4"
             command = build_preview_command(

@@ -71,7 +71,13 @@ class StylesPackageAdapter:
         except StyleValidationError as exc:
             raise StyleValidationFailedError(str(exc)) from exc
 
-        save_user_style(style)
+        try:
+            save_user_style(style)
+        except ValueError as exc:
+            # A Windows reserved name (CON, NUL, ...) or a name whose file slug
+            # collides with a different existing style: the editor shows this
+            # inline like any other validation failure.
+            raise StyleValidationFailedError(str(exc)) from exc
         shipped = is_shipped_style(style.name)
         # Just wrote the user file ourselves, so it unconditionally exists now.
         return StyleSummary(name=style.name, shipped=shipped, customized_locally=shipped, definition=style.to_dict())

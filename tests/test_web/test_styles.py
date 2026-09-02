@@ -262,3 +262,23 @@ def test_preview_clip_available_once_done(client, tmp_path, fake_preview_rendere
     ready = client.get(f"/api/styles/preview/{job_id}/clip")
     assert ready.status_code == 200
     assert ready.content == b"fake rendered clip bytes"
+
+
+def test_save_style_maps_reserved_or_colliding_name_to_validation_error(monkeypatch):
+    """`save_user_style` raises ValueError for Windows reserved names (CON,
+    NUL, ...) and for a slug that collides with a different existing style.
+    The adapter must turn that into the 400 the editor shows inline, not a
+    500 from an unexpected exception."""
+    import pytest
+
+    from ash_captions.web import styles_adapter
+    from ash_captions.web.interfaces import StyleValidationFailedError
+
+    def refuse(_style):
+        raise ValueError("'CON' is a reserved name on Windows")
+
+    monkeypatch.setattr(styles_adapter, "save_user_style", refuse)
+    adapter = styles_adapter.StylesPackageAdapter()
+
+    with pytest.raises(StyleValidationFailedError, match="reserved"):
+        adapter.save_style("CON", default_style_definition("CON"))
