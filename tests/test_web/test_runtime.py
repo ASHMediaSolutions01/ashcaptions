@@ -40,3 +40,18 @@ def test_app_version_falls_back_to_dev_when_metadata_is_missing(monkeypatch):
 def test_app_version_reads_package_metadata(monkeypatch):
     monkeypatch.setattr(runtime, "version", lambda name: "3.2.1")
     assert runtime.app_version() == "3.2.1"
+
+
+def test_guide_page_is_served_with_its_images(client):
+    """The editor's guide lives inside the app at /guide, with the asset
+    cache-buster stamped in and every screenshot it references reachable."""
+    import re
+
+    page = client.get("/guide")
+    assert page.status_code == 200
+    assert "Editor's guide" in page.text
+    assert "__VERSION__" not in page.text
+    images = set(re.findall(r'src="(/static/guide/[^"]+)"', page.text))
+    assert images, "the guide should reference its screenshots"
+    for src in images:
+        assert client.get(src).status_code == 200, src

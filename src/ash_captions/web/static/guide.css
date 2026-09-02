@@ -1,0 +1,54 @@
+/* Editor's guide: served in-app at /guide. Reuses the control page's
+   palette so it reads as part of the same tool. */
+.guide-body { max-width: 1120px; margin: 0 auto; padding: 24px 24px 80px; }
+.guide-layout { display: grid; grid-template-columns: 230px 1fr; gap: 40px; align-items: start; }
+@media (max-width: 860px) { .guide-layout { grid-template-columns: 1fr; } .guide-nav { position: static; } }
+
+.guide-nav { position: sticky; top: 24px; }
+.guide-nav ol { list-style: none; margin: 0; padding: 0; }
+.guide-nav li { margin: 0 0 6px; }
+.guide-nav a { color: var(--muted); text-decoration: none; font-size: 14px; display: block; padding: 4px 8px; border-radius: 6px; }
+.guide-nav a:hover, .guide-nav a.active { color: var(--accent); background: var(--run-bg); }
+.guide-progress { margin-top: 18px; padding: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: var(--muted); }
+.guide-progress strong { color: var(--ink); display: block; margin-bottom: 6px; }
+.guide-progress .bar { height: 6px; background: var(--pending-bg); border-radius: 3px; overflow: hidden; }
+.guide-progress .bar > span { display: block; height: 100%; background: var(--ok); width: 0; transition: width .2s; }
+.guide-progress button { margin-top: 10px; font-size: 12px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+
+.guide-main section { margin-bottom: 44px; scroll-margin-top: 16px; }
+.guide-main h2 { font-size: 22px; margin: 0 0 6px; }
+.guide-main h3 { font-size: 16px; margin: 26px 0 8px; }
+.guide-main p, .guide-main li { line-height: 1.55; }
+.guide-main .lede { color: var(--muted); margin-top: 0; }
+
+.step { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 14px 0; }
+.step.done { border-color: var(--ok); background: var(--ok-bg); }
+.step-head { display: flex; align-items: center; gap: 12px; }
+.step-head input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--ok); flex: none; }
+.step-head h3 { margin: 0; font-size: 16px; }
+.step-head .eta { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.step .body { margin-top: 10px; }
+
+.cmd { position: relative; margin: 10px 0; }
+.cmd pre { margin: 0; background: #14161b; color: #e6e8ee; padding: 12px 88px 12px 14px; border-radius: 8px; font-size: 13.5px; overflow-x: auto; white-space: pre; }
+.cmd button { position: absolute; top: 8px; right: 8px; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #3a3f4b; background: #22252d; color: #e6e8ee; cursor: pointer; }
+.cmd button:hover { background: #2f333d; }
+.cmd button.copied { background: var(--ok); border-color: var(--ok); color: #fff; }
+
+.note { border-left: 4px solid var(--accent); background: var(--run-bg); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+.note.warn { border-color: #d98a12; background: #fff6e5; }
+.note.stop { border-color: var(--fail); background: var(--fail-bg); }
+
+figure { margin: 16px 0; }
+figure img { width: 100%; border: 1px solid var(--line); border-radius: 10px; display: block; }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+table.plain { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.plain th, table.plain td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.plain th { color: var(--muted); font-weight: 600; font-size: 13px; }
+
+details.fix { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 0; background: var(--card); }
+details.fix summary { cursor: pointer; font-weight: 600; }
+details.fix p { margin: 8px 0 2px; }
+kbd { background: var(--pending-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+code { background: var(--pending-bg); border-radius: 4px; padding: 1px 5px; font-size: 13px; }

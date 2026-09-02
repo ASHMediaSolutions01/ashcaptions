@@ -2,8 +2,14 @@
 
 Everything you need to set the tool up on your PC and use it every day.
 
-Written and tested on a real machine on 2026-09-01. Every screenshot here is
-the actual app, and every command was run exactly as written.
+Once the app is running, the same guide lives **inside the app** at
+`http://127.0.0.1:8756/guide` (the "Help & setup guide" link on the control
+page), with a setup checklist, copy buttons on every command, and screenshots
+that always match the version you are running. This page exists so you can do
+the setup before the app exists.
+
+Every command below was run exactly as written on a real machine on
+2026-09-02.
 
 ---
 
@@ -24,15 +30,14 @@ never leaves the building.
 
 ---
 
-## Part 1 — Setup (once)
+## Part 1 — Setup (once per PC)
 
-You only do this once per machine. It takes about 15 minutes, most of which is
-downloading.
+About 15 minutes, most of it downloading.
 
 ### Step 1. Install Python
 
-Download **Python 3.12** from <https://www.python.org/downloads/release/python-3128/>
-— pick "Windows installer (64-bit)".
+Download **Python 3.12 or newer** from <https://www.python.org/downloads/windows/>
+("Windows installer (64-bit)").
 
 **When the installer opens, tick "Add python.exe to PATH" at the bottom before
 clicking Install.** This is the one step that causes problems if you miss it.
@@ -43,41 +48,29 @@ Check it worked. Press `Win + R`, type `cmd`, press Enter, then run:
 python --version
 ```
 
-You should see `Python 3.12.8` or similar. If you see "not recognised", Python
+You should see `Python 3.12` or higher. If you see "not recognised", Python
 wasn't added to PATH — re-run the installer, choose Modify, and tick the box.
 
 ### Step 2. Get the tool
 
-The tool lives in a **private** GitHub repository. Ask Ghazi to add your GitHub
-account to it first — without that, the next command fails with "repository not
-found".
-
-Install GitHub CLI from <https://cli.github.com>, then in a terminal:
-
-```
-gh auth login
-```
-
-Choose **GitHub.com → HTTPS → Login with a web browser** and follow the prompts.
-Then:
+Install **Git for Windows** from <https://git-scm.com/download/win> with the
+default options. Then in a terminal:
 
 ```
 cd %USERPROFILE%\Desktop
-gh repo clone ASHMediaSolutions01/ashcaptions "ASH Captions"
+git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"
 ```
 
-That creates `C:\Users\<your name>\Desktop\ASH Captions`.
-
-**No GitHub account?** Ghazi can give you the folder on a USB stick instead —
-everything after this step is identical. You just won't get updates with
-`git pull`.
+That creates `C:\Users\<your name>\Desktop\ASH Captions`. No account or login
+is needed.
 
 ### Step 3. Open a terminal in that folder
 
 Open the folder in File Explorer, click the address bar, type `cmd`, press Enter.
-A black window opens already pointing at the right place.
+A black window opens already pointing at the right place. Every command below
+goes into that window.
 
-### Step 4. Run the setup commands
+### Step 4. Install the tool
 
 Copy and paste these **one at a time**, waiting for each to finish.
 
@@ -93,90 +86,80 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
-That single command pulls in everything: the speech engine, the web page, the
-folder watcher, all of it.
+The `-e` matters: without it the styles and fonts are not found.
 
-**4c. Get ffmpeg** (about 2 minutes — it downloads ~230 MB):
+### Step 5. Get ffmpeg, the fonts, and the speech model
+
+**5a. ffmpeg** does the video work (about 2 minutes — ~170 MB):
 
 ```
 .venv\Scripts\python.exe scripts\fetch_ffmpeg.py
 ```
 
-**4d. Get the caption fonts** (about 1 minute):
+**5b. The 24 caption fonts** and their licences (about 1 minute):
 
 ```
 .venv\Scripts\python.exe -m ash_captions.styles.fonts download
 ```
 
-You should see `wrote 24 font file(s)`. If it says some failed, that's fine —
-tell Ghazi which ones and carry on.
+You should see `wrote 24 font file(s)`. A yellow `RuntimeWarning` mentioning
+"unpredictable behaviour" is a Python quirk about how the command is launched;
+**ignore it**.
 
-You'll also see a yellow `RuntimeWarning` mentioning "unpredictable behaviour".
-**Ignore it** — it's a Python quirk about how the command is launched, not a
-problem with the download. As long as the last line says it wrote the files,
-you're good.
-
-**4e. Get the speech model** (about 5 minutes — it downloads ~480 MB):
+**5c. The speech model** (about 5 minutes — ~480 MB). Optional: if you skip it,
+the first job downloads it by itself.
 
 ```
-.venv\Scripts\python.exe scripts\fetch_model.py --model-size small
+.venv\Scripts\python.exe scripts\fetch_model.py --model-size small --dest models
 ```
 
-This is the biggest download. Do it once; it's cached forever after.
-
-You can skip this step if you'd rather — the model downloads by itself the
-first time you caption something. Doing it now just means your first real job
-isn't slowed down by a 480 MB download.
-
-### Step 5. Start the app
+### Step 6. Start the app
 
 ```
 .venv\Scripts\python.exe -m ash_captions --open
 ```
 
 Your browser opens at `http://127.0.0.1:8756`. **Leave the black terminal
-window open** — closing it stops the app.
+window open** — closing it stops the app, and a job that was running starts
+again from the beginning next time.
 
-That's setup done.
+That's setup done. Click **"Help & setup guide"** on the page for the rest of
+this guide with screenshots.
 
 ### Getting updates later
 
-When Ghazi pushes a fix, pull it in the same terminal:
+When Ghazi pushes a fix, run these in the same terminal, then start the app
+again:
 
 ```
 git pull
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
-Then restart the app.
+The "Update now" banner inside the app is only for the installed one-click
+version; on a source install like this one it never appears.
 
 ---
 
 ## Part 2 — Captioning a video
 
-### Start the app
-
-Every time you want to use it:
-
-```
-.venv\Scripts\python.exe -m ash_captions --open
-```
-
-Or just click the desktop shortcut if Ghazi set one up.
+Every time: start the app with the Step 6 command, or the desktop shortcut if
+one was set up.
 
 ### Give it your video
 
-![The control page with a video selected](images/control-options.png)
+![The control page](images/control-idle.png)
 
 1. In **File Explorer**, find your video. Hold **Shift**, right-click it, and
    choose **"Copy as path"**.
-2. Paste that into **Video file location**. The quotes Windows adds are fine —
-   the tool strips them.
-3. The options appear as soon as it recognises the file.
+2. Paste that into **Video file location** and press Enter. The quotes Windows
+   adds are fine.
+3. Pick your options and click **Start captioning**.
 
 **Why paste a path instead of uploading?** Your video is already on this
-computer. Uploading it would copy several GB to a second place on the same disk
-for no reason. Pasting the path means the tool reads it where it sits.
+computer. Pasting the path means the tool reads it where it sits, and your
+original is never moved, changed or deleted. The "upload a copy" option is for
+small files only (2 GB limit).
 
 ### Pick your options
 
@@ -188,44 +171,66 @@ for no reason. Pasting the path means the tool reads it where it sits.
 | **Burn captions into the video** | Tick this for a ready-to-post file. Leave it off if you're taking the `.srt` into Premiere |
 | **Also translate to English** | Tick for a non-English video where the client wants English subtitles |
 
-Then click **Start captioning**.
-
 ### Watch it work
 
 ![A job running](images/queue-running.png)
 
-The bar fills as it goes. A 60-second reel takes about 40 seconds without
-burn-in. Longer videos take proportionally longer — roughly a third of the
-video's length for transcription.
+Each job shows what it is doing (**Extracting audio → Transcribing → Writing
+captions → Burning captions in**), how far along it is, and a clock that keeps
+ticking while it works. The green dot at the top right of the queue means the
+worker is alive. You can queue more videos; they run one at a time.
 
-You can queue more videos while one is running; they process one at a time.
+![A finished and a failed job](images/queue-done.png)
 
-![A finished job](images/queue-done.png)
+A failed job shows the reason under it, with a **Retry** button.
 
 ### Collect your files
-
-They're in:
 
 ```
 C:\AshCaptions\out\<your video's name>\
 ```
 
+If two videos share a name, the second gets its own folder (`name (2)`).
 **Your original video is never moved, changed or deleted.**
 
 ---
 
-## Part 3 — Designing caption styles
+## Part 3 — Hour-long videos
 
-Click **"Design your own caption styles →"** at the top of the page.
+Long files work; they just take a while.
+
+| Length | Transcription (no GPU) | Burn-in at 1080p | Burn-in at 4K |
+|---|---|---|---|
+| 1-minute reel | ~20 s | ~20 s | ~1 min |
+| 10 minutes | ~3–4 min | ~3 min | ~10 min |
+| 60 minutes | ~20–25 min | ~20 min | ~60–75 min |
+| 90 minutes | ~30–40 min | ~30 min | ~1.5–2 h |
+
+- **Leave the terminal window open and the PC awake.** If the app stops
+  mid-job, the job restarts from the beginning next time.
+- **You can close the browser tab.** The job keeps running; open the page again
+  any time.
+- **Watch the clock, not the bar.** "Running for 23 min" ticking means it is
+  working. An amber **"Lost contact with the app"** banner means the app itself
+  has stopped: check the terminal window.
+- **Disk space:** a burned 4K file can be as big as the original. The tool
+  refuses to start a burn the drive can't hold and says how much it needs.
+- **For 4K deliverables**, consider taking the `.srt` or `.ass` into Premiere
+  and exporting there. Transcription is the same speed for 4K; only the burn is
+  slower.
+
+---
+
+## Part 4 — Choosing a look
+
+Click **"Design your own caption styles →"** on the control page.
 
 ![The style editor](images/style-editor.png)
-
-Nine styles ship with the tool:
 
 | Style | Use it for |
 |---|---|
 | **CLEAN** | Client work. Deliberately no colour, so it can't clash with a client's brand |
-| **POP** | Short-form. The bold box look |
+| **POP** | Short-form. The bold box look, one word at a time |
 | **ASH BRAND** | Our own content — Ash colours and typeface |
 | **HYPE** | Big, centred, two words at a time |
 | **KARAOKE** | Colour sweeps through each word |
@@ -234,49 +239,33 @@ Nine styles ship with the tool:
 | **PLAYFUL** | Rounded and friendly |
 | **COMIC** | Heavy comic-book impact |
 
-### Changing a style
+![Burned-in captions in ASH BRAND](images/burned-example.png)
 
-Pick one on the left, then change anything: font (24 to choose from), size,
+Pick a style on the left, then change anything: font (24 to choose from), size,
 letter spacing, ALL CAPS, the four colours, how the active word behaves, how
-captions enter, and where they sit.
+captions enter, and **where they sit** (top, centre, bottom; left, middle,
+right).
 
-### The preview — use this
+**Always preview first.** At the bottom, paste a video path and a start time in
+seconds where someone is talking, then click **Render preview**. A few seconds
+later you get a real clip of your own footage in that style, at the video's
+real size.
 
-At the bottom, paste a video path and a **start time in seconds**. Pick a moment
-where someone is *talking* — a silent moment gives you a preview with no
-captions in it.
+**Saving:** **Save** updates the style, **Save as…** makes a new one,
+**Duplicate** copies it to edit safely, **Reset to shipped** puts a built-in
+back.
 
-Click **Render preview**. After a few seconds you get a real 3-second clip of
-**your own footage** in that style.
-
-Always preview before running a long job. It takes seconds and saves you
-discovering the style was wrong after a 20-minute render.
-
-### Saving
-
-- **Save** — updates the style
-- **Save as…** — makes a new style under a new name
-- **Duplicate** — copies the current one to edit safely
-- **Reset to shipped** — puts a built-in style back to how it came
-
-> **One thing to watch.** If you save a style using a built-in name like `POP`,
-> every future job using `POP` gets *your* version — including other people's.
-> To make your own look, use **Save as…** with a new name instead. The editor
-> marks a changed built-in as "customized locally" so you can tell.
+> If you save a style under a built-in name like `POP`, every future job using
+> `POP` on this PC gets *your* version. To make your own look, use **Save as…**
+> with a new name. The editor marks a changed built-in as "customized locally".
 
 ---
 
-## Punch-in (zooming the footage)
+## Part 5 — Punch-in (zooming the footage)
 
-Captions tell the viewer what's being said. A **punch-in** — the picture pushing
-in slightly on a word — tells them it matters. On a talking-head video where the
-camera never moves, this is most of the difference between a captioned video and
-an edited one.
-
-It's **off by default**, because it changes how a client's video is framed and
-that shouldn't happen to footage without someone deciding it should.
-
-To turn it on, ask Ghazi to set it in `C:\AshCaptions\settings.json`:
+A punch-in is the picture pushing in slightly on a word. It is **off by
+default**, because it changes how a client's video is framed. To turn it on,
+ask Ghazi to set it in `C:\AshCaptions\settings.json`:
 
 ```json
 {
@@ -289,75 +278,54 @@ To turn it on, ask Ghazi to set it in `C:\AshCaptions\settings.json`:
 
 | Setting | What it does |
 |---|---|
-| `punch_mode` | `off`, `sentence` (punch on each new sentence), `keyword` (only on words you list), or `both` |
-| `punch_zoom` | How far in. `1.12` is 12% — noticeable but not seasick-making. Above ~1.2 starts to look like a mistake |
+| `punch_mode` | `off`, `sentence` (each new sentence), `keyword` (only words you list), or `both` |
+| `punch_zoom` | How far in. `1.12` is 12% — noticeable, not seasick-making. Above ~1.2 looks like a mistake |
 | `punch_duration_seconds` | How long it holds |
-| `punch_min_spacing_seconds` | The important one. Never punch more often than this. Without it, fast dialogue zooms constantly and is unwatchable |
+| `punch_min_spacing_seconds` | Never punch more often than this. Without it, fast dialogue zooms constantly |
 
-For keyword mode, add the words worth emphasising for that client:
-
-```json
-{ "punch_mode": "keyword", "punch_keywords": ["free", "guarantee", "today"] }
-```
-
-Punch-in only applies when **Burn captions into the video** is ticked — it's an
-edit to the picture, so it can only happen in a file we're rendering. It costs
-essentially nothing: burn-in takes the same time with it as without.
+For keyword mode: `"punch_mode": "keyword", "punch_keywords": ["free", "guarantee", "today"]`.
+Punch-in only applies when **Burn captions into the video** is ticked. It works
+on hour-long files and costs almost no extra render time.
 
 ---
 
-## What good output looks like
-
-A frame from a real job in **ASH BRAND** — the spoken word is highlighted in the
-Ash accent colour as it's said:
-
-![Burned-in captions](images/burned-example.png)
-
----
-
-## Problems and fixes
+## Part 6 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
 | `'python' is not recognised` | Python isn't on PATH. Re-run the installer, choose Modify, tick "Add python.exe to PATH" |
-| The browser page won't load | The terminal window was closed. Start it again with the command in Part 2 |
-| **"ASH Captions is already running"** | It's already open. Look for the icon near the clock, or check for another terminal window |
-| A job says **FAILED** | Click it to read the reason. Usually the file was moved or renamed after you pasted the path |
-| Captions are in the wrong language | The **Language** dropdown is the language *spoken* in the video, not the one you want out. For translation, tick "Also translate to English" |
-| Names or brands spelled wrong | Expected — Whisper doesn't know them. Ask Ghazi to add them to your glossary file and they'll be corrected automatically from then on |
-| Captions are a plain font, not the style's | The fonts didn't all download. Re-run step 4d |
-| Windows warns about the app on first run | Expected — the app isn't code-signed. Click **More info → Run anyway** |
+| The page won't load, or an amber **"Lost contact"** banner | The terminal window was closed or the app crashed. Start it again with the Step 6 command |
+| **"ASH Captions is already running"** | It's already open. Look for the icon near the clock, or another terminal window |
+| The queue says **Worker: stopped** | The part that runs jobs has died. Close the terminal, start the app again, send Ghazi the log |
+| A job says **FAILED** | Read the reason under it. Usually the file was moved or renamed, or the drive is full. Fix the cause, click **Retry** |
+| Captions are in the wrong language | **Language** is the language *spoken* in the video. For translation, tick "Also translate to English" |
+| Names or brands spelled wrong | Expected. Ask Ghazi to add them to the glossary file; they're corrected automatically from then on |
+| Captions are a plain font, not the style's | The fonts didn't all download. Re-run step 5b |
+| "A preview is already rendering" | Only one preview at a time. Wait, then try again |
+| "Not enough free space" when burning | Free up the amount it names, or take the `.srt` into Premiere instead |
+| Out of memory on a very long file | Close Premiere and spare browser tabs, then Retry. A 90-minute file needs a couple of GB free |
 
 ### If you're stuck
 
-Send Ghazi the log file:
+Send Ghazi the log file. It says what actually went wrong and is far more
+useful than a screenshot of the error:
 
 ```
 C:\AshCaptions\ash-captions.log
 ```
 
-That file says what actually went wrong. It's far more useful than a screenshot
-of the error.
-
 ---
 
-## Things worth knowing
+## Worth knowing
 
-**Accuracy.** English, Spanish and Portuguese are excellent. Most European
-languages are very good. **Always skim the result before delivering** — names,
-brands and technical words are where mistakes hide.
-
-**Speed.** Transcription takes roughly a third of the video's length. Burn-in
-takes about the same again. A 60-second reel is about 40 seconds; a 10-minute
-video is about 7 minutes.
-
-**4K is not slower to transcribe** — only the audio is read, so a 6 GB 4K file
-takes exactly as long as a small 1080p one of the same length. Burning captions
-*into* 4K is slow though. For 4K, take the `.srt` or `.ass` into Premiere and
-export from there.
-
-**Nothing is uploaded.** All of it runs on your PC. That's why we can sign NDAs
-without a conversation about it.
-
-**Old outputs clean themselves up** after 30 days. Move anything you want to
-keep into the project folder.
+- **Accuracy.** English, Spanish and Portuguese are excellent; most European
+  languages very good. **Always skim the result before delivering** — names,
+  brands and technical words are where mistakes hide.
+- **Apostrophes, commas and accents in file names are fine.** So are network
+  drives, as long as they stay connected for the whole job.
+- **Nothing is uploaded.** That's why we can sign NDAs without a conversation
+  about it.
+- **Old outputs clean themselves up** after 30 days. Move anything you want to
+  keep into the project folder.
+- **Other websites can't touch this app.** Pages open in other tabs are blocked
+  from sending it jobs.

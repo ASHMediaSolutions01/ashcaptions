@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASH Captions — Editor's guide</title>
+<link rel="stylesheet" href="/static/style.css?v=__VERSION__">
+<link rel="stylesheet" href="/static/guide.css?v=__VERSION__">
+</head>
+<body class="guide-body">
+
+<header>
+  <h1>Editor's guide</h1>
+  <p>Setting the tool up, captioning a video, choosing a look, and what to do when something goes wrong.</p>
+  <nav class="editor-nav">
+    <a class="back-link" href="/">&larr; Back to captioning</a>
+    <a class="back-link" href="/style-editor">Style editor &rarr;</a>
+  </nav>
+</header>
+
+<div class="guide-layout">
+<aside class="guide-nav" aria-label="Guide sections">
+  <ol>
+    <li><a href="#what">What this does</a></li>
+    <li><a href="#setup">1 · Setup (once)</a></li>
+    <li><a href="#caption">2 · Caption a video</a></li>
+    <li><a href="#long">3 · Long videos</a></li>
+    <li><a href="#styles">4 · Choosing a look</a></li>
+    <li><a href="#punch">5 · Punch-in</a></li>
+    <li><a href="#problems">6 · Problems and fixes</a></li>
+    <li><a href="#worth">7 · Worth knowing</a></li>
+  </ol>
+  <div class="guide-progress">
+    <strong id="progress-label">Setup: 0 of 6 steps done</strong>
+    <div class="bar"><span id="progress-bar"></span></div>
+    <button type="button" id="progress-reset">Reset checklist</button>
+  </div>
+</aside>
+
+<main class="guide-main">
+
+<section id="what">
+  <h2>What this tool does</h2>
+  <p class="lede">You give it a video. It gives you back captions, entirely on this PC. Nothing is uploaded anywhere, so client footage never leaves the building.</p>
+  <table class="plain">
+    <tr><th>File</th><th>What it's for</th></tr>
+    <tr><td><code>.srt</code></td><td>Plain captions. Drag straight into Premiere or DaVinci Resolve.</td></tr>
+    <tr><td><code>.ass</code></td><td>Styled captions: the animated word-by-word look.</td></tr>
+    <tr><td><code>.txt</code></td><td>The transcript as plain text, for descriptions and client review.</td></tr>
+    <tr><td><code>.en.srt</code></td><td>English translation, if you asked for one.</td></tr>
+    <tr><td><code>.captioned.mp4</code></td><td>The video with captions burned in, ready to post.</td></tr>
+  </table>
+</section>
+
+<section id="setup">
+  <h2>Part 1 · Setup (once per PC)</h2>
+  <p class="lede">About 15 minutes, most of it downloading. Tick each step as you go; the checklist is remembered on this browser.</p>
+
+  <div class="step" data-step="python">
+    <div class="step-head"><input type="checkbox" id="step-python" aria-label="Done: install Python"><h3><label for="step-python">Step 1 · Install Python 3.12 or newer</label></h3><span class="eta">3 min</span></div>
+    <div class="body">
+      <p>Download from <a href="https://www.python.org/downloads/windows/" target="_blank" rel="noopener">python.org</a>, "Windows installer (64-bit)". <strong>Tick "Add python.exe to PATH" at the bottom of the installer before clicking Install.</strong> That one box is the cause of almost every setup problem.</p>
+      <p>Check it worked: press <kbd>Win</kbd> + <kbd>R</kbd>, type <code>cmd</code>, press Enter, then run:</p>
+      <div class="cmd"><pre>python --version</pre></div>
+      <p>You should see <code>Python 3.12</code> or higher. If you see "not recognised", re-run the installer, choose Modify, and tick the PATH box.</p>
+    </div>
+  </div>
+
+  <div class="step" data-step="clone">
+    <div class="step-head"><input type="checkbox" id="step-clone" aria-label="Done: get the tool"><h3><label for="step-clone">Step 2 · Get the tool</label></h3><span class="eta">2 min</span></div>
+    <div class="body">
+      <p>Install <a href="https://git-scm.com/download/win" target="_blank" rel="noopener">Git for Windows</a> with the default options, then in a terminal:</p>
+      <div class="cmd"><pre>cd %USERPROFILE%\Desktop
+git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"</pre></div>
+      <p>That creates <code>C:\Users\&lt;you&gt;\Desktop\ASH Captions</code>. No account or login is needed.</p>
+    </div>
+  </div>
+
+  <div class="step" data-step="terminal">
+    <div class="step-head"><input type="checkbox" id="step-terminal" aria-label="Done: open a terminal in the folder"><h3><label for="step-terminal">Step 3 · Open a terminal in that folder</label></h3><span class="eta">10 s</span></div>
+    <div class="body">
+      <p>Open the folder in File Explorer, click the address bar, type <code>cmd</code>, press Enter. A black window opens already pointing at the right place. Every command below is typed into that window.</p>
+    </div>
+  </div>
+
+  <div class="step" data-step="install">
+    <div class="step-head"><input type="checkbox" id="step-install" aria-label="Done: install the tool"><h3><label for="step-install">Step 4 · Install the tool</label></h3><span class="eta">4 min</span></div>
+    <div class="body">
+      <p>Paste these <strong>one at a time</strong>, waiting for each to finish.</p>
+      <p>Create the environment (about 10 seconds):</p>
+      <div class="cmd"><pre>python -m venv .venv</pre></div>
+      <p>Install everything the tool needs (about 3 minutes, downloads ~200 MB):</p>
+      <div class="cmd"><pre>.venv\Scripts\python.exe -m pip install -e .</pre></div>
+      <p class="note">The <code>-e</code> matters. Without it the styles and fonts are not found.</p>
+    </div>
+  </div>
+
+  <div class="step" data-step="assets">
+    <div class="step-head"><input type="checkbox" id="step-assets" aria-label="Done: get ffmpeg, fonts and the speech model"><h3><label for="step-assets">Step 5 · Get ffmpeg, the fonts, and the speech model</label></h3><span class="eta">8 min</span></div>
+    <div class="body">
+      <p>ffmpeg does the video work (about 2 minutes, ~170 MB):</p>
+      <div class="cmd"><pre>.venv\Scripts\python.exe scripts\fetch_ffmpeg.py</pre></div>
+      <p>The 24 caption fonts and their licences (about 1 minute). You should see <code>wrote 24 font file(s)</code>. A yellow <code>RuntimeWarning</code> about "unpredictable behaviour" is a Python quirk; ignore it.</p>
+      <div class="cmd"><pre>.venv\Scripts\python.exe -m ash_captions.styles.fonts download</pre></div>
+      <p>The speech model (about 5 minutes, ~480 MB). Optional: if you skip it, the first job downloads it by itself.</p>
+      <div class="cmd"><pre>.venv\Scripts\python.exe scripts\fetch_model.py --model-size small --dest models</pre></div>
+    </div>
+  </div>
+
+  <div class="step" data-step="start">
+    <div class="step-head"><input type="checkbox" id="step-start" aria-label="Done: start the app"><h3><label for="step-start">Step 6 · Start the app</label></h3><span class="eta">10 s</span></div>
+    <div class="body">
+      <div class="cmd"><pre>.venv\Scripts\python.exe -m ash_captions --open</pre></div>
+      <p>Your browser opens at <code>http://127.0.0.1:8756</code>. <strong>Leave the black terminal window open.</strong> Closing it stops the app, and any job that was running starts again from the beginning next time.</p>
+      <p>That's setup done. You're reading this page inside the app, so it worked.</p>
+    </div>
+  </div>
+
+  <h3>Getting updates later</h3>
+  <p>When Ghazi pushes a fix, run these in the same terminal, then start the app again:</p>
+  <div class="cmd"><pre>git pull
+.venv\Scripts\python.exe -m pip install -e .</pre></div>
+  <p>The "Update now" banner inside the app is only for the installed (one-click) version. On a source install like this one it never appears.</p>
+</section>
+
+<section id="caption">
+  <h2>Part 2 · Captioning a video</h2>
+  <p class="lede">Every time: start the app with the command from Step 6, or the desktop shortcut if one was set up.</p>
+
+  <h3>Give it your video</h3>
+  <figure><img src="/static/guide/control-idle.png" alt="The control page: a text field for the video path, and an empty queue below"><figcaption>The control page. Paste the path, press Enter.</figcaption></figure>
+  <ol>
+    <li>In <strong>File Explorer</strong>, find your video. Hold <kbd>Shift</kbd>, right-click it, choose <strong>"Copy as path"</strong>.</li>
+    <li>Paste it into <strong>Video file location</strong> and press Enter. The quotes Windows adds are fine.</li>
+    <li>The options appear. Pick them and click <strong>Start captioning</strong>.</li>
+  </ol>
+  <p class="note">Why paste a path instead of uploading? Your video is already on this computer. Pasting the path means the tool reads it where it sits, and your original is never moved, changed or deleted. The "upload a copy" option exists for small files only (2 GB limit).</p>
+
+  <h3>Pick your options</h3>
+  <table class="plain">
+    <tr><th>Setting</th><th>What to choose</th></tr>
+    <tr><td><strong>Language</strong></td><td>The language <em>spoken</em> in the video. English, Spanish, Portuguese and 51 others.</td></tr>
+    <tr><td><strong>Dialect</strong></td><td>Affects spelling: English (US) gives "color", English (UK) gives "colour". For a US client, pick US.</td></tr>
+    <tr><td><strong>Caption style</strong></td><td>The look. <code>POP</code> for short-form, <code>CLEAN</code> for client-safe, <code>ASH BRAND</code> for our own content. See Part 4.</td></tr>
+    <tr><td><strong>Burn captions into the video</strong></td><td>Tick for a ready-to-post file. Leave off if you're taking the <code>.srt</code> into Premiere.</td></tr>
+    <tr><td><strong>Also translate to English</strong></td><td>Tick for a non-English video where the client wants English subtitles.</td></tr>
+  </table>
+
+  <h3>Watch it work</h3>
+  <figure><img src="/static/guide/queue-running.png" alt="A running job showing the stage, a percentage, and a running-for clock"><figcaption>Each job shows what it's doing right now, how far along, and how long it has been running. The green dot at the top right means the worker is alive.</figcaption></figure>
+  <p>The stage line reads <strong>Extracting audio → Transcribing → Writing captions → Burning captions in</strong>. The clock on the right keeps ticking while it works. You can queue more videos; they run one at a time.</p>
+  <figure><img src="/static/guide/queue-done.png" alt="A failed job with its error shown inline and a Retry button, above a waiting job"><figcaption>A failed job shows the reason under it, with a Retry button. Finished jobs show how long they took.</figcaption></figure>
+
+  <h3>Collect your files</h3>
+  <div class="cmd"><pre>C:\AshCaptions\out\&lt;your video's name&gt;\</pre></div>
+  <p>If two videos share a name, the second gets its own folder: <code>name (2)</code>. <strong>Your original video is never touched.</strong></p>
+</section>
+
+<section id="long">
+  <h2>Part 3 · Hour-long videos</h2>
+  <p class="lede">Long files work. They just take a while, and the rules below keep them from being interrupted.</p>
+  <table class="plain">
+    <tr><th>Length</th><th>Transcription (no GPU)</th><th>Burn-in at 1080p</th><th>Burn-in at 4K</th></tr>
+    <tr><td>1 minute reel</td><td>~20 s</td><td>~20 s</td><td>~1 min</td></tr>
+    <tr><td>10 minutes</td><td>~3–4 min</td><td>~3 min</td><td>~10 min</td></tr>
+    <tr><td>60 minutes</td><td>~20–25 min</td><td>~20 min</td><td>~60–75 min</td></tr>
+    <tr><td>90 minutes</td><td>~30–40 min</td><td>~30 min</td><td>~1.5–2 h</td></tr>
+  </table>
+  <ul>
+    <li><strong>Leave the terminal window open and the PC awake.</strong> If the app stops mid-job, the job restarts from the beginning next time; nothing is lost, but the time is.</li>
+    <li><strong>You can close the browser tab.</strong> The job keeps running. Open <code>http://127.0.0.1:8756</code> again any time to see where it is.</li>
+    <li><strong>Watch the clock, not the bar.</strong> "Running for 23 min" ticking means it's working. If the amber "Lost contact" banner appears, the app itself has stopped; check the terminal window.</li>
+    <li><strong>Disk space:</strong> a burned 4K file can be as big as the original. The tool refuses to start a burn when the drive can't hold it, and tells you how much it needs.</li>
+    <li><strong>For 4K deliverables</strong>, consider taking the <code>.srt</code> or <code>.ass</code> into Premiere and exporting there; transcription is the same speed for 4K, only the burn is slower.</li>
+  </ul>
+  <figure><img src="/static/guide/lost-contact.png" alt="The control page showing an amber 'Lost contact with the app' banner"><figcaption>This banner means the app process is gone, usually because the terminal window was closed. Start it again with the Step 6 command.</figcaption></figure>
+</section>
+
+<section id="styles">
+  <h2>Part 4 · Choosing a look</h2>
+  <p class="lede">Click <strong>"Design your own caption styles"</strong> on the control page.</p>
+  <figure><img src="/static/guide/style-editor.png" alt="The style editor: a list of looks on the left, settings in the middle, and a live preview"><figcaption>The style editor. Pick a look on the left, change anything, render a real 3-second clip of your own footage at the bottom.</figcaption></figure>
+  <table class="plain">
+    <tr><th>Style</th><th>Use it for</th></tr>
+    <tr><td><strong>CLEAN</strong></td><td>Client work. Deliberately no colour, so it can't clash with a client's brand.</td></tr>
+    <tr><td><strong>POP</strong></td><td>Short-form. The bold box look, one word at a time.</td></tr>
+    <tr><td><strong>ASH BRAND</strong></td><td>Our own content: Ash colours and typeface.</td></tr>
+    <tr><td><strong>HYPE</strong></td><td>Big, centred, two words at a time.</td></tr>
+    <tr><td><strong>KARAOKE</strong></td><td>Colour sweeps through each word as it's said.</td></tr>
+    <tr><td><strong>NEON GLOW</strong></td><td>Glowing edge.</td></tr>
+    <tr><td><strong>LOWER THIRD</strong></td><td>Subtle, sits at the bottom.</td></tr>
+    <tr><td><strong>PLAYFUL</strong></td><td>Rounded and friendly.</td></tr>
+    <tr><td><strong>COMIC</strong></td><td>Heavy comic-book impact.</td></tr>
+  </table>
+  <figure><img src="/static/guide/burned-example.png" alt="Burned-in captions in the ASH BRAND style, the spoken word highlighted in the accent colour"><figcaption>ASH BRAND burned in: the word being spoken is highlighted in the Ash accent colour.</figcaption></figure>
+
+  <h3>Changing a style</h3>
+  <p>Pick one on the left, then change anything: font (24 to choose from), size, letter spacing, ALL CAPS, the four colours, how the active word behaves, how captions enter, and <strong>where they sit</strong> (top, centre, bottom; left, middle, right).</p>
+
+  <h3>Always preview first</h3>
+  <p>At the bottom, paste a video path and a <strong>start time in seconds</strong> where someone is talking. Click <strong>Render preview</strong>; a few seconds later you get a real clip of your own footage in that style, at the video's real size. It saves you discovering the style was wrong after a 30-minute render.</p>
+
+  <h3>Saving</h3>
+  <ul>
+    <li><strong>Save</strong> updates the style. <strong>Save as…</strong> makes a new one. <strong>Duplicate</strong> copies it to edit safely. <strong>Reset to shipped</strong> puts a built-in back.</li>
+  </ul>
+  <p class="note warn">If you save a style under a built-in name like <code>POP</code>, every future job using <code>POP</code> on this PC gets <em>your</em> version. To make your own look, use <strong>Save as…</strong> with a new name. The editor marks a changed built-in as "customized locally".</p>
+</section>
+
+<section id="punch">
+  <h2>Part 5 · Punch-in (zooming the footage)</h2>
+  <p>A punch-in is the picture pushing in slightly on a word. On a talking-head video where the camera never moves, it's most of the difference between a captioned video and an edited one. It's <strong>off by default</strong>, because it changes how a client's video is framed.</p>
+  <p>To turn it on, ask Ghazi to set it in <code>C:\AshCaptions\settings.json</code>:</p>
+  <div class="cmd"><pre>{
+  "punch_mode": "sentence",
+  "punch_zoom": 1.12,
+  "punch_duration_seconds": 1.2,
+  "punch_min_spacing_seconds": 5.0
+}</pre></div>
+  <table class="plain">
+    <tr><th>Setting</th><th>What it does</th></tr>
+    <tr><td><code>punch_mode</code></td><td><code>off</code>, <code>sentence</code> (each new sentence), <code>keyword</code> (only words you list), or <code>both</code>.</td></tr>
+    <tr><td><code>punch_zoom</code></td><td>How far in. 1.12 is 12%: noticeable, not seasick-making. Above 1.2 starts to look like a mistake.</td></tr>
+    <tr><td><code>punch_duration_seconds</code></td><td>How long it holds.</td></tr>
+    <tr><td><code>punch_min_spacing_seconds</code></td><td>Never punch more often than this. Without it, fast dialogue zooms constantly.</td></tr>
+  </table>
+  <p>For keyword mode add the words worth emphasising: <code>"punch_keywords": ["free", "guarantee", "today"]</code>. Punch-in only applies when <strong>Burn captions into the video</strong> is ticked. It works on hour-long files and costs almost no extra render time.</p>
+</section>
+
+<section id="problems">
+  <h2>Part 6 · Problems and fixes</h2>
+  <details class="fix"><summary>'python' is not recognised</summary><p>Python isn't on PATH. Re-run the installer, choose Modify, tick "Add python.exe to PATH".</p></details>
+  <details class="fix"><summary>The browser page won't load, or an amber "Lost contact" banner appears</summary><p>The terminal window was closed or the app crashed. Start it again with the Step 6 command. A job that was running restarts from the beginning.</p></details>
+  <details class="fix"><summary>"ASH Captions is already running"</summary><p>It's already open. Look for the icon near the clock, or another terminal window.</p></details>
+  <details class="fix"><summary>The Queue says "Worker: stopped"</summary><p>The part of the app that runs jobs has died but the page is still up. Close the terminal window and start the app again. Send Ghazi the log file (below).</p></details>
+  <details class="fix"><summary>A job says FAILED</summary><p>Read the reason under it. Usually the file was moved or renamed after you pasted the path, or the drive is full. Fix the cause, then click <strong>Retry</strong>.</p></details>
+  <details class="fix"><summary>Captions are in the wrong language</summary><p>The <strong>Language</strong> dropdown is the language <em>spoken</em> in the video, not the one you want out. For translation, tick "Also translate to English".</p></details>
+  <details class="fix"><summary>Names or brands spelled wrong</summary><p>Expected: the speech model doesn't know them. Ask Ghazi to add them to the glossary file and they're corrected automatically from then on.</p></details>
+  <details class="fix"><summary>Captions are a plain font, not the style's</summary><p>The fonts didn't all download. Re-run the fonts command in Step 5.</p></details>
+  <details class="fix"><summary>The preview says "A preview is already rendering"</summary><p>Only one preview runs at a time. Wait for it, then try again.</p></details>
+  <details class="fix"><summary>"Not enough free space" when burning</summary><p>Free up the amount it names on the output drive, or take the <code>.srt</code> into Premiere instead of burning.</p></details>
+  <details class="fix"><summary>The PC ran out of memory on a very long file</summary><p>Close Premiere and the browser tabs you don't need, then Retry. A 90-minute file needs a couple of GB free while transcribing.</p></details>
+  <h3>If you're stuck</h3>
+  <p>Send Ghazi the log file. It says what actually went wrong and is far more useful than a screenshot of the error:</p>
+  <div class="cmd"><pre>C:\AshCaptions\ash-captions.log</pre></div>
+</section>
+
+<section id="worth">
+  <h2>Part 7 · Worth knowing</h2>
+  <ul>
+    <li><strong>Accuracy.</strong> English, Spanish and Portuguese are excellent; most European languages very good. <strong>Always skim the result before delivering.</strong> Names, brands and technical words are where mistakes hide.</li>
+    <li><strong>Apostrophes, commas and accents in file names are fine.</strong> So are network drives, as long as they stay connected for the whole job.</li>
+    <li><strong>Nothing is uploaded.</strong> All of it runs on your PC. That's why we can sign NDAs without a conversation about it.</li>
+    <li><strong>Old outputs clean themselves up</strong> after 30 days. Move anything you want to keep into the project folder.</li>
+    <li><strong>Other websites can't touch this app.</strong> Pages you have open in other tabs are blocked from sending it jobs.</li>
+  </ul>
+</section>
+
+</main>
+</div>
+
+<script>
+(function () {
+  var KEY = "ashguide.done.v1";
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.step input[type="checkbox"]'));
+  var label = document.getElementById("progress-label");
+  var bar = document.getElementById("progress-bar");
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
+  function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function render() {
+    var done = 0;
+    boxes.forEach(function (b) { b.closest(".step").classList.toggle("done", b.checked); if (b.checked) done++; });
+    label.textContent = "Setup: " + done + " of " + boxes.length + " steps done";
+    bar.style.width = (100 * done / boxes.length) + "%";
+  }
+  var state = load();
+  boxes.forEach(function (b) {
+    b.checked = !!state[b.id];
+    b.addEventListener("change", function () { state[b.id] = b.checked; save(state); render(); });
+  });
+  document.getElementById("progress-reset").addEventListener("click", function () {
+    state = {}; save(state); boxes.forEach(function (b) { b.checked = false; }); render();
+  });
+  render();
+
+  // Copy buttons on every command block.
+  Array.prototype.forEach.call(document.querySelectorAll(".cmd"), function (block) {
+    var pre = block.querySelector("pre");
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.textContent = "Copy";
+    btn.addEventListener("click", function () {
+      var text = pre.textContent;
+      var done = function () { btn.textContent = "Copied"; btn.classList.add("copied"); setTimeout(function () { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, done); }
+      else { var r = document.createRange(); r.selectNodeContents(pre); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); try { document.execCommand("copy"); } catch (e) {} s.removeAllRanges(); done(); }
+    });
+    block.appendChild(btn);
+  });
+
+  // Highlight the section in view in the side nav.
+  var links = Array.prototype.slice.call(document.querySelectorAll(".guide-nav a"));
+  var sections = links.map(function (a) { return document.querySelector(a.getAttribute("href")); });
+  function highlight() {
+    var y = window.scrollY + 80, current = 0;
+    sections.forEach(function (s, i) { if (s && s.offsetTop <= y) current = i; });
+    links.forEach(function (a, i) { a.classList.toggle("active", i === current); });
+  }
+  window.addEventListener("scroll", highlight, { passive: true });
+  highlight();
+})();
+</script>
+</body>
+</html>

@@ -136,7 +136,10 @@ def create_app(
         build_update_router(get_queue, get_update_applier, updates_supported or _runtime_updates_supported)
     )
 
-    pages = {name: render_page(STATIC_DIR / name, app.state.version) for name in ("index.html", "style_editor.html")}
+    pages = {
+        name: render_page(STATIC_DIR / name, app.state.version)
+        for name in ("index.html", "style_editor.html", "guide.html")
+    }
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> HTMLResponse:
@@ -145,6 +148,12 @@ def create_app(
     @app.get("/style-editor", response_class=HTMLResponse)
     async def style_editor_page() -> HTMLResponse:
         return HTMLResponse(pages["style_editor.html"])
+
+    @app.get("/guide", response_class=HTMLResponse)
+    async def guide_page() -> HTMLResponse:
+        # The editor's guide, served inside the app so it is always the
+        # version that matches the UI the editor is looking at.
+        return HTMLResponse(pages["guide.html"])
 
     return app
 
