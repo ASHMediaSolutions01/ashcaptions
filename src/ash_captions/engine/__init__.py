@@ -14,6 +14,15 @@ without breaking callers:
     )
 """
 from .audio import AudioExtractionError, DEFAULT_FFMPEG_PATH, extract_audio
+from .probe import ProbeError, VideoInfo, probe_video
+from .punch import (
+    MAX_DURATION_SECONDS,
+    MIN_DURATION_SECONDS,
+    PunchMode,
+    PunchMoment,
+    build_zoompan_filter,
+    select_punch_moments,
+)
 from .burn import (
     BurnInError,
     available_encoders,
@@ -65,6 +74,13 @@ __all__ = [
     "CLEAN",
     "POP",
     "detect_nvenc",
+    "probe_video",
+    "VideoInfo",
+    "ProbeError",
+    "PunchMode",
+    "PunchMoment",
+    "select_punch_moments",
+    "build_zoompan_filter",
     "available_encoders",
     "select_video_encoder",
     "build_burn_command",

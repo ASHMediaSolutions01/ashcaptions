@@ -136,6 +136,7 @@ def build_burn_command(
     ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH,
     use_nvenc: bool = False,
     fontsdir: Path | str | None = None,
+    punch_filter: str | None = None,
 ) -> list[str]:
     """Construct the ffmpeg argv that burns ``ass_path`` into ``video_path``.
 
@@ -155,6 +156,12 @@ def build_burn_command(
     subtitle_filter = f"ass='{_escape_path_for_filtergraph(ass_path)}'"
     if fontsdir is not None:
         subtitle_filter += f":fontsdir='{_escape_path_for_filtergraph(Path(fontsdir))}'"
+
+    # Punch-in goes first so captions are drawn on top at their true size.
+    # Chained the other way round the zoom magnifies the captions too, which
+    # looks like a rendering fault rather than an edit.
+    if punch_filter:
+        subtitle_filter = f"{punch_filter},{subtitle_filter}"
     video_codec = ["-c:v", select_video_encoder(ffmpeg_path, use_nvenc=use_nvenc)]
 
     return [
@@ -210,6 +217,7 @@ def burn_captions(
     ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH,
     use_nvenc: bool | None = None,
     fontsdir: Path | str | None = None,
+    punch_filter: str | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Burn ``ass_path``'s captions into ``video_path``, writing an MP4.
@@ -252,6 +260,7 @@ def burn_captions(
         ffmpeg_path=ffmpeg_path,
         use_nvenc=use_nvenc,
         fontsdir=fontsdir,
+        punch_filter=punch_filter,
     )
 
     try:
