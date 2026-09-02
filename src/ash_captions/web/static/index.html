@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ASH Captions</title>
-<link rel="stylesheet" href="/static/style.css?v=0.1.1">
+<!-- __VERSION__ is stamped with the running version when the page is
+     served (web/app.py) so a shipped update never pairs a cached app.js
+     with a new page. -->
+<link rel="stylesheet" href="/static/style.css?v=__VERSION__">
 </head>
 <body>
 
@@ -15,6 +18,11 @@
 </header>
 
 <main>
+  <div class="notice error" id="app-error" role="alert" hidden></div>
+  <div class="notice warning" id="connection-banner" role="status" hidden>
+    Lost contact with the app &mdash; is the terminal window still open?
+  </div>
+
   <section class="card update-banner" id="update-banner" hidden>
     <div class="update-banner-text">
       <strong id="update-banner-title">An update is available</strong>
@@ -28,70 +36,77 @@
   </section>
 
   <section class="card">
-    <div class="field">
-      <label for="path-input">Video file location</label>
-      <input type="text" id="path-input" placeholder="D:\Projects\client\clip.mp4" autocomplete="off">
-      <p class="hint">In File Explorer: Shift + right-click the file, choose "Copy as path", then paste it here.</p>
-    </div>
-
-    <details id="upload-details">
-      <summary>Or upload a copy instead (slower for large files)</summary>
-      <div id="dropzone">
-        <div class="big">Drop a video here</div>
-        <p>or</p>
-        <button type="button" class="btn" id="choose-btn">Choose a file</button>
-        <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.mxf,.avi,.webm,.m4v">
+    <form id="submit-form" novalidate>
+      <div class="field">
+        <label for="path-input">Video file location</label>
+        <input type="text" id="path-input" placeholder="D:\Projects\client\clip.mp4" autocomplete="off">
+        <p class="hint">In File Explorer: Shift + right-click the file, choose "Copy as path", then paste it here and press Enter.</p>
       </div>
-    </details>
 
-    <div id="options-form">
-      <div id="selected-file"></div>
-
-      <div class="field-grid">
-        <div class="field">
-          <label for="language-select">Language</label>
-          <select id="language-select"></select>
+      <details id="upload-details">
+        <summary>Or upload a copy instead (slower for large files, 2 GB limit)</summary>
+        <div id="dropzone" tabindex="0" role="button" aria-label="Drop a video here, or press Enter to choose a file">
+          <div class="big">Drop a video here</div>
+          <p>or</p>
+          <button type="button" class="btn" id="choose-btn">Choose a file</button>
+          <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.mxf,.avi,.webm,.m4v">
         </div>
-        <div class="field">
-          <label for="dialect-select">Dialect</label>
-          <select id="dialect-select"></select>
+      </details>
+
+      <div id="options-form">
+        <div id="selected-file"></div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="language-select">Language</label>
+            <select id="language-select"></select>
+          </div>
+          <div class="field">
+            <label for="dialect-select">Dialect</label>
+            <select id="dialect-select"></select>
+          </div>
         </div>
-      </div>
 
-      <div class="field-grid">
-        <div class="field">
-          <label for="preset-select">Caption style</label>
-          <select id="preset-select"></select>
+        <div class="field-grid">
+          <div class="field">
+            <label for="preset-select">Caption style</label>
+            <select id="preset-select"></select>
+          </div>
+          <div></div>
         </div>
-        <div></div>
-      </div>
 
-      <div class="checks">
-        <label class="check">
-          <input type="checkbox" id="burn-in-check">
-          Burn captions into the video
-        </label>
-        <label class="check">
-          <input type="checkbox" id="translate-check">
-          Also translate to English
-        </label>
-      </div>
+        <div class="checks">
+          <label class="check">
+            <input type="checkbox" id="burn-in-check">
+            Burn captions into the video
+          </label>
+          <label class="check">
+            <input type="checkbox" id="translate-check">
+            Also translate to English
+          </label>
+        </div>
 
-      <div class="form-actions">
-        <button type="button" class="btn" id="start-btn">Start captioning</button>
-        <button type="button" class="btn secondary" id="cancel-btn">Choose a different file</button>
+        <div class="form-actions">
+          <button type="submit" class="btn" id="start-btn">Start captioning</button>
+          <button type="button" class="btn secondary" id="cancel-btn">Choose a different file</button>
+        </div>
+        <div id="submit-error" role="alert"></div>
       </div>
-      <div id="submit-error"></div>
-    </div>
+    </form>
   </section>
 
   <section class="card">
-    <h2>Queue</h2>
+    <div class="queue-head">
+      <h2>Queue</h2>
+      <div class="queue-health" id="queue-health" role="status">Worker: checking&hellip;</div>
+    </div>
     <div id="empty-queue">No jobs yet. Drop a video above to get started.</div>
-    <div id="job-list"></div>
+    <div id="job-list" aria-live="polite" aria-relevant="additions text"></div>
   </section>
 </main>
 
-<script src="/static/app.js?v=0.1.1"></script>
+<script src="/static/api.js?v=__VERSION__"></script>
+<script src="/static/updates.js?v=__VERSION__"></script>
+<script src="/static/app.js?v=__VERSION__"></script>
 </body>
 </html>

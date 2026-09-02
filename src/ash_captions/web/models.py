@@ -14,14 +14,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-# DEAD CONSTANT -- not read by anything in this package. `app.py`'s job
-# submission routes used to check a preset against this fixed pair; they now
-# validate against the live style list instead (`StyleProvider.list_styles()`,
-# spec 7A), so every shipped look and every editor-saved style is accepted,
-# not just CLEAN/POP. Left defined only in case something outside this
-# package still imports the name -- do not use it for validation again.
-ALLOWED_PRESETS = ("CLEAN", "POP")
-
 # Extensions accepted at the API boundary. This is a coarse, fast check --
 # the real "is this actually a readable video" check happens in the engine
 # via ffprobe. This just keeps obviously-wrong files (images, docs, audio-only
@@ -72,7 +64,15 @@ class JobPathRequest(BaseModel):
 
 
 class Job(BaseModel):
-    """A single queue entry, as returned to the browser."""
+    """A single queue entry, as returned to the browser.
+
+    `stage`/`stage_started_at`/`started_at` are optional because the queue
+    implementation may predate them: the control page derives a stage
+    label from `progress` when `stage` is None, and times "Running for…"
+    from `created_at` when `started_at` is None. `input_path`/`output_dir`
+    back the Review routes (`routes_review.py`); when absent those routes
+    answer 404 rather than guessing.
+    """
 
     id: str
     filename: str
@@ -82,10 +82,28 @@ class Job(BaseModel):
     error: str | None = None
     created_at: datetime
     updated_at: datetime
+    started_at: datetime | None = None
+    stage: str | None = Field(
+        None, description="extract | transcribe | translate | postprocess | write | burn, while running"
+    )
+    stage_started_at: datetime | None = None
+    input_path: str | None = None
+    output_dir: str | None = None
 
 
 class JobList(BaseModel):
     jobs: list[Job]
+
+
+class QueueHealth(BaseModel):
+    """Liveness of the parts of the app the browser can't see (GET
+    /api/health, and the `health` SSE event). Every field is optional so a
+    queue that doesn't report a signal yet degrades to "unknown" on the
+    page rather than an error."""
+
+    worker_alive: bool | None = None
+    last_watcher_poll: datetime | None = None
+    server_time: datetime
 
 
 class Dialect(BaseModel):

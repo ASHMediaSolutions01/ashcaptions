@@ -5,6 +5,8 @@ dependency getters and mounts it, same as `routes_styles.py`.
 """
 from __future__ import annotations
 
+from typing import Callable
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 # Deliberate, narrow exception to "this package never imports
@@ -18,15 +20,31 @@ from ash_captions.app.updater import JOB_RUNNING_MESSAGE
 from .interfaces import JobQueue, UpdateApplier, UpdateApplyNotFoundError
 from .models import JobStatus, UpdateApplyJob, UpdateAvailable
 
+UNSUPPORTED_INSTALL_DETAIL = (
+    "In-app updates only work on an installed build. This copy is running from a source "
+    "checkout -- pull the latest code instead."
+)
 
-def build_update_router(get_queue, get_update_applier) -> APIRouter:
+
+def build_update_router(
+    get_queue, get_update_applier, updates_supported: Callable[[], bool]
+) -> APIRouter:
     """`get_queue`/`get_update_applier` are the same `Request -> JobQueue`/
     `Request -> UpdateApplier` closures `create_app()` builds for its own
-    routes -- passed in rather than reconstructed here."""
+    routes -- passed in rather than reconstructed here.
+
+    `updates_supported` (normally `runtime.updates_supported`) gates the
+    whole feature: when it says no, GET reports "no update" -- so the
+    banner never shows -- and POST refuses with 409, even if a background
+    check found a newer version. Applying robocopies a bundle over
+    `app_root()`; on a source checkout that would mirror over the git
+    repository (see `runtime.py`)."""
     router = APIRouter()
 
     @router.get("/api/update", response_model=UpdateAvailable | None)
     async def get_update(request: Request, queue: JobQueue = Depends(get_queue)) -> UpdateAvailable | None:
+        if not updates_supported():
+            return None
         info = _current_update_info(request)
         if info is None:
             return None
@@ -47,6 +65,8 @@ def build_update_router(get_queue, get_update_applier) -> APIRouter:
         frontend (a second "are you sure?" just trains people to click
         through unread). Applying restarts the app; the control page says
         so beside the button, not this route."""
+        if not updates_supported():
+            raise HTTPException(status_code=409, detail=UNSUPPORTED_INSTALL_DETAIL)
         info = _current_update_info(request)
         if info is None:
             raise HTTPException(status_code=404, detail="No update is currently available.")

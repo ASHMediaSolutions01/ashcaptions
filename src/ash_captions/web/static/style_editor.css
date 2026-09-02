@@ -15,6 +15,8 @@
   text-decoration: none;
 }
 .back-link:hover { text-decoration: underline; }
+.editor-nav { display: flex; gap: 20px; flex-wrap: wrap; }
+.preview-card { scroll-margin-top: 16px; }
 
 .editor-main {
   display: grid;
@@ -49,7 +51,9 @@
   font-weight: 600;
   text-align: left;
 }
-.style-item:hover { border-color: var(--accent); }
+.style-item:hover,
+.style-item:focus-visible { border-color: var(--accent); outline: none; }
+.style-item:focus-visible { box-shadow: 0 0 0 3px var(--run-bg); }
 .style-item.selected {
   border-color: var(--accent);
   background: var(--run-bg);

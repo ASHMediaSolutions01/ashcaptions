@@ -98,13 +98,24 @@ main {
   text-align: right;
 }
 
+/* Page-level notices: load failures, lost connection */
+.notice {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.notice.error { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail); }
+.notice.warning { background: #fff4e0; color: #8a5300; border: 1px solid #e0a94a; }
+
 /* Path input (primary submission field) */
 .hint {
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--muted);
 }
-input[type="text"] {
+input[type="text"],
+input[type="number"] {
   width: 100%;
   padding: 12px 14px;
   font-size: 16px;
@@ -114,7 +125,8 @@ input[type="text"] {
   color: var(--ink);
   font-family: inherit;
 }
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="number"]:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -143,9 +155,11 @@ input[type="text"]:focus {
   cursor: pointer;
   transition: border-color .15s, background .15s;
 }
-#dropzone.drag-over {
+#dropzone.drag-over,
+#dropzone:focus-visible {
   border-color: var(--accent);
   background: var(--run-bg);
+  outline: none;
 }
 #dropzone p {
   margin: 0 0 12px;
@@ -246,6 +260,30 @@ h2 {
   font-size: 18px;
   margin: 0 0 14px;
 }
+.queue-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.queue-health {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.queue-health::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.queue-health.bad { color: var(--fail); }
+.queue-health.bad::before { background: var(--fail); }
 #empty-queue {
   color: var(--muted);
   font-size: 15px;
@@ -297,9 +335,50 @@ h2 {
   transition: width .3s ease;
 }
 .job.done .progress-fill { background: var(--ok); }
+.job.failed .progress-fill { background: var(--fail); }
+/* While a job runs the bar may sit at one value for many minutes (a long
+   transcription reports nothing until it's done), so it carries a moving
+   stripe as a "still working" signal independent of the percentage. */
+.job.running .progress-fill {
+  min-width: 24px;
+  background-color: var(--run);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0) 0 10px,
+    rgba(255, 255, 255, .35) 10px 20px
+  );
+  background-size: 28px 28px;
+  animation: progress-stripes 1s linear infinite;
+}
+@keyframes progress-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 28px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job.running .progress-fill { animation: none; }
+}
+
+.job-status-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.job-stage { color: var(--ink); }
+.job.done .job-stage { color: var(--ok); }
+.job.failed .job-stage { color: var(--fail); }
+.job.pending .job-stage { color: var(--pending); }
+.job-elapsed {
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
 .job-meta {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 13px;
   color: var(--muted);
 }
