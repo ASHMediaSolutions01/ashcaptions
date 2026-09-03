@@ -12,9 +12,9 @@
     "box": "#000000CC"
   },
   "active_word": {
-    "effect": "box",
+    "effect": "card_box",
     "scale": 1.1,
-    "box": true
+    "box": false
   },
   "entrance": {
     "effect": "fade",

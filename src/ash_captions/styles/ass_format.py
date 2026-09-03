@@ -34,21 +34,24 @@ def ass_header(style: Style, base_name: str, box_name: str, width: int, height: 
     outline = outline_width(style)
     shadow_width = 2 if style.colors.shadow.upper() not in ("#00000000",) else 0
 
+    box_padding = max(8, round(style.size * 0.28))
+    # card_box: the base style itself is the bar -- every word of the
+    # caption sits on one box, the active word differing only by colour.
+    card_box = style.active_word.effect == "card_box"
     base_style = _style_field(
         name=base_name,
         font=style.font,
         size=style.size,
         primary=style.colors.active,
         secondary=style.colors.text,
-        outline_colour=style.colors.outline,
-        back_colour=style.colors.shadow,
-        border_style=1,
-        outline_width=outline,
-        shadow=shadow_width,
+        outline_colour=style.colors.box if card_box else style.colors.outline,
+        back_colour=style.colors.box if card_box else style.colors.shadow,
+        border_style=3 if card_box else 1,
+        outline_width=box_padding if card_box else outline,
+        shadow=0 if card_box else shadow_width,
         alignment=alignment,
         layout=style.layout,
     )
-    box_padding = max(8, round(style.size * 0.28))
     box_style = _style_field(
         name=box_name,
         font=style.font,

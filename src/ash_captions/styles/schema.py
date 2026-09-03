@@ -56,7 +56,11 @@ class StyleValidationError(ValueError):
 # on, never style names; see engine/render.py)
 # ---------------------------------------------------------------------------
 
-ACTIVE_WORD_EFFECTS = frozenset({"none", "pop", "box", "scale_box", "karaoke", "shake", "glow"})
+# "box"/"scale_box" box the active word alone (one word on screen at a
+# time -- a box is a Style-level property in ASS). "card_box" boxes the
+# whole caption as one bar and marks the active word by colour: the
+# news lower-third / corner-tag look.
+ACTIVE_WORD_EFFECTS = frozenset({"none", "pop", "box", "scale_box", "card_box", "karaoke", "shake", "glow"})
 TRANSITION_EFFECTS = frozenset({"none", "fade", "rise", "slide"})
 POSITIONS = frozenset({"bottom", "center", "top", "lower_third"})
 ALIGNS = frozenset({"left", "center", "right"})
