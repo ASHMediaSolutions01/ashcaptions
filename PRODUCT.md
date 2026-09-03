@@ -1,6 +1,6 @@
 # ASH Captions — Product Description
 
-**One-liner:** An in-house captioning station for Ash Media Solutions: drop any video into a folder, get back accurate, styled, perfectly-timed captions in 20+ languages — free, private, and running on our own office PC.
+**One-liner:** An in-house captioning station for Ash Media Solutions: drop any video into a folder, get back accurate, styled, perfectly-timed captions in 54 languages — free, private, and running on our own office PC.
 
 ## The problem
 Short-form clients expect styled captions on every edit. Today that means either hand-typing them (20–40 minutes per video of editor time), or paying monthly per-seat/per-minute subscriptions (Submagic, Captions.app, ZapCap), or uploading client footage to third-party clouds. At our volume, caption time is one of the biggest silent costs in every project.
@@ -15,7 +15,7 @@ ASH Captions is a watch-folder service running on the office PC ("the caption st
 
 **Every job produces:**
 - `*.srt` — clean line captions, imports directly into Premiere Pro / DaVinci Resolve
-- `*.ass` — styled word-by-word "pop" captions (active word highlighted), two presets: CLEAN (client-safe) and POP (short-form)
+- `*.ass` — styled word-by-word "pop" captions (active word highlighted), nine shipped looks (CLEAN, POP, ASH BRAND, HYPE, KARAOKE, NEON GLOW, LOWER THIRD, PLAYFUL, COMIC) plus an editor for your own
 - `*.txt` — plain transcript (for descriptions, blogs, client review)
 - `*.en.srt` — English translation (optional, any source language)
 - `*.captioned.mp4` — captions burned in, ready to post (optional)
@@ -35,13 +35,13 @@ Whisper provides start/end times for every individual word. ASH Captions then ap
 - **Disk:** station keeps 30 days of outputs, then auto-cleans; inputs deleted after successful processing (source stays with the editor).
 
 ## What it costs
-- Software: Rs 0 — open-source (MIT), no subscriptions, no per-minute fees, no seat licenses.
+- Software: Rs 0 — built in-house on open-source components (faster-whisper, ffmpeg, open fonts); the ASH Captions code itself is proprietary, see `LICENSE`. No subscriptions, no per-minute fees, no seat licences.
 - Hardware: the existing office PC. (A future ~modest GPU would unlock the largest model at high speed — optional.)
 - Privacy: nothing is uploaded anywhere; client NDAs stay easy to sign.
 
 ## What it is not (non-goals)
 - Not part of Ash OS — separate tool, separate job.
-- Not a template marketplace — two solid presets, extended on request, not a library of 50.
+- Not a template marketplace — a curated set of looks the team actually uses, extended on request.
 - Not a replacement for editor review — captions ship after a 60-second skim, especially names.
 
 ## Success criteria

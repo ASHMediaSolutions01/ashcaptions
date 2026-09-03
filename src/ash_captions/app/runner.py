@@ -217,7 +217,14 @@ def build_run_job(
             )
             atomic_write(lambda p: engine.write_txt(segments, p), output_dir / f"{stem}.txt")
             if translation is not None:
-                en_words = _postprocess_words(translation.words, resolved, client_glossary_path, entries=glossary_entries)
+                # The translation is English whatever the source was, so it
+                # takes English conventions (not, say, Portuguese spelling
+                # rules that would rewrite English words). The client
+                # glossary still applies: brand and product names are the
+                # same in both.
+                en_words = _postprocess_words(
+                    translation.words, languages.resolve("en"), client_glossary_path, entries=glossary_entries
+                )
                 en_cards = engine.build_cards(
                     en_words,
                     max_words=card_max_words,

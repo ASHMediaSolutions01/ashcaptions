@@ -54,7 +54,8 @@ param(
     [string]$DataRoot = 'C:\AshCaptions',
     [string]$TaskName = 'AshCaptionsTray',
     [string]$DesktopDir,
-    [string]$StartMenuProgramsDir
+    [string]$StartMenuProgramsDir,
+    [string]$StartupDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -79,6 +80,7 @@ if (-not $ManifestUrl) { $ManifestUrl = $DefaultManifestUrl }
 function Write-Step { param([string]$Message) Write-Host "==> $Message" -ForegroundColor Cyan }
 function Write-Done { param([string]$Message) Write-Host "    $Message" -ForegroundColor Green }
 function Write-Info { param([string]$Message) Write-Host "    $Message" }
+function Write-Warn { param([string]$Message) Write-Host "    WARNING: $Message" -ForegroundColor Yellow }
 
 function Test-NvidiaGpu {
     <# Returns a hashtable describing what nvidia-smi reports, or Present=$false
@@ -222,20 +224,59 @@ function Register-LogonTask {
        of thing that gets the tool turned off. #>
     param([string]$InstallDir)
 
-    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($existing) {
-        Write-Info "Startup entry already exists -- leaving it as is."
-        return
-    }
-
     $exePath = Join-Path $InstallDir $ExeName
     $action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $InstallDir
+
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($existing) {
+        # An existing task is only "correct" if it still points at this exe;
+        # a reinstall to a different folder must repair it, not trust it.
+        $current = ($existing.Actions | Select-Object -First 1).Execute
+        if ($current -and ($current.Trim('"') -ieq $exePath)) {
+            Write-Info "Startup entry already exists -- leaving it as is."
+            return $true
+        }
+        try {
+            Set-ScheduledTask -TaskName $TaskName -Action $action | Out-Null
+            Write-Info "Startup entry updated to point at $exePath."
+            return $true
+        } catch {
+            Write-Warn "Could not update the existing startup entry: $($_.Exception.Message)"
+            return (Register-StartupFolderFallback -InstallDir $InstallDir)
+        }
+    }
+
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-        -Principal $principal -Settings $settings -Description 'Starts the ASH Captions tray app at logon.' | Out-Null
+    try {
+        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+            -Principal $principal -Settings $settings -Description 'Starts the ASH Captions tray app at logon.' `
+            -ErrorAction Stop | Out-Null
+        return $true
+    } catch {
+        # Some managed/restricted accounts deny Task Scheduler registration.
+        # The app is already installed and works from the shortcuts, so this
+        # must not abort the install; fall back to the per-user Startup folder.
+        Write-Warn "Task Scheduler refused to register the startup entry: $($_.Exception.Message)"
+        return (Register-StartupFolderFallback -InstallDir $InstallDir)
+    }
+}
+
+function Register-StartupFolderFallback {
+    param([string]$InstallDir)
+    $folder = $StartupDir
+    if (-not $folder) { $folder = [Environment]::GetFolderPath('Startup') }
+    try {
+        New-Item -ItemType Directory -Force -Path $folder | Out-Null
+        New-Shortcut -ShortcutPath (Join-Path $folder 'ASH Captions.lnk') -TargetPath (Join-Path $InstallDir $ExeName) -WorkingDirectory $InstallDir -Arguments ''
+        Write-Info "Added a Startup-folder shortcut instead: $folder"
+        return $true
+    } catch {
+        Write-Warn "Could not add a Startup-folder shortcut either: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 # --- main ------------------------------------------------------------------
@@ -290,8 +331,12 @@ New-Shortcuts -InstallDir $InstallDir -DesktopDir $DesktopDir -StartMenuPrograms
 Write-Done "Added a Desktop shortcut and a Start Menu entry"
 
 Write-Step "Setting ASH Captions to start automatically when you log in"
-Register-LogonTask -InstallDir $InstallDir
-Write-Done "Done"
+$autoStart = Register-LogonTask -InstallDir $InstallDir
+if ($autoStart) {
+    Write-Done "Done"
+} else {
+    Write-Warn "ASH Captions is installed and works from the shortcuts, but will NOT start by itself at logon on this account. Start it from the Desktop icon, or ask Ghazi."
+}
 
 Write-Host ""
 Write-Host "You're all set!" -ForegroundColor Green

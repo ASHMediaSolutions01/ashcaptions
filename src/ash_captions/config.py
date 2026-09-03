@@ -251,7 +251,12 @@ class Settings:
         payload = {
             k: (str(v) if isinstance(v, Path) else v) for k, v in asdict(self).items()
         }
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Temp file + replace: an interrupted write must never leave a
+        # truncated settings.json, which load() would treat as "corrupt,
+        # use defaults" and silently reset every setting.
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
 
 
 # -- per-field coercion ------------------------------------------------------

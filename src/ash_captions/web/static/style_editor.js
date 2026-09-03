@@ -282,16 +282,19 @@
 
   resetBtn.addEventListener("click", async () => {
     if (!selectedName) return;
-    const res = await AshApi.request(`/api/styles/${encodeURIComponent(selectedName)}?shipped_only=true`);
+    // Removes the local override on the server, so the shipped definition
+    // is back in force for every job -- not just loaded into the form.
+    const res = await AshApi.request(`/api/styles/${encodeURIComponent(selectedName)}/reset`, { method: "POST" });
     if (!res.ok) {
-      showSaveStatus(await AshApi.errorDetail(res, "Couldn't load the built-in version"), false);
+      showSaveStatus(await AshApi.errorDetail(res, "Couldn't reset to the built-in version"), false);
       return;
     }
     const style = await res.json();
     draft = JSON.parse(JSON.stringify(style.definition));
     draft.name = selectedName;
     applyDraftToForm();
-    showSaveStatus("Reset to the built-in version -- hit Save to keep it.", true);
+    await loadStyles(selectedName);
+    showSaveStatus("Reset: the built-in version is back in use.", true);
   });
 
   // ---- Live preview (spec 7A.3, the centrepiece) ----

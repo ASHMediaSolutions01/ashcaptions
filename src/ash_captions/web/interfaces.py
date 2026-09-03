@@ -131,6 +131,10 @@ class PreviewBusyError(Exception):
 class StyleProvider(Protocol):
     """What the style editor needs from the caption styling system (spec
     7A). Implemented over `ash_captions.styles` -- see `styles_adapter.py`.
+
+    `reset_style` removes a user override of a *shipped* style so the
+    built-in definition shows through again; it never touches the shipped
+    file and raises StyleNotFoundError for a name that is not shipped.
     """
 
     def list_styles(self) -> list[StyleSummary]:
@@ -203,6 +207,16 @@ class PreviewRenderer(Protocol):
 # This protocol only covers what happens *after* an editor clicks "Update
 # now": download, verify, apply. `web.update_adapter.UpdaterAdapter` is the
 # real implementation, constructed by `create_app()` by default.
+
+
+class UpdateApplyBusyError(Exception):
+    """Raised by an UpdateApplier when an apply job is already pending or
+    running. Carries the live job's id so the caller can attach to it
+    instead of starting a second download/extract/helper chain."""
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__(job_id)
+        self.job_id = job_id
 
 
 class UpdateApplyNotFoundError(Exception):

@@ -58,6 +58,18 @@ def build_styles_router(get_style_provider, get_preview_renderer) -> APIRouter:
         except StyleValidationFailedError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @router.post("/api/styles/{name}/reset", response_model=StyleSummary)
+    async def reset_style(
+        name: str,
+        style_provider: StyleProvider = Depends(get_style_provider),
+    ) -> StyleSummary:
+        """Remove the local override of a built-in style so the shipped
+        definition is what every future job uses again."""
+        try:
+            return style_provider.reset_style(name)
+        except StyleNotFoundError:
+            raise HTTPException(status_code=404, detail=f"{name!r} is not a built-in style.")
+
     @router.delete("/api/styles/{name}", status_code=204)
     async def delete_style(
         name: str,

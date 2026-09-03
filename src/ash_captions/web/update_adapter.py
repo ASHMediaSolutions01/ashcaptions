@@ -29,7 +29,7 @@ from typing import Any, Callable
 from ash_captions.app.updater import UpdateApplyError, apply_update, download_and_verify_update
 from ash_captions.config import data_root
 
-from .interfaces import UpdateApplyNotFoundError
+from .interfaces import UpdateApplyBusyError, UpdateApplyNotFoundError
 from .models import UpdateApplyJob, UpdateApplyStatus
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,11 @@ def _default_on_applied() -> None:
     threading.Timer(0.5, _exit).start()
 
 
+_LIVE_APPLY_STATUSES = frozenset(
+    {UpdateApplyStatus.PENDING, UpdateApplyStatus.DOWNLOADING, UpdateApplyStatus.APPLYING}
+)
+
+
 class UpdaterAdapter:
     """Implements `UpdateApplier` over `ash_captions.app.updater`.
 
@@ -96,6 +101,11 @@ class UpdaterAdapter:
         job_id = uuid.uuid4().hex
         job = UpdateApplyJob(id=job_id, status=UpdateApplyStatus.PENDING)
         with self._lock:
+            # Single-flight: two clicks (or two tabs) must not race the same
+            # download destination, staging directory and helper script.
+            for existing in self._jobs.values():
+                if existing.status in _LIVE_APPLY_STATUSES:
+                    raise UpdateApplyBusyError(existing.id)
             self._jobs[job_id] = job
 
         thread = threading.Thread(

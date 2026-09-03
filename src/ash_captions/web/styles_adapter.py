@@ -92,5 +92,16 @@ class StylesPackageAdapter:
         if not delete_user_style(name):
             raise StyleNotFoundError(name)
 
+    def reset_style(self, name: str) -> StyleSummary:
+        """Drop the user's override of a shipped style. The old "Reset to
+        shipped" flow loaded the built-in definition into the form and asked
+        the editor to Save, which wrote a *new* override under the built-in
+        name -- the style stayed "customized locally" forever and future
+        improvements to the shipped preset stayed shadowed."""
+        if not is_shipped_style(name):
+            raise StyleNotFoundError(name)
+        delete_user_style(name)  # False (no override) is fine: already reset
+        return self.get_style(name, shipped_only=True)
+
     def list_fonts(self) -> list[str]:
         return list(list_font_families())

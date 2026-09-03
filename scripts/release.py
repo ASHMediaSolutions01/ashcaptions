@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pkgtools.manifest import Artifact, build_manifest, write_manifest  # noqa: E402
+from pkgtools.manifest import Artifact, build_manifest, sha256_file, write_manifest  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIST_DIR = REPO_ROOT / "dist"
@@ -76,6 +76,24 @@ def read_build_info(dist_dir: Path) -> dict:
     if not path.is_file():
         raise ReleaseError(f"{path} not found -- run scripts/build.py first")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def verify_artifact_matches_build_info(dist_dir: Path, build_info: dict) -> None:
+    """Recompute the zip's size and sha256 now, immediately before upload,
+    and refuse if they differ from build-info.json. Otherwise a rebuilt or
+    edited zip would be published with a manifest describing a different
+    file, and every updater would reject it with a hash mismatch."""
+    artifact = Path(dist_dir) / build_info["artifact_filename"]
+    if not artifact.is_file():
+        raise ReleaseError(f"artifact not found: {artifact} -- run scripts/build.py first")
+    actual_size = artifact.stat().st_size
+    actual_sha = sha256_file(artifact)
+    if actual_size != build_info["size_bytes"] or actual_sha != build_info["sha256"]:
+        raise ReleaseError(
+            f"{artifact.name} does not match build-info.json (size {actual_size} vs "
+            f"{build_info['size_bytes']}, sha256 {actual_sha[:12]}... vs "
+            f"{build_info['sha256'][:12]}...). Rebuild so the two agree before publishing."
+        )
 
 
 def release_tag(version: str) -> str:
@@ -182,6 +200,7 @@ def publish_release(
     """Orchestrate: read build-info.json, write manifest.json, and upload
     both the artifact zip and the manifest as release assets."""
     build_info = read_build_info(dist_dir)
+    verify_artifact_matches_build_info(dist_dir, build_info)
     tag = release_tag(build_info["version"])
 
     manifest = build_release_manifest(

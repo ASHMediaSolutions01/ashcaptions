@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 # update_adapter.py) from being able to drift apart -- team-lead's ask.
 from ash_captions.app.updater import JOB_RUNNING_MESSAGE
 
-from .interfaces import JobQueue, UpdateApplier, UpdateApplyNotFoundError
+from .interfaces import UpdateApplyBusyError, JobQueue, UpdateApplier, UpdateApplyNotFoundError
 from .models import JobStatus, UpdateApplyJob, UpdateAvailable
 
 UNSUPPORTED_INSTALL_DETAIL = (
@@ -80,7 +80,13 @@ def build_update_router(
         # check above and that guard read the same live queue snapshot
         # conceptually, but are two separate calls in time, so both stay
         # in place rather than trusting the first.
-        return update_applier.submit_apply(info, has_running_job=lambda: _any_job_running(queue))
+        try:
+            return update_applier.submit_apply(info, has_running_job=lambda: _any_job_running(queue))
+        except UpdateApplyBusyError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"An update is already being applied (job {exc.job_id}).",
+            )
 
     @router.get("/api/update/apply/{job_id}", response_model=UpdateApplyJob)
     async def get_update_apply(

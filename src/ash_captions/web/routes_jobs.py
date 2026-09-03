@@ -214,15 +214,27 @@ def _reject_oversized(request: Request) -> None:
 
 def _copy_upload_to_disk(file: UploadFile, job_dir: Path, dest: Path) -> int:
     """Runs in the threadpool. Streams the spooled upload to `dest` in
-    chunks -- never `read()` with no size; editors upload multi-GB files."""
+    chunks -- never `read()` with no size; editors upload multi-GB files.
+
+    The byte ceiling is enforced here as well as against Content-Length:
+    a chunked or dishonest request has no usable length header, and
+    without this check the copy would run to whatever size arrived. On
+    overflow the partial file and its job directory are removed before
+    the 413 is raised, so nothing is left behind on disk."""
     job_dir.mkdir(parents=True, exist_ok=True)
     source = file.file
     source.seek(0)
     total = 0
-    with dest.open("wb") as out:
-        while chunk := source.read(UPLOAD_CHUNK_SIZE):
-            out.write(chunk)
-            total += len(chunk)
+    try:
+        with dest.open("wb") as out:
+            while chunk := source.read(UPLOAD_CHUNK_SIZE):
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail=UPLOAD_TOO_LARGE_DETAIL)
+                out.write(chunk)
+    except BaseException:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
     return total
 
 

@@ -260,6 +260,12 @@ class FakeStyleProvider:
             definition=payload,
         )
 
+    def reset_style(self, name: str) -> StyleSummary:
+        if name not in self._shipped:
+            raise StyleNotFoundError(name)
+        self._user.pop(name, None)
+        return self.get_style(name, shipped_only=True)
+
     def delete_style(self, name: str) -> None:
         if name in self._shipped:
             raise StyleIsShippedError(name)
