@@ -273,7 +273,14 @@ def build_run_job(
                 translation = None
                 if job.options.translate:
                     set_stage("translate")
-                    translation = _run_transcriber(model.translate, audio_path, resolved, budget["translate"], report, should_stop)
+                    # No dialect priming for the translate pass: the Spanish
+                    # (or Portuguese...) initial_prompt biased Whisper into
+                    # leaving whole chunks of the "English" output in the
+                    # source language. Seen on a real Spanish interview.
+                    translation = _run_transcriber(
+                        model.translate, audio_path, resolved, budget["translate"], report, should_stop,
+                        initial_prompt=None,
+                    )
 
                 set_stage("postprocess")
                 report(budget["postprocess"][0])
@@ -353,9 +360,12 @@ def build_run_job(
         span: tuple[int, int],
         report: Callable[[int], None],
         should_stop: Callable[[], bool] | None,
+        initial_prompt: str | None = "",
     ) -> Any:
         start, end = span
         report(start)
+        # "" (the default) means "use the dialect's prompt"; None means none.
+        prompt = (resolved.initial_prompt or None) if initial_prompt == "" else initial_prompt
 
         def on_progress(seconds_done: float, total_seconds: float) -> None:
             if total_seconds and total_seconds > 0:
@@ -366,7 +376,7 @@ def build_run_job(
             fn,
             audio_path,
             language=resolved.whisper_language,
-            initial_prompt=resolved.initial_prompt or None,
+            initial_prompt=prompt,
             optional={"on_progress": on_progress, "should_stop": should_stop},
         )
         report(end)

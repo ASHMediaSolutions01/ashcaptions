@@ -239,3 +239,29 @@ def test_submit_burn_enqueues_a_burn_only_job_into_the_same_folder(tmp_path: Pat
     assert row.id != job.id
     assert row.options.mode == "burn_only" and row.options.burn is True and row.options.preset == "NEON GLOW"
     assert Path(row.output_dir) == out and row.input_path == job.input_path
+
+
+def test_translate_pass_gets_no_source_dialect_prompt(tmp_path: Path, store: JobStore):
+    """The es-MX priming prompt made Whisper leave chunks of the English
+    translation in Spanish on a real interview; translate must run without it."""
+    settings = _settings(tmp_path)
+    video = _video(tmp_path)
+
+    class Recording(CountingTranscriber):
+        def __init__(self):
+            super().__init__()
+            self.prompts = {}
+
+        def transcribe(self, audio_path, *, language=None, initial_prompt=None, vad_filter=True):
+            self.prompts["transcribe"] = initial_prompt
+            return self.result
+
+        def translate(self, audio_path, *, language=None, initial_prompt=None, vad_filter=True):
+            self.prompts["translate"] = initial_prompt
+            return self.result
+
+    rec = Recording()
+    job = _job(store, video, tmp_path / "out" / "clip", language="es", dialect="es-MX", translate=True)
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=rec)(job, _Reporter())
+    assert rec.prompts["transcribe"], "the source pass keeps its dialect priming"
+    assert rec.prompts["translate"] is None
