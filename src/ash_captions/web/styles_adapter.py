@@ -23,7 +23,7 @@ from ash_captions.styles import (
 # browser renderer needs, so this is the one place the web layer reaches
 # into `styles.fonts`. Worth exporting `load_manifest`/`assets_fonts_dir`
 # from `ash_captions.styles` so it no longer has to.
-from ash_captions.styles.fonts import assets_fonts_dir, load_manifest
+from ash_captions.styles import assets_fonts_dir, load_manifest
 
 from .interfaces import BundledFontFile, StyleIsShippedError, StyleNotFoundError, StyleValidationFailedError
 from .models import StyleSummary

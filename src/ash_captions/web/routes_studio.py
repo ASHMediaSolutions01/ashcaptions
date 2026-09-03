@@ -69,7 +69,7 @@ def build_studio_router(
     @router.get("/api/jobs/{job_id}/srt")
     async def serve_srt(job_id: str, queue: JobQueue = Depends(get_queue)) -> FileResponse:
         output_dir = output_dir_of(job_or_404(queue, job_id))
-        path = await run_in_threadpool(_first_match, output_dir, "*.srt")
+        path = await run_in_threadpool(_transcript_srt, output_dir)
         if path is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} has no .srt transcript yet.")
         return FileResponse(path, media_type="text/plain; charset=utf-8", filename=path.name)
@@ -124,6 +124,19 @@ def _first_match(output_dir: Path, pattern: str) -> Path | None:
         return None
     matches = sorted(output_dir.glob(pattern))
     return matches[0] if matches else None
+
+
+def _transcript_srt(output_dir: Path) -> Path | None:
+    """The source-language captions, not the English translation: a
+    translate job writes both `<stem>.srt` and `<stem>.en.srt`, and a plain
+    glob sorts `.en.srt` first, which put the English cards on the strip
+    for a Spanish video."""
+    if not output_dir.is_dir():
+        return None
+    candidates = sorted(output_dir.glob("*.srt"))
+    primary = [p for p in candidates if not p.name.lower().endswith(".en.srt")]
+    chosen = primary or candidates
+    return chosen[0] if chosen else None
 
 
 def _burned_output(output_dir: Path) -> Path | None:

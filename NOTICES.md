@@ -50,6 +50,17 @@ licence named in its `license` field; the full text is the file named in its
 bundled are under the SIL Open Font License 1.1. Font names are trademarks or
 reserved font names of their respective authors, as those licences describe.
 
+## JASSUB 1.8.8 (browser caption renderer) -- MIT, with bundled components
+
+`src/ash_captions/web/static/vendor/jassub/` vendors JASSUB, libass compiled to
+WebAssembly, so the Studio page can draw the same captions in the browser that
+ffmpeg burns. JASSUB itself is MIT. Its wasm links libass (ISC), FreeType (FTL
+or GPL-2.0-or-later), FriBidi (LGPL-2.1-or-later), HarfBuzz
+(MIT-Modern-Variant), expat and brotli (MIT), and ships Liberation Sans (OFL
+1.1) as its fallback face. The package's own licence string is compound, not
+plain MIT; the full notices are in that directory's `COPYRIGHT` and
+`LICENSE`, and `README.md` there records the exact version and files.
+
 ## Other Python dependencies
 
 The remaining Python packages in the bundle (FastAPI, Starlette, uvicorn,

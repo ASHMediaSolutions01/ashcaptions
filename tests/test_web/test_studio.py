@@ -271,3 +271,16 @@ class TestPage:
         web = STATIC_DIR.parent
         for path in list(web.glob("*.py")) + list(STATIC_DIR.glob("*.js")) + list(STATIC_DIR.glob("*.css")):
             assert len(path.read_text(encoding="utf-8").splitlines()) < 500, path.name
+
+
+def test_transcript_strip_prefers_the_source_language_srt(tmp_path):
+    """A translate job writes <stem>.srt and <stem>.en.srt; the strip must
+    show the source-language cards, not the English ones that sort first."""
+    from ash_captions.web.routes_studio import _transcript_srt
+
+    (tmp_path / "clip.en.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n", encoding="utf-8")
+    (tmp_path / "clip.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHola\n", encoding="utf-8")
+    assert _transcript_srt(tmp_path).name == "clip.srt"
+    (tmp_path / "clip.srt").unlink()
+    assert _transcript_srt(tmp_path).name == "clip.en.srt"
+    assert _transcript_srt(tmp_path / "missing") is None

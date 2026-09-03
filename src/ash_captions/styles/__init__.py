@@ -13,7 +13,14 @@ Public interface -- other packages should import from here:
         build_preview_command,
     )
 """
-from .fonts import download_fonts, fontsdir_arg, is_font_bundled, list_font_families
+from .fonts import (
+    assets_fonts_dir,
+    download_fonts,
+    fontsdir_arg,
+    is_font_bundled,
+    list_font_families,
+    load_manifest,
+)
 from .library import (
     DEFAULT_STYLE,
     delete_user_style,
@@ -52,7 +59,9 @@ __all__ = [
     "DEFAULT_PLAY_RES",
     "is_font_bundled",
     "list_font_families",
+    "load_manifest",
     "fontsdir_arg",
+    "assets_fonts_dir",
     "download_fonts",
     "build_preview_command",
     "DEFAULT_PREVIEW_DURATION_SECONDS",
