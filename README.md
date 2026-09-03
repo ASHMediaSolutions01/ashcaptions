@@ -13,9 +13,9 @@ transcript, an optional English translation, and an optional burned-in MP4.
 
 | If you are… | Read |
 |---|---|
-| **An editor setting this up on your PC** | **[docs/EDITOR-GUIDE.md](docs/EDITOR-GUIDE.md)** — setup commands, daily use, screenshots |
+| **An editor setting this up on your PC** | **[docs/EDITOR-GUIDE.md](docs/EDITOR-GUIDE.md)** — setup commands with screenshots; the same guide lives inside the app at `/guide` |
 | Building or releasing a version | [docs/INSTALL.md](docs/INSTALL.md) |
-| Picking up the project | [docs/STATUS.md](docs/STATUS.md) — what works, what's open, known limits |
+| Picking up the project | [docs/STATUS.md](docs/STATUS.md) — what works, the roadmap, known limits |
 | Asking *why* something is built this way | [the design spec](docs/superpowers/specs/2026-08-29-ash-captions-design.md) |
 
 ## Quick start (from a source checkout)
@@ -25,6 +25,7 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 .venv\Scripts\python.exe scripts\fetch_ffmpeg.py
 .venv\Scripts\python.exe -m ash_captions.styles.fonts download
+.venv\Scripts\python.exe scripts\fetch_model.py --model-size small --dest models
 .venv\Scripts\python.exe -m ash_captions --open
 ```
 
@@ -46,4 +47,9 @@ styles/       the shipped caption looks (edit these, no code change needed)
 scripts/      build, release, and one-time fetch tooling
 ```
 
-Tests: `.venv\Scripts\python.exe -m pytest tests -q`
+Tests: `.venv\Scripts\python.exe -m pip install -e ".[dev]"` once, then `.venv\Scripts\python.exe -m pytest tests -q`.
+The real-ffmpeg and real-font suites run with `ASH_REAL_FFMPEG=1` set.
+
+Licence: proprietary, all rights reserved (see `LICENSE`); the repo is public
+so the studio's editors can clone it without an account. Third-party notices
+in `NOTICES.md`.

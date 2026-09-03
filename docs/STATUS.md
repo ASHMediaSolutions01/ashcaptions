@@ -1,130 +1,148 @@
 # ASH Captions — Status
 
-Last verified: **2026-09-02**. Everything below was checked by running it, not
-inferred.
+Last verified: **2026-09-03**. Everything under "verified" below was checked by
+running it, not inferred.
 
-- Repo: `github.com/ASHMediaSolutions01/ashcaptions` (private)
-- Tests: **783 passing**
+- Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
+  2026-09-03; the code stays proprietary, see `LICENSE`)
+- Tests: **1193 passing, 27 skipped** (the skips are the real-ffmpeg and
+  real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Design decisions and their reasoning: `docs/superpowers/specs/2026-08-29-ash-captions-design.md`
-- Editor instructions: `docs/EDITOR-GUIDE.md`
+- Editor instructions: `docs/EDITOR-GUIDE.md`, and inside the app at `/guide`
 - Build/release instructions: `docs/INSTALL.md`
+- The independent audit that shaped this release: `docs/audits/2026-09-02-codex-audit.md`
 
 ---
 
-## What works, verified on real footage
+## Where the project is
 
-Tested against a genuine 62-second 1080x1920 client reel, not a fixture.
+**v0.2, "long-form safe", is what master is now.** On 2026-09-02 four
+independent reviews found thirteen verified critical failures that only
+appear on hour-long files or in the real bundle, and a separate read-only
+audit found eight more. All are fixed, each with a regression test, and the
+whole thing was re-run on real footage afterwards.
 
-| Stage | Measured on a CPU-only machine |
+What that means in practice:
+
+| Was | Now |
 |---|---|
-| Audio extraction | 0.6 s |
-| Transcription (`small`, CPU) | 20.3 s for 62.4 s of audio — **3.1x realtime** |
-| Burn-in 1080x1920 (`libopenh264`) | 16.9 s — **3.7x realtime** |
-| Punch-in cost | **~zero** (15 s burn: 4.468 s without, 4.488 s with) |
+| Punch-in failed the job past ~40 minutes (Windows command-line limit) | Filter graph goes through a file; 900 moments verified with real ffmpeg |
+| Transcription needed a ~5 GB RAM burst at 90 minutes | Batched pipeline, bounded memory, and faster (5.7x realtime here vs 3.1x) |
+| Any apostrophe in a filename broke burn-in | Filenames never enter the filter graph; `Client's reel, v2.mp4` verified |
+| Progress bar frozen for the whole transcription | Per-batch progress, stage label, a ticking elapsed clock, a worker health line |
+| Progress stream dropped every second and reconnected | One connection with heartbeats; verified 70 s in a real browser |
+| Restart re-queued every job; a same-named file was ignored until restart | Live-row dedupe in SQLite; paths forgotten when they leave the folder |
+| Worker thread could die silently | Loop survives store errors, backs off, reports `worker_alive` |
+| ffmpeg outlived the app on Quit or crash | Windows Job Object kills children; cooperative cancel on Quit |
+| Any website open in another tab could push jobs into the queue | Host check, Origin check, and a required client header |
+| PLAYFUL rendered in Arial; two other fonts too | Manifest names match the font files; real-libass test over all 24 fonts |
+| Bundled speech model was never used; re-downloaded after every update | Hugging Face cache layout, verified offline |
+| Portrait PlayRes on every video (16:9 captions at 56% size) | Probed once per job and passed through; verified 45 px vs 26 px |
+| Half-written outputs under the final name after a crash | `.part` + rename for every output |
+| Update could `robocopy /MIR` over a git checkout | Update flow refuses on source installs and non-frozen builds |
 
-A 60-second reel goes from drop to burned output in roughly 40 seconds without
-a GPU. GPU remains optional, as the spec always said.
+## What works, verified on real footage (2026-09-03, CPU only)
 
-Confirmed working end to end: the control page, live SSE progress, all nine
-styles, the style editor, the live preview (renders a real 3-second clip from
-the editor's own footage), burn-in with bundled fonts, and punch-in.
+| Stage | Measured |
+|---|---|
+| Transcription (`small`, batched) | 10.4 min of audio in 110 s: **5.7x realtime** |
+| Burn-in 1080x1920 (`libx264 veryfast crf 18`) | ~3.4x realtime |
+| Punch-in cost | ~zero |
+| 20 s clip, transcribe + burn + punch, apostrophe in the name | 14.3 s end to end |
 
-**The source file is never touched** on submit-by-path — verified in production,
-not only in tests.
+Also verified today: the real app started from a source checkout, driven over
+HTTP exactly as the browser does (health, guide page, foreign-origin request
+refused, submit by path, one long-lived event stream), killed hard during a
+burn with its ffmpeg child gone within seconds, restarted with the same job
+re-run from `pending` and no duplicate row.
 
----
-
-## Open work
-
-### 1. Publish a build so editors get the one-click installer
-
-The only genuinely unfinished thing. `docs/EDITOR-GUIDE.md` currently documents
-the **run-from-source** path, because that is what actually works today.
-
-Everything needed exists and has been run:
-
-```
-.venv\Scripts\python.exe scripts\fetch_ffmpeg.py
-.venv\Scripts\python.exe -m ash_captions.styles.fonts download
-.venv\Scripts\python.exe scripts\fetch_model.py --model-size small
-.venv\Scripts\python.exe scripts\build.py
-.venv\Scripts\python.exe scripts\release.py
-```
-
-`build.py` has been run for real and produces a correct bundle (flat layout,
-`styles/`, `assets/fonts/`, `scripts/pkgtools/`, `web/static/` all present).
-`release.py` has **not** been run — the public `ashcaptions-releases` repo does
-not exist yet. Until it does, the in-app update check silently finds nothing,
-which is by design (every failure is a silent no-op).
-
-### 2. Emoji and sticker overlays — v3
-
-Not possible in ASS: libass colour-font support is unreliable, so Submagic-style
-emoji bursts need a separate ffmpeg compositing pass. Spec section 7A.1.
-
-### 3. Arabic/Urdu styled captions — v2
-
-Transcription, `.srt` and English translation already work for Arabic. Only the
-styled `.ass` output needs RTL work and the bundled Noto Naskh face. Spec 7A.3.
+Honest limits of that verification: the longest real file run through the
+whole pipeline is **10 minutes**. The 90-minute case is covered by synthetic
+tests (900 punch moments, the memory measurement, timestamp formatting past
+10 hours) and by the fact that nothing time-based can kill a job. The first
+real hour-long client file should be watched by a person.
 
 ---
 
-## Known limitations (deliberate, not oversights)
+## Roadmap
 
-- **`libx264` is not available.** We ship BtbN's **LGPL** ffmpeg, and x264 is
-  GPL, so that build excludes it. The encoder is now probed at run time and
-  falls back to `libopenh264` (Cisco, BSD) on CPU or `h264_nvenc` on an NVIDIA
-  machine. `scripts/fetch_ffmpeg.py --variant gpl` would get `libx264` back
-  (better quality per bitrate) and is defensible since we never redistribute
-  the app outside the company — an open call, not a bug.
+### v0.2 — long-form safe (done, this release)
+Everything above. Remaining to close it out: publish a build so editors get
+the one-click installer (`scripts/release.py` has still never been run; the
+public `ashcaptions-releases` repo needs a seed commit first, see INSTALL.md).
+
+### v0.3 — pick your look (next)
+The team's actual request: choose a caption style the way Veed lets you.
+- A **style picker on the real video**: play it in the browser, click through
+  looks, captions redraw live in that style and position (libass compiled to
+  WebAssembly, so the preview is the burn), then hit Burn from that page. The
+  routes it needs (`/api/jobs/{id}/video` with Range support, `/ass`) already
+  exist.
+- The preset library grown from 9 to 30-plus, organised by position (top,
+  centre, bottom; left, middle, right) and mood. Each is a JSON file; no code.
+- Published installer and the update banner in real use.
+
+### v0.4 — short-form effects
+- **"Behind the speaker" captions**: an AI matte over the video, captions drawn
+  under the person. A separate compositing pass, aimed at reels; slow on
+  hour-long files without a GPU, and flagged as such in the UI.
+- Per-client glossaries: needs a client field on the job first.
+
+### v0.5 and later
+- Arabic and Urdu styled captions (right-to-left ASS; Noto Naskh is bundled).
+- Emoji and sticker bursts (a compositing pass; not possible in ASS).
+- A GPU bundle variant, once there is an NVIDIA machine to test on. Until
+  then `enable_gpu.ps1` refuses by design and the engine falls back to CPU.
+- Review-page video for watch-folder jobs (the input is deleted on success,
+  so the review route can only stream by-path and uploaded inputs).
+
+---
+
+## Known limitations (deliberate)
+
 - **Updates are not cryptographically signed.** sha256 from the manifest is
-  verified, which covers a corrupted download but not a compromised release
-  repo. Mitigated by requiring an explicit click: nothing auto-applies. Reasoning
-  in `docs/INSTALL.md`.
-- **Glossaries are not per-client yet.** Nothing in a job carries a client
-  identity, so there is one shared `glossary.txt`. Spec 9.3 promises per-client;
-  it needs a client field on the job first.
-- **A user style silently overrides a shipped one of the same name.** Intended
-  and recoverable ("Reset to shipped"), and the UI now marks it "customized
-  locally" — but saving a style called `POP` does change what every future job
-  means by `POP`, including the watch-folder default.
-- **Punch-in is off by default.** It reframes a client's video; that should
-  never happen without someone choosing it. See `punch_*` in `config.py`.
-- **Two fonts need a special case.** `Montserrat ExtraBold` and
-  `Poppins SemiBold` are weight variants, not Google families; the downloader
-  derives the real family from each manifest entry's specimen URL.
+  verified; an explicit click is required. Reasoning in `docs/INSTALL.md`.
+- **Punch-in is off by default.** It reframes a client's video.
+- **A user style with a shipped name overrides it** for every job on that PC.
+  The editor marks it "customized locally" and "Reset to shipped" now removes
+  the override rather than saving a frozen copy.
+- **Transcription progress moves per batch** (about every 2.5 minutes of
+  audio). The elapsed clock and health line show it is alive in between.
+- **Supply-chain inputs are mutable**: the ffmpeg fetcher takes BtbN's rolling
+  `latest` and the model fetch takes the upstream revision. The versions
+  actually shipped are recorded in `bin/ffmpeg-build-info.txt` and
+  `build/models/model-info-<size>.txt`; pinning them is a v0.3 item.
+- **Source runs must be editable installs** (`pip install -e .`): styles and
+  fonts live at the repo root.
 
 ---
 
 ## Things Ghazi needs to do
 
-1. **Add the editor's GitHub account to the private repo**, or step 2 of the
-   editor guide fails with "repository not found".
-2. **Decide the ffmpeg variant** — stay LGPL/`libopenh264`, or switch to the GPL
-   build for `libx264`.
+1. **Seed the public `ashcaptions-releases` repo** with one commit, then run
+   the four build/publish commands in `docs/INSTALL.md`. Until then editors run
+   from source with the guide, which works.
+2. **Run the first real hour-long client file** with the page open, and send
+   the log if anything looks wrong. This is the one thing no synthetic test
+   replaces.
 3. **Validate three numbers against real client work**, all tunable without a
    release, in `C:\AshCaptions\settings.json`:
-   - `silence_gap_seconds` (1.5) — when a caption card may not span a pause
+   - `silence_gap_seconds` (1.5)
    - whether `POP` should stay boxed one-word-at-a-time
-   - whether `CLEAN`'s deliberately hue-free look reads right on client footage
+   - whether `CLEAN`'s hue-free look reads right on client footage
 
 ---
 
 ## The pattern worth remembering
 
-Four separate times, a feature was built correctly, fully tested, and still
-unreachable or broken in the real product:
-
-- The styling system was blocked at three layers in turn — the job runner, the
-  API's preset validation, and the build, which shipped without `styles/` or
-  `assets/fonts/` at all while 710 tests passed.
-- `pip install -e .` reported success but left the package unimportable; the
-  test suite hid it because pytest puts `src/` on the path itself.
-- Burn-in hardcoded `libx264`, which the LGPL ffmpeg build cannot contain.
-- `burn_captions` deadlocked against ffmpeg's stderr pipe and hung every real
-  burn — invisible because burn-in is off by default and a mocked process never
-  fills a pipe.
-
-None of these were catchable by the test suite. All were found by **running the
-thing**: building the bundle and looking inside it, installing into a clean
-venv, and putting a real video through. Do that before each release.
+Every serious bug in this project was built correctly, fully tested, and still
+broken in the real product: the styling system blocked at three layers, a
+package that installed but would not import, an encoder the shipped ffmpeg
+could not contain, a pipe deadlock, a progress stream that killed itself, a
+model cache in the wrong layout, fonts whose names did not match their files,
+and, on 2026-09-03, punch-in silently disabled by a keyword the new filter
+builder did not accept. None were catchable by the unit suite. All were found
+by running the thing: building the bundle and looking inside it, installing
+into a clean venv, putting a real file through, opening the real page in a
+real browser. Do that before each release, and once more on the weakest
+editor machine.
