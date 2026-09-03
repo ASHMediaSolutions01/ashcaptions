@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio - ASH Captions</title>
+<!-- __VERSION__ is stamped with the running version when the page is
+     served (web/app.py) so a shipped update never pairs a cached script
+     with a new page. -->
+<link rel="stylesheet" href="/static/studio.css?v=__VERSION__">
+</head>
+<body class="studio">
+
+<header class="topbar">
+  <a class="back" href="/" aria-label="Back to the queue">&larr; Queue</a>
+  <div class="title">
+    <div class="video-name" id="video-name">Loading&hellip;</div>
+    <div class="style-name" id="style-name"></div>
+  </div>
+  <div class="status-pill" id="status-pill" role="status">Loading&hellip;</div>
+  <button type="button" class="btn primary" id="burn-btn" disabled>Burn this look</button>
+</header>
+
+<main class="workspace">
+  <section class="stage-column">
+    <div class="stage" id="stage">
+      <div class="frame" id="frame" hidden>
+        <video id="video" playsinline preload="auto"></video>
+      </div>
+      <div class="stage-message" id="stage-message" hidden></div>
+    </div>
+    <div class="controls" id="controls" hidden>
+      <button type="button" class="ctl" id="play-btn" aria-label="Play"></button>
+      <span class="time" id="time-label">0:00 / 0:00</span>
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek">
+      <button type="button" class="ctl" id="mute-btn" aria-label="Mute"></button>
+    </div>
+    <div class="transcript" id="transcript" aria-label="Transcript" hidden></div>
+  </section>
+
+  <aside class="looks" id="looks">
+    <h2>Looks</h2>
+    <p class="looks-hint" id="looks-hint">Click a look to see it on the video. Burn when it's right.</p>
+    <div class="looks-list" id="looks-list"></div>
+  </aside>
+</main>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="/static/api.js?v=__VERSION__"></script>
+<script src="/static/vendor/jassub/jassub.umd.js?v=__VERSION__"></script>
+<script src="/static/studio_player.js?v=__VERSION__"></script>
+<script src="/static/studio.js?v=__VERSION__"></script>
+</body>
+</html>

@@ -41,6 +41,7 @@ from .interfaces import (
 from .routes_events import DEFAULT_SSE_POLL_INTERVAL, build_events_router
 from .routes_jobs import build_jobs_router
 from .routes_review import build_review_router
+from .routes_studio import build_studio_router
 from .routes_styles import build_styles_router
 from .routes_updates import build_update_router
 from .runtime import app_version
@@ -131,6 +132,7 @@ def create_app(
     app.include_router(build_jobs_router(get_queue, get_catalogue, get_style_provider))
     app.include_router(build_events_router(get_queue))
     app.include_router(build_review_router(get_queue))
+    app.include_router(build_studio_router(get_queue, get_style_provider))
     app.include_router(build_styles_router(get_style_provider, get_preview_renderer))
     app.include_router(
         build_update_router(get_queue, get_update_applier, updates_supported or _runtime_updates_supported)
@@ -138,7 +140,7 @@ def create_app(
 
     pages = {
         name: render_page(STATIC_DIR / name, app.state.version)
-        for name in ("index.html", "style_editor.html", "guide.html")
+        for name in ("index.html", "style_editor.html", "guide.html", "studio.html")
     }
 
     @app.get("/", response_class=HTMLResponse)
@@ -154,6 +156,13 @@ def create_app(
         # The editor's guide, served inside the app so it is always the
         # version that matches the UI the editor is looking at.
         return HTMLResponse(pages["guide.html"])
+
+    @app.get("/studio/{job_id}", response_class=HTMLResponse)
+    async def studio_page(job_id: str) -> HTMLResponse:
+        # One static page for every job: studio.js reads the id from the
+        # URL and fetches the job, so an unknown or unfinished job gets a
+        # message with a way back to the queue rather than a bare 404.
+        return HTMLResponse(pages["studio.html"])
 
     return app
 
