@@ -282,3 +282,92 @@ def test_save_style_maps_reserved_or_colliding_name_to_validation_error(monkeypa
 
     with pytest.raises(StyleValidationFailedError, match="reserved"):
         adapter.save_style("CON", default_style_definition("CON"))
+
+
+# --- Alignment + card_box in the editor (v0.3 follow-up) ---------------------
+
+
+def test_save_style_with_left_align_round_trips_through_the_real_adapter(monkeypatch, tmp_path):
+    """The real `StylesPackageAdapter` over a temp user styles dir: a style
+    saved with `layout.align: "left"` comes back with it, and the file on
+    disk carries it -- what the runner's `.ass` alignment reads."""
+    import json
+
+    from ash_captions.web.styles_adapter import StylesPackageAdapter
+
+    monkeypatch.setenv("ASH_CAPTIONS_USER_STYLES_DIR", str(tmp_path / "user-styles"))
+    adapter = StylesPackageAdapter()
+    definition = default_style_definition("LEFTY")
+    definition["layout"]["align"] = "left"
+    definition["active_word"]["effect"] = "card_box"
+
+    saved = adapter.save_style("LEFTY", definition)
+
+    assert saved.definition["layout"]["align"] == "left"
+    assert saved.definition["active_word"]["effect"] == "card_box"
+    assert adapter.get_style("LEFTY").definition["layout"]["align"] == "left"
+    files = list((tmp_path / "user-styles").glob("*.json"))
+    assert len(files) == 1
+    assert json.loads(files[0].read_text(encoding="utf-8"))["layout"]["align"] == "left"
+
+
+def test_save_style_without_align_defaults_to_center_through_the_real_adapter(monkeypatch, tmp_path):
+    from ash_captions.web.styles_adapter import StylesPackageAdapter
+
+    monkeypatch.setenv("ASH_CAPTIONS_USER_STYLES_DIR", str(tmp_path / "user-styles"))
+    definition = default_style_definition("OLD STYLE")
+    assert "align" not in definition["layout"]  # a pre-align style
+
+    saved = StylesPackageAdapter().save_style("OLD STYLE", definition)
+
+    assert saved.definition["layout"]["align"] == "center"
+
+
+def test_bad_align_is_a_400_naming_the_field_through_the_real_adapter(monkeypatch, tmp_path):
+    """The inline status on the editor shows exactly this detail text."""
+    import pytest
+
+    from ash_captions.web.interfaces import StyleValidationFailedError
+    from ash_captions.web.styles_adapter import StylesPackageAdapter
+
+    monkeypatch.setenv("ASH_CAPTIONS_USER_STYLES_DIR", str(tmp_path / "user-styles"))
+    definition = default_style_definition("BAD ALIGN")
+    definition["layout"]["align"] = "middle"
+
+    with pytest.raises(StyleValidationFailedError, match="layout.align"):
+        StylesPackageAdapter().save_style("BAD ALIGN", definition)
+
+
+def test_bad_align_reaches_the_route_as_400(client):
+    definition = default_style_definition("BAD ALIGN")
+    definition["layout"]["align"] = "middle"
+
+    res = client.put("/api/styles/BAD ALIGN", json=definition)
+
+    assert res.status_code == 400
+    assert "layout.align" in res.json()["detail"]
+
+
+def test_card_box_is_accepted_by_the_route(client):
+    definition = default_style_definition("NEWS")
+    definition["active_word"]["effect"] = "card_box"
+
+    res = client.put("/api/styles/NEWS", json=definition)
+
+    assert res.status_code == 200
+    assert res.json()["definition"]["active_word"]["effect"] == "card_box"
+
+
+def test_editor_page_has_the_alignment_and_card_box_controls(client):
+    from ash_captions.web.app import STATIC_DIR
+
+    html = client.get("/style-editor").text
+    assert 'id="align-group"' in html
+    assert "Alignment" in html
+    js = (STATIC_DIR / "style_editor.js").read_text(encoding="utf-8")
+    assert '["card_box", "Bar behind the whole caption"]' in js
+    assert '"Box highlight (one word at a time)"' in js
+    assert '"Scale + box (one word at a time)"' in js
+    for value in ("left", "center", "right"):
+        assert f'["{value}", ' in js
+    assert "draft.layout.align = value" in js

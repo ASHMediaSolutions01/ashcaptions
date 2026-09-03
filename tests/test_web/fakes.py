@@ -372,10 +372,16 @@ class FakeStyleProvider:
             raise StyleValidationFailedError(f"size: {size} is out of range (expected 10-300)")
         active_word = definition.get("active_word") or {}
         effect = active_word.get("effect")
-        known_effects = {"none", "pop", "box", "scale_box", "karaoke", "shake", "glow"}
+        known_effects = {"none", "pop", "box", "scale_box", "card_box", "karaoke", "shake", "glow"}
         if effect is not None and effect not in known_effects:
             raise StyleValidationFailedError(
                 f"active_word.effect: unknown value {effect!r} (expected one of {sorted(known_effects)})"
+            )
+        align = (definition.get("layout") or {}).get("align")
+        known_aligns = {"left", "center", "right"}
+        if align is not None and align not in known_aligns:
+            raise StyleValidationFailedError(
+                f"layout.align: unknown value {align!r} (expected one of {sorted(known_aligns)})"
             )
 
 

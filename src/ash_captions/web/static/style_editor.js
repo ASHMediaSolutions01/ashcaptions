@@ -20,6 +20,7 @@
   const activeWordGroup = document.getElementById("active-word-effect-group");
   const entranceGroup = document.getElementById("entrance-effect-group");
   const positionGroup = document.getElementById("position-group");
+  const alignGroup = document.getElementById("align-group");
   const saveBtn = document.getElementById("save-btn");
   const saveAsBtn = document.getElementById("save-as-btn");
   const saveStatus = document.getElementById("save-status");
@@ -32,10 +33,13 @@
   const previewVideo = document.getElementById("preview-video");
 
   // Radio option groups, in display order. Values match
-  // ash_captions.styles.schema's ACTIVE_WORD_EFFECTS / TRANSITION_EFFECTS / POSITIONS.
+  // ash_captions.styles.schema's ACTIVE_WORD_EFFECTS / TRANSITION_EFFECTS /
+  // POSITIONS / ALIGNS. "box"/"scale_box" put one word on screen at a time;
+  // "card_box" keeps the whole caption on one bar (see schema.py).
   const ACTIVE_WORD_EFFECTS = [
-    ["none", "None"], ["pop", "Pop"], ["box", "Box highlight"],
-    ["scale_box", "Scale + box"], ["karaoke", "Karaoke fill"],
+    ["none", "None"], ["pop", "Pop"], ["box", "Box highlight (one word at a time)"],
+    ["scale_box", "Scale + box (one word at a time)"],
+    ["card_box", "Bar behind the whole caption"], ["karaoke", "Karaoke fill"],
     ["shake", "Shake"], ["glow", "Glow"],
   ];
   const ENTRANCE_EFFECTS = [
@@ -44,6 +48,8 @@
   const POSITIONS = [
     ["bottom", "Bottom"], ["center", "Center"], ["top", "Top"], ["lower_third", "Lower third"],
   ];
+  const ALIGNS = [["left", "Left"], ["center", "Centre"], ["right", "Right"]];
+  const DEFAULT_ALIGN = "center"; // schema default for styles saved before `align` existed
 
   let styles = []; // [{name, shipped, definition}]
   let selectedName = null;
@@ -83,6 +89,9 @@
   buildRadioGroup(positionGroup, "position", POSITIONS, (value) => {
     draft.layout.position = value;
   });
+  buildRadioGroup(alignGroup, "align", ALIGNS, (value) => {
+    draft.layout.align = value;
+  });
 
   // ---- Loading ----
 
@@ -120,7 +129,10 @@
     const toSelect = selectAfter && styles.some((s) => s.name === selectAfter)
       ? selectAfter
       : (styles[0] && styles[0].name);
-    if (toSelect) selectStyle(toSelect);
+    // Awaited: selectStyle() clears the status line, and saveAs() writes
+    // "Saved." right after this returns -- unawaited, the clear landed
+    // last and the confirmation never showed.
+    if (toSelect) await selectStyle(toSelect);
   }
 
   function pickerTag(style) {
@@ -169,8 +181,7 @@
     }
     const style = await res.json();
     selectedName = name;
-    draft = JSON.parse(JSON.stringify(style.definition));
-    draft.name = name;
+    draft = normalizeDraft(style.definition, name);
     applyDraftToForm();
     renderStyleList();
     editingName.textContent = name;
@@ -188,13 +199,25 @@
     resetBtn.hidden = !style.shipped;
   }
 
+  // A deep copy of a served definition, with the fields this form edits
+  // guaranteed present: a style saved before `layout.align` existed has no
+  // such key, and the radio row must still show (and Save must still send)
+  // the schema default rather than leaving the key out.
+  function normalizeDraft(definition, name) {
+    const copy = JSON.parse(JSON.stringify(definition));
+    copy.name = name;
+    copy.layout = copy.layout || {};
+    if (!copy.layout.align) copy.layout.align = DEFAULT_ALIGN;
+    return copy;
+  }
+
   // `draft` is the full style dict (schema fields: name, font, size,
   // uppercase, letter_spacing, colors, active_word, entrance, exit,
   // layout). `applyDraftToForm()`/the field bindings below only touch
   // colors.text/active/outline/box and active_word/entrance/layout.position
-  // -- `colors.shadow` and `exit` are deliberately not wired to any input
-  // (see the HTML comment above the colour row for why); they stay
-  // whatever the selected style had and round-trip unchanged through
+  // /layout.align -- `colors.shadow` and `exit` are deliberately not wired
+  // to any input (see the HTML comment above the colour row for why); they
+  // stay whatever the selected style had and round-trip unchanged through
   // saveAs()'s JSON.stringify(draft).
   function applyDraftToForm() {
     fontSelect.value = draft.font;
@@ -208,6 +231,7 @@
     setRadioValue(activeWordGroup, draft.active_word.effect);
     setRadioValue(entranceGroup, draft.entrance.effect);
     setRadioValue(positionGroup, draft.layout.position);
+    setRadioValue(alignGroup, draft.layout.align || DEFAULT_ALIGN);
   }
 
   // <input type="color"> only accepts #RRGGBB; styles allow an alpha suffix
@@ -290,8 +314,7 @@
       return;
     }
     const style = await res.json();
-    draft = JSON.parse(JSON.stringify(style.definition));
-    draft.name = selectedName;
+    draft = normalizeDraft(style.definition, selectedName);
     applyDraftToForm();
     await loadStyles(selectedName);
     showSaveStatus("Reset: the built-in version is back in use.", true);
