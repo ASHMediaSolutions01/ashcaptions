@@ -395,3 +395,10 @@ h2 {
 .job-actions {
   margin-top: 10px;
 }
+a.btn { text-decoration: none; }
+/* Page setting under the submit form (studio_hook.js) */
+.check.setting {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}

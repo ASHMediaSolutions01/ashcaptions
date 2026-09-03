@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from ash_captions.web.interfaces import (
+    BundledFontFile,
     JobNotFoundError,
     JobNotRetryableError,
     PreviewNotFoundError,
@@ -43,13 +44,26 @@ class FakeJobQueue:
     the web layer probes for (None = "not reported").
     """
 
-    def __init__(self, jobs: list[Job] | None = None, *, output_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        jobs: list[Job] | None = None,
+        *,
+        output_root: Path | None = None,
+        known_presets: set[str] | None = None,
+    ) -> None:
         self._jobs: dict[str, Job] = {j.id: j for j in (jobs or [])}
         self._subscribers: list[asyncio.Queue] = []
         self._loop: asyncio.AbstractEventLoop | None = None
         self._output_root = output_root
         self.worker_alive: bool | None = None
         self.last_watcher_poll: datetime | None = None
+        # Studio (restyle/submit_burn): `known_presets` None accepts any
+        # name; ids in `no_saved_words` behave like jobs run by an older
+        # build that kept no word timings.
+        self._known_presets = known_presets
+        self.no_saved_words: set[str] = set()
+        self.restyled: list[tuple[str, str]] = []
+        self.burns: list[Job] = []
 
     def list_jobs(self) -> list[Job]:
         return sorted(self._jobs.values(), key=lambda j: (j.created_at, j.id), reverse=True)
@@ -125,6 +139,62 @@ class FakeJobQueue:
     def _publish(self, snapshot: list[Job]) -> None:
         for subscriber in list(self._subscribers):
             subscriber.put_nowait(snapshot)
+
+    # -- Studio (optional queue extras, see interfaces.JobQueue) --------
+
+    def restyle(self, job_id: str, preset: str) -> Job:
+        job = self._restylable(job_id, preset)
+        if job.output_dir:
+            # The real queue rewrites the job's .ass in place; the fake
+            # writes a recognisable stand-in so a route test can see the
+            # new track being served.
+            out = Path(job.output_dir)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f"{Path(job.filename).stem}.ass").write_text(
+                f"[Script Info]\nTitle: restyled as {preset}\n", encoding="utf-8"
+            )
+        updated = job.model_copy(
+            update={
+                "options": job.options.model_copy(update={"preset": preset}),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self._jobs[job_id] = updated
+        self.restyled.append((job_id, preset))
+        self._notify()
+        return updated
+
+    def submit_burn(self, job_id: str, preset: str) -> Job:
+        source = self._restylable(job_id, preset)
+        now = datetime.now(timezone.utc)
+        burn = Job(
+            id=uuid.uuid4().hex,
+            filename=source.filename,
+            status=JobStatus.PENDING,
+            progress=0.0,
+            options=source.options.model_copy(update={"preset": preset, "burn_in": True}),
+            error=None,
+            created_at=now,
+            updated_at=now,
+            input_path=source.input_path,
+            output_dir=source.output_dir,
+        )
+        self._jobs[burn.id] = burn
+        self.burns.append(burn)
+        self._notify()
+        return burn
+
+    def _restylable(self, job_id: str, preset: str) -> Job:
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise JobNotFoundError(job_id)
+        if job_id in self.no_saved_words:
+            raise ValueError(
+                f"Job {job_id!r} has no saved word timings to restyle from -- it was run by an older version."
+            )
+        if self._known_presets is not None and preset not in self._known_presets:
+            raise ValueError(f"Unknown style {preset!r}.")
+        return job
 
     # Test helper only -- not part of the JobQueue protocol.
     def force_status(self, job_id: str, status: JobStatus, **fields: object) -> Job:
@@ -219,12 +289,17 @@ class FakeStyleProvider:
         *,
         shipped: dict[str, dict[str, Any]] | None = None,
         fonts: tuple[str, ...] = DEFAULT_BUNDLED_FONTS,
+        fonts_dir: Path | None = None,
     ) -> None:
         self._shipped: dict[str, dict[str, Any]] = shipped if shipped is not None else {
             name: default_style_definition(name) for name in DEFAULT_SHIPPED_STYLE_NAMES
         }
         self._user: dict[str, dict[str, Any]] = {}
         self._fonts = fonts
+        # Where `list_font_files()` says each face's file lives -- a test
+        # writes real bytes there to exercise the font-file routes. None
+        # means "no files": the routes then list nothing.
+        self._fonts_dir = fonts_dir
 
     def list_styles(self) -> list[StyleSummary]:
         merged = {**self._shipped, **self._user}
@@ -275,6 +350,14 @@ class FakeStyleProvider:
 
     def list_fonts(self) -> list[str]:
         return list(self._fonts)
+
+    def list_font_files(self) -> list[BundledFontFile]:
+        if self._fonts_dir is None:
+            return []
+        return [
+            BundledFontFile(family=family, path=self._fonts_dir / f"{family.replace(' ', '')}-Regular.ttf")
+            for family in self._fonts
+        ]
 
     def _validate(self, definition: dict[str, Any]) -> None:
         if not definition.get("name", "").strip():

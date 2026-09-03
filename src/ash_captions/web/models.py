@@ -227,3 +227,27 @@ class UpdateApplyJob(BaseModel):
     id: str
     status: UpdateApplyStatus
     error: str | None = None
+
+
+# --- Studio page ------------------------------------------------------------
+#
+# The Studio page (/studio/{job_id}) plays a finished job with its captions
+# drawn live in the browser and lets the editor click through looks before
+# burning one in. Its two mutating routes share one tiny body.
+
+
+class PresetRequest(BaseModel):
+    """Body of POST /api/jobs/{id}/restyle and POST /api/jobs/{id}/burn: the
+    name of the look to apply, exactly as listed by GET /api/styles."""
+
+    preset: str = Field(..., min_length=1)
+
+
+class FontFile(BaseModel):
+    """One bundled font file the browser caption renderer can fetch (GET
+    /api/fonts/files). `family` is the face name a style's `font` field
+    uses -- the name libass matches on; `url` is where GET
+    /api/fonts/file/{filename} serves the file."""
+
+    family: str
+    url: str

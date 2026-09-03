@@ -49,12 +49,12 @@ def build_review_router(get_queue: Callable[[Request], JobQueue]) -> APIRouter:
 
     @router.get("/api/jobs/{job_id}/files", response_model=list[OutputFile])
     async def list_output_files(job_id: str, queue: JobQueue = Depends(get_queue)) -> list[OutputFile]:
-        output_dir = _output_dir(_job_or_404(queue, job_id))
+        output_dir = output_dir_of(job_or_404(queue, job_id))
         return await run_in_threadpool(_scan_outputs, output_dir)
 
     @router.get("/api/jobs/{job_id}/video")
     async def stream_input_video(job_id: str, queue: JobQueue = Depends(get_queue)) -> FileResponse:
-        job = _job_or_404(queue, job_id)
+        job = job_or_404(queue, job_id)
         if not job.input_path:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} has no input file on record.")
         path = Path(job.input_path)
@@ -65,7 +65,7 @@ def build_review_router(get_queue: Callable[[Request], JobQueue]) -> APIRouter:
 
     @router.get("/api/jobs/{job_id}/ass")
     async def serve_ass(job_id: str, queue: JobQueue = Depends(get_queue)) -> FileResponse:
-        output_dir = _output_dir(_job_or_404(queue, job_id))
+        output_dir = output_dir_of(job_or_404(queue, job_id))
         candidates = await run_in_threadpool(lambda: sorted(output_dir.glob("*.ass")))
         if not candidates:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} has no .ass caption file yet.")
@@ -74,14 +74,14 @@ def build_review_router(get_queue: Callable[[Request], JobQueue]) -> APIRouter:
     return router
 
 
-def _job_or_404(queue: JobQueue, job_id: str) -> Job:
+def job_or_404(queue: JobQueue, job_id: str) -> Job:
     job = queue.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
     return job
 
 
-def _output_dir(job: Job) -> Path:
+def output_dir_of(job: Job) -> Path:
     if not job.output_dir:
         raise HTTPException(status_code=404, detail=f"Job {job.id!r} has no output folder on record.")
     return Path(job.output_dir)

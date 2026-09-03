@@ -93,6 +93,10 @@
         </div>
         <div id="submit-error" role="alert"></div>
       </div>
+      <label class="check setting" title="When a job started from this tab finishes, open it in Studio to pick a look">
+        <input type="checkbox" id="open-studio-check" checked>
+        Open Studio when a job finishes
+      </label>
     </form>
   </section>
 
@@ -108,6 +112,7 @@
 
 <script src="/static/api.js?v=__VERSION__"></script>
 <script src="/static/updates.js?v=__VERSION__"></script>
+<script src="/static/studio_hook.js?v=__VERSION__"></script>
 <script src="/static/app.js?v=__VERSION__"></script>
 </body>
 </html>

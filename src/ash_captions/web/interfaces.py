@@ -10,7 +10,7 @@ is injected into `create_app()`. Tests inject fakes; production wiring
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Callable, NamedTuple, Protocol, runtime_checkable
 
 from .models import Job, JobOptions, Language, PreviewJob, StyleSummary, UpdateApplyJob
 
@@ -76,6 +76,17 @@ class JobQueue(Protocol):
     #   or those two as plain attributes on the queue itself -- surfaced
     #   as GET /api/health and the ``health`` SSE event
     #   (``routes_events.read_health``).
+    # * ``restyle(job_id: str, preset: str) -> Job`` -- regenerates the
+    #   job's ``.ass`` from its persisted word timings in another look
+    #   (fast, no transcription) and returns the updated job with
+    #   ``options.preset`` changed; ``output_dir`` stays the same. Raises
+    #   ``JobNotFoundError``, or ``ValueError`` when the job has no saved
+    #   words (run by an older build) or the preset is unknown.
+    # * ``submit_burn(job_id: str, preset: str) -> Job`` -- enqueues a
+    #   burn-only job for the same footage using the saved transcript in
+    #   that look; returns the new ``pending`` job. Same errors.
+    #   Both back the Studio page (``routes_studio.py``); a queue without
+    #   them makes those routes answer 501.
 
 
 @runtime_checkable
@@ -97,6 +108,15 @@ class LanguageCatalogueProvider(Protocol):
 # `web.preview_adapter.InProcessPreviewRenderer`) are the ones allowed to
 # depend on those packages; `create_app()` constructs them by default so
 # production wiring needs no changes, but tests inject fakes instead.
+
+
+class BundledFontFile(NamedTuple):
+    """One bundled face and where its file lives -- what the optional
+    ``StyleProvider.list_font_files()`` returns so the Studio page can serve
+    the browser renderer the same font files ffmpeg burns with."""
+
+    family: str
+    path: Path
 
 
 class StyleNotFoundError(Exception):
@@ -168,6 +188,14 @@ class StyleProvider(Protocol):
     def list_fonts(self) -> list[str]:
         """Every bundled font family, for the font dropdown (spec 7A.4)."""
         ...
+
+    # Optional extra, probed with getattr() like the queue's:
+    #
+    # * ``list_font_files() -> list[BundledFontFile]`` -- every manifest
+    #   entry with the path its file is expected at (present or not). The
+    #   Studio page serves exactly these files to the browser renderer
+    #   (``routes_studio.py``: GET /api/fonts/files, /api/fonts/file/{name})
+    #   and nothing else; without it those routes list nothing.
 
 
 @runtime_checkable

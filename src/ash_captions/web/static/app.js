@@ -212,6 +212,7 @@
       const res =
         selectedSource.type === "path" ? await submitByPath() : await submitByUpload();
       if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Could not start this job"));
+      AshStudio.noteSubmitted(await res.json().catch(() => null));
       resetSelection();
       await refreshJobs();
     } catch (err) {
@@ -318,9 +319,8 @@
     }
     emptyQueue.style.display = "none";
     jobList.innerHTML = "";
-    for (const job of jobs) {
-      jobList.appendChild(renderJob(job));
-    }
+    for (const job of jobs) jobList.appendChild(renderJob(job));
+    AshStudio.onJobs(jobs);
     tickClocks();
   }
 
@@ -374,6 +374,7 @@
       actions.appendChild(retryBtn);
       el.appendChild(actions);
     }
+    AshStudio.decorate(el, job); // "Open in Studio" on finished jobs
 
     return el;
   }
@@ -459,18 +460,10 @@
       renderHealth(Date.now());
     };
     source.onmessage = (evt) => {
-      try {
-        renderJobs(JSON.parse(evt.data));
-      } catch (err) {
-        // ignore malformed frame
-      }
+      try { renderJobs(JSON.parse(evt.data)); } catch (err) { /* ignore a malformed frame */ }
     };
     source.addEventListener("health", (evt) => {
-      try {
-        applyHealth(JSON.parse(evt.data));
-      } catch (err) {
-        // ignore malformed frame
-      }
+      try { applyHealth(JSON.parse(evt.data)); } catch (err) { /* ignore a malformed frame */ }
     });
     source.onerror = () => {
       health.live = false;

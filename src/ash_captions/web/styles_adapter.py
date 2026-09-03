@@ -18,7 +18,14 @@ from ash_captions.styles import (
     validate_style_dict,
 )
 
-from .interfaces import StyleIsShippedError, StyleNotFoundError, StyleValidationFailedError
+# The package's public interface exports the family list and libass's
+# fontsdir but not the manifest rows (family -> file) the Studio page's
+# browser renderer needs, so this is the one place the web layer reaches
+# into `styles.fonts`. Worth exporting `load_manifest`/`assets_fonts_dir`
+# from `ash_captions.styles` so it no longer has to.
+from ash_captions.styles.fonts import assets_fonts_dir, load_manifest
+
+from .interfaces import BundledFontFile, StyleIsShippedError, StyleNotFoundError, StyleValidationFailedError
 from .models import StyleSummary
 
 # `get_style(shipped_only=True)` needs `list_styles()` to see *only* the
@@ -105,3 +112,10 @@ class StylesPackageAdapter:
 
     def list_fonts(self) -> list[str]:
         return list(list_font_families())
+
+    def list_font_files(self) -> list[BundledFontFile]:
+        """Every manifest face with the path its file is expected at (the
+        route checks presence). Manifest-listed names only: this is what
+        makes GET /api/fonts/file/{name} unable to serve anything else."""
+        directory = assets_fonts_dir()
+        return [BundledFontFile(family=entry.family, path=directory / entry.file) for entry in load_manifest()]

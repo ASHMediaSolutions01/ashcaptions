@@ -45,7 +45,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ash_captions = ["web/static/*", "web/static/guide/*"]
+ash_captions = ["web/static/*", "web/static/guide/*", "web/static/vendor/jassub/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
