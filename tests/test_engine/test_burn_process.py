@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ash_captions.engine import burn, ffmpeg_process
+from ash_captions.engine import burn, encoders, ffmpeg_process
 from ash_captions.engine.burn import BurnCancelled, BurnInError, burn_captions, part_path_for
 from ash_captions.engine.ffmpeg_process import active_processes, kill_active_processes, run_ffmpeg
 from ash_captions.engine.probe import VideoInfo
@@ -27,14 +27,14 @@ POPEN = "ash_captions.engine.ffmpeg_process.subprocess.Popen"
 def _no_real_probing(monkeypatch):
     """Patching Popen patches it for subprocess.run too, so every probe of
     the binary would hit the fake as well; stub them out entirely."""
-    burn._encoder_cache.clear()
-    burn._version_cache.clear()
-    burn._nvenc_test_cache.clear()
+    encoders._encoder_cache.clear()
+    encoders._version_cache.clear()
+    encoders._nvenc_test_cache.clear()
     monkeypatch.setattr(burn, "detect_nvenc", lambda: False)
     monkeypatch.setattr(burn, "_probe_best_effort", lambda *_a, **_k: None)
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset())
-    monkeypatch.setattr(burn, "ffmpeg_major_version", lambda _p: None)
-    monkeypatch.setattr(burn, "nvenc_encode_works", lambda _p: True)
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset())
+    monkeypatch.setattr(encoders, "ffmpeg_major_version", lambda _p: None)
+    monkeypatch.setattr(encoders, "nvenc_encode_works", lambda _p: True)
 
 
 @pytest.fixture
@@ -145,7 +145,7 @@ def test_launch_failure_is_a_burn_error(inputs, tmp_path):
 
 def test_video_info_drives_audio_and_bitrate(inputs, tmp_path, monkeypatch):
     video, ass, output = inputs
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"h264_mf"}))
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"h264_mf"}))
     info = VideoInfo(3840, 2160, 30.0, 10.0, audio_codec="pcm_s16le")
     with _patch_popen():
         burn_captions(video, ass, output, duration_seconds=1.0, ffmpeg_path=tmp_path / "ffmpeg.exe", video_info=info)

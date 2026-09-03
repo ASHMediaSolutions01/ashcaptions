@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ash_captions.engine import matte
+from ash_captions.engine import encoders, matte
 from ash_captions.engine.burn import build_burn_command
 
 
@@ -74,8 +74,8 @@ def test_render_matte_with_a_fake_model_produces_a_playable_clip(tmp_path):
 def test_burn_command_with_matte_uses_a_complex_graph(tmp_path, monkeypatch):
     from ash_captions.engine import burn as burn_mod
 
-    monkeypatch.setattr(burn_mod, "available_encoders", lambda _p: frozenset({"libx264"}))
-    monkeypatch.setattr(burn_mod, "ffmpeg_major_version", lambda _p: 8)
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"libx264"}))
+    monkeypatch.setattr(encoders, "ffmpeg_major_version", lambda _p: 8)
     ass = tmp_path / "c.ass"
     ass.write_text("[Script Info]", encoding="utf-8")
     matte_file = tmp_path / "m.mp4"
@@ -94,7 +94,7 @@ def test_burn_command_with_matte_uses_a_complex_graph(tmp_path, monkeypatch):
 def test_burn_command_with_matte_needs_the_frame_size(tmp_path, monkeypatch):
     from ash_captions.engine import burn as burn_mod
 
-    monkeypatch.setattr(burn_mod, "available_encoders", lambda _p: frozenset({"libx264"}))
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"libx264"}))
     ass = tmp_path / "c.ass"
     ass.write_text("[Script Info]", encoding="utf-8")
     with pytest.raises(burn_mod.BurnInError, match="frame size"):

@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ash_captions.engine import burn
+from ash_captions.engine import burn, encoders
 from ash_captions.engine.burn import (
     BITRATE_1080P,
     BITRATE_4K,
@@ -34,13 +34,13 @@ from ash_captions.engine.burn import (
 
 @pytest.fixture(autouse=True)
 def _clear_caches():
-    burn._encoder_cache.clear()
-    burn._version_cache.clear()
-    burn._nvenc_test_cache.clear()
+    encoders._encoder_cache.clear()
+    encoders._version_cache.clear()
+    encoders._nvenc_test_cache.clear()
     yield
-    burn._encoder_cache.clear()
-    burn._version_cache.clear()
-    burn._nvenc_test_cache.clear()
+    encoders._encoder_cache.clear()
+    encoders._version_cache.clear()
+    encoders._nvenc_test_cache.clear()
 
 
 def _ass(tmp_path: Path, name: str = "subs.ass") -> Path:
@@ -64,24 +64,24 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
 
 
 def test_detect_nvenc_true_when_nvidia_smi_succeeds():
-    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
+    with patch("ash_captions.engine.encoders.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         assert detect_nvenc() is True
 
 
 def test_detect_nvenc_false_when_nvidia_smi_fails():
-    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
+    with patch("ash_captions.engine.encoders.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
         assert detect_nvenc() is False
 
 
 def test_detect_nvenc_false_when_nvidia_smi_missing():
-    with patch("ash_captions.engine.burn.subprocess.run", side_effect=FileNotFoundError()):
+    with patch("ash_captions.engine.encoders.subprocess.run", side_effect=FileNotFoundError()):
         assert detect_nvenc() is False
 
 
 def test_detect_nvenc_false_on_timeout():
-    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
+    with patch("ash_captions.engine.encoders.subprocess.run") as mock_run:
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="nvidia-smi", timeout=10)
         assert detect_nvenc() is False
 
@@ -106,19 +106,19 @@ def test_trusts_an_nvenc_request_when_the_binary_cannot_be_probed(tmp_path):
 def test_nvenc_request_falls_back_to_software_when_the_test_encode_fails(monkeypatch, tmp_path):
     """nvidia-smi being present says there is a driver, not that this ffmpeg
     can drive it; that mismatch used to fail at the start of every burn."""
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"h264_nvenc", "libx264"}))
-    monkeypatch.setattr(burn, "nvenc_encode_works", lambda _p: False)
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"h264_nvenc", "libx264"}))
+    monkeypatch.setattr(encoders, "nvenc_encode_works", lambda _p: False)
     assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=True) == "libx264"
 
 
 def test_nvenc_is_used_when_the_test_encode_passes(monkeypatch, tmp_path):
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"h264_nvenc", "libx264"}))
-    monkeypatch.setattr(burn, "nvenc_encode_works", lambda _p: True)
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"h264_nvenc", "libx264"}))
+    monkeypatch.setattr(encoders, "nvenc_encode_works", lambda _p: True)
     assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=True) == "h264_nvenc"
 
 
 def test_nvenc_encode_test_result_is_cached_per_binary(tmp_path):
-    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
+    with patch("ash_captions.engine.encoders.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         assert burn.nvenc_encode_works(tmp_path / "ffmpeg.exe") is True
         assert burn.nvenc_encode_works(tmp_path / "ffmpeg.exe") is True
@@ -132,17 +132,17 @@ def test_selects_a_software_encoder_the_build_actually_has(monkeypatch, tmp_path
     """An LGPL ffmpeg has no libx264 -- x264 is GPL, so the LGPL build is
     configured --disable-libx264. h264_mf (High profile) beats libopenh264
     (baseline only) as the fallback."""
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"libopenh264", "h264_mf"}))
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"libopenh264", "h264_mf"}))
     assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "h264_mf"
 
 
 def test_prefers_libx264_when_the_build_has_it(monkeypatch, tmp_path):
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"libx264", "libopenh264", "h264_mf"}))
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"libx264", "libopenh264", "h264_mf"}))
     assert burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False) == "libx264"
 
 
 def test_raises_a_named_error_when_no_h264_encoder_exists(monkeypatch, tmp_path):
-    monkeypatch.setattr(burn, "available_encoders", lambda _p: frozenset({"vp9", "aac"}))
+    monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"vp9", "aac"}))
     with pytest.raises(BurnInError, match="no usable H.264 encoder"):
         burn.select_video_encoder(tmp_path / "ffmpeg.exe", use_nvenc=False)
 
@@ -307,7 +307,7 @@ def test_bare_ffmpeg_name_is_left_for_path_lookup(tmp_path):
 
 @pytest.mark.parametrize(("major", "expected"), [(None, "-/filter:v"), (7, "-/filter:v"), (8, "-/filter:v"), (6, "-filter_script:v")])
 def test_filter_file_option_follows_the_ffmpeg_version(monkeypatch, major, expected):
-    monkeypatch.setattr(burn, "ffmpeg_major_version", lambda _p: major)
+    monkeypatch.setattr(encoders, "ffmpeg_major_version", lambda _p: major)
     assert filter_file_option("ffmpeg") == expected
 
 
@@ -317,7 +317,7 @@ def test_filter_file_option_follows_the_ffmpeg_version(monkeypatch, major, expec
      ("ffmpeg version N-126386-gc27482a18d-20260901 Copyright", None), ("", None)],
 )
 def test_ffmpeg_major_version_parses_release_and_git_banners(banner, expected):
-    with patch("ash_captions.engine.burn.subprocess.run") as mock_run:
+    with patch("ash_captions.engine.encoders.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=banner, stderr="")
         assert burn.ffmpeg_major_version("ffmpeg-x") == expected
 
