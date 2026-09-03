@@ -108,6 +108,10 @@
     const b = document.createElement("b");
     b.textContent = job.options.preset;
     els.styleName.appendChild(b);
+    if (job.options.client) {
+      // Which glossary the captions were corrected with.
+      els.styleName.appendChild(document.createTextNode(` · Client: ${job.options.client}`));
+    }
   }
 
   // @font-face for every served bundled font, so the look cards' type

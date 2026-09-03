@@ -213,3 +213,47 @@ def test_wal_mode_enabled(store: JobStore, tmp_path: Path) -> None:
     mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
     conn.close()
     assert mode.lower() == "wal"
+
+
+# --- the client field (per-client glossaries) ----------------------------------
+
+
+def test_client_round_trips_through_the_row(store: JobStore) -> None:
+    job_id = store.insert_job(r"C:\in\Acme\clip.mp4", r"C:\out\clip", make_options(client="Acme Corp"))
+
+    assert store.get_job(job_id).options.client == "Acme Corp"
+    assert store.get_job(store.insert_job(r"C:\in\b.mp4", r"C:\out\b", make_options())).options.client is None
+
+
+def test_rows_written_before_client_existed_read_as_no_client(store: JobStore, tmp_path: Path) -> None:
+    """An older build's options_json has no `client` key; a hand-edited one
+    may hold junk. Both must read back as None, never raise."""
+    import sqlite3
+
+    old_json = '{"language": "en", "dialect": null, "preset": "POP", "burn": false, "translate": false}'
+    junk_json = '{"language": "en", "dialect": null, "preset": "POP", "burn": false, "translate": false, "client": 42}'
+    blank_json = '{"language": "en", "dialect": null, "preset": "POP", "burn": false, "translate": false, "client": "  "}'
+    conn = sqlite3.connect(store.db_path)
+    for n, raw in enumerate((old_json, junk_json, blank_json)):
+        conn.execute(
+            "INSERT INTO jobs (input_path, output_dir, status, options_json, progress, created_at) "
+            "VALUES (?, ?, 'done', ?, 100, '2026-01-01T00:00:00+00:00')",
+            (rf"C:\in\old{n}.mp4", rf"C:\out\old{n}", raw),
+        )
+    conn.commit()
+    conn.close()
+
+    jobs = store.list_jobs()
+    assert len(jobs) == 3
+    assert all(job.options.client is None for job in jobs)
+    assert JobOptions.from_json(old_json).client is None
+    assert JobOptions.from_json(old_json) == make_options(dialect=None)
+
+
+def test_known_clients_is_distinct_newest_first_case_insensitive(store: JobStore) -> None:
+    for n, client in enumerate(["Acme", None, "globex", "ACME", "Initech", "Globex"]):
+        store.insert_job(rf"C:\in\{n}.mp4", rf"C:\out\{n}", make_options(client=client))
+
+    assert store.known_clients() == ["Globex", "Initech", "ACME"]
+    assert store.known_clients(limit=1) == ["Globex"]
+    assert JobStore(store.db_path).known_clients(limit=0) == []

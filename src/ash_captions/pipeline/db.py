@@ -66,6 +66,10 @@ class JobOptions:
     # outputs and only re-renders captions (and burns). The Studio page
     # submits burn_only after the editor has picked a look.
     mode: str = "full"
+    # Which client the footage belongs to (display form, e.g. "Acme Corp").
+    # Picks that client's glossary on top of the shared one; None means the
+    # shared glossary alone. Sanitized at the web/watch-folder boundary.
+    client: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -77,6 +81,10 @@ class JobOptions:
             data = {}
         known = {spec.name for spec in fields(JobOptions)}
         merged = {**_OPTION_DEFAULTS, **{k: v for k, v in data.items() if k in known}}
+        # Rows written before `client` existed have no key (default fills
+        # in); a hand-edited or foreign value that isn't text reads as none.
+        if not isinstance(merged["client"], str) or not merged["client"].strip():
+            merged["client"] = None
         return JobOptions(**merged)
 
 
@@ -87,7 +95,11 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     "burn": False,
     "translate": False,
     "mode": "full",
+    "client": None,
 }
+
+# How many recent rows `known_clients` scans for distinct client names.
+KNOWN_CLIENTS_SCAN_LIMIT = 500
 
 
 @dataclass(frozen=True)
@@ -292,6 +304,23 @@ class JobStore:
                 "SELECT * FROM jobs WHERE status IN ('pending', 'running') ORDER BY id ASC"
             ).fetchall()
             return [_row_to_job(row) for row in rows]
+
+    def known_clients(self, *, limit: int = KNOWN_CLIENTS_SCAN_LIMIT) -> list[str]:
+        """Distinct client names on the newest ``limit`` rows, most recently
+        used first -- what the control page's client picker suggests. Two
+        spellings differing only in case count as one (the first seen wins)."""
+        if limit < 0:
+            raise ValueError("limit must not be negative")
+        with self._tx() as conn:
+            rows = conn.execute(
+                "SELECT options_json FROM jobs ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        seen: dict[str, str] = {}
+        for row in rows:
+            client = JobOptions.from_json(row["options_json"]).client
+            if client is not None:
+                seen.setdefault(client.lower(), client)
+        return list(seen.values())
 
     def output_dir_in_use(self, output_dir: str | Path) -> bool:
         """True if any job row (any status) already names ``output_dir``."""

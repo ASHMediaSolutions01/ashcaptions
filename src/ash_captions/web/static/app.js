@@ -213,7 +213,9 @@
         selectedSource.type === "path" ? await submitByPath() : await submitByUpload();
       if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Could not start this job"));
       AshStudio.noteSubmitted(await res.json().catch(() => null));
+      AshClients.remember(); // the client field survives; next visit starts on it too
       resetSelection();
+      AshClients.refresh();
       await refreshJobs();
     } catch (err) {
       submitError.textContent = err.message;
@@ -234,6 +236,7 @@
         preset: presetSelect.value,
         burn_in: burnInCheck.checked,
         translate_to_english: translateCheck.checked,
+        client: AshClients.value() || null,
       }),
     });
   }
@@ -246,6 +249,7 @@
     form.append("preset", presetSelect.value);
     form.append("burn_in", burnInCheck.checked ? "true" : "false");
     form.append("translate_to_english", translateCheck.checked ? "true" : "false");
+    if (AshClients.value()) form.append("client", AshClients.value());
     return AshApi.request("/api/jobs", { method: "POST", body: form });
   }
 
@@ -331,7 +335,7 @@
     const pct = job.status === "done" ? 100 : Math.round((job.progress || 0) * 100);
     const label = STATUS_LABEL[job.status] || job.status;
     const opts = job.options || {};
-    const meta = [opts.language, opts.dialect, opts.preset, opts.burn_in ? "burn-in" : null, opts.translate_to_english ? "+ English" : null]
+    const meta = [opts.language, opts.dialect, opts.preset, opts.burn_in ? "burn-in" : null, opts.translate_to_english ? "+ English" : null, opts.client ? `Client: ${opts.client}` : null]
       .filter(Boolean)
       .join(" · ");
 

@@ -11,6 +11,10 @@ Public interface:
   ``ResolvedDialect`` carrying the Whisper language code and priming
   prompt the engine needs to kick off transcription.
 * ``load_glossary_entries`` -- read a client glossary file once per job.
+* ``load_glossary_entries_for`` -- the shared glossary merged with one
+  client's own (``client_glossary_path``), client entries winning.
+* ``validate_glossary_text`` -- line-level problems in glossary text, for
+  the control page saving a client's file.
 * ``postprocess`` -- run the full post-processing chain (dialect glossary,
   then client glossary, then spelling normalisation) over transcribed
   text, for the engine to call once transcription finishes.
@@ -40,7 +44,17 @@ from .catalog import (
     list_languages,
 )
 from .dialects import DialectPreset, default_dialect, get_dialect, list_dialects
-from .glossary import GlossaryEntry, apply_glossary, load_glossary
+from .glossary import (
+    SHARED_GLOSSARY_FILENAME,
+    GlossaryEntry,
+    apply_glossary,
+    client_glossary_path,
+    client_slug,
+    load_glossary,
+    parse_glossary,
+    validate_glossary_text,
+)
+from .glossary import load_glossary_entries_for as _load_glossary_entries_for
 from .spelling import EN_UK, EN_US, PT_BR, PT_PT, normalize_spelling
 
 __all__ = [
@@ -48,6 +62,7 @@ __all__ = [
     "EN_US",
     "PT_BR",
     "PT_PT",
+    "SHARED_GLOSSARY_FILENAME",
     "DialectPreset",
     "GlossaryEntry",
     "LanguageInfo",
@@ -55,6 +70,8 @@ __all__ = [
     "ResolvedDialect",
     "ScriptDirection",
     "apply_glossary",
+    "client_glossary_path",
+    "client_slug",
     "default_dialect",
     "get_dialect",
     "get_language",
@@ -63,10 +80,13 @@ __all__ = [
     "list_languages",
     "load_glossary",
     "load_glossary_entries",
+    "load_glossary_entries_for",
     "normalize_spelling",
+    "parse_glossary",
     "postprocess",
     "postprocess_words",
     "resolve",
+    "validate_glossary_text",
 ]
 
 
@@ -132,6 +152,18 @@ def load_glossary_entries(
     unreadable or malformed file is an empty glossary."""
 
     return load_glossary(path)
+
+
+def load_glossary_entries_for(
+    glossary_dir: str | os.PathLike[str], client: str | None
+) -> tuple[GlossaryEntry, ...]:
+    """The shared ``glossary.txt`` merged with ``client``'s own file
+    (``client_glossary_path``), the client's entries winning on the same
+    match text. Loaded once per job like ``load_glossary_entries``; never
+    raises. Reads go through this package's ``load_glossary`` name so each
+    file is read exactly once per call."""
+
+    return _load_glossary_entries_for(glossary_dir, client, loader=load_glossary)
 
 
 def postprocess(

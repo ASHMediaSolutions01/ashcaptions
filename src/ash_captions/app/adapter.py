@@ -55,7 +55,7 @@ from ash_captions.web.models import Job as WebJob
 from ash_captions.web.models import JobOptions as WebJobOptions
 from ash_captions.web.models import JobStatus as WebJobStatus
 
-from .runner_util import atomic_write
+from .runner_util import atomic_write, client_for_watch_path
 from .transcript import TranscriptError, TranscriptRecord, load_transcript, transcript_path
 
 # The control page never needs the whole history; the newest rows are
@@ -79,6 +79,12 @@ class QueueAdapter:
     section 10) -- made unique (``<stem> (2)``, ``<stem> (3)``...) against
     both the disk and every job row, so two videos sharing a stem never
     overwrite each other's outputs.
+
+    ``watch_dir`` (``settings.in_dir``) lets ``submit`` name the client for
+    a watch-folder drop from its subfolder (``in\\Acme\\clip.mp4`` ->
+    client "Acme") when the caller's options carry none. Left unset, it
+    is read from ``Settings.load()`` on first use -- the same source
+    ``app/__main__.py`` builds the watcher from.
     """
 
     def __init__(
@@ -88,9 +94,11 @@ class QueueAdapter:
         out_dir: Path,
         notify_interval: float = DEFAULT_NOTIFY_INTERVAL_SECONDS,
         list_limit: int = DEFAULT_LIST_LIMIT,
+        watch_dir: Path | None = None,
     ) -> None:
         self._store = store
         self._out_dir = Path(out_dir)
+        self._watch_dir = Path(watch_dir) if watch_dir is not None else None
         self._notify_interval = notify_interval
         self._list_limit = list_limit
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -126,11 +134,28 @@ class QueueAdapter:
         if existing is not None:
             return _to_web_job(existing)
         output_dir = self.unique_output_dir(file_path.stem)
-        job_id = self._store.insert_job(file_path, output_dir, _to_pipeline_options(options))
+        pipeline_options = _to_pipeline_options(options)
+        if pipeline_options.client is None:
+            # A drop into in\<Client>\ names its client by the folder; the
+            # watcher's default-options callback knows nothing about it.
+            derived = client_for_watch_path(file_path, self._resolve_watch_dir())
+            if derived is not None:
+                pipeline_options = dataclasses.replace(pipeline_options, client=derived)
+        job_id = self._store.insert_job(file_path, output_dir, pipeline_options)
         job = self._store.get_job(job_id)
         assert job is not None, "insert_job returned an id that get_job can't find"
         self._notify()
         return _to_web_job(job)
+
+    def known_clients(self) -> list[str]:
+        """Distinct clients on recent jobs, most recent first (the control
+        page's client picker -- see ``interfaces.JobQueue``)."""
+        return self._store.known_clients()
+
+    def _resolve_watch_dir(self) -> Path:
+        if self._watch_dir is None:
+            self._watch_dir = Path(self._load_settings().in_dir)
+        return self._watch_dir
 
     def unique_output_dir(self, stem: str) -> Path:
         """``out_dir/<stem>``, or the first ``<stem> (n)`` not yet used on
@@ -213,10 +238,13 @@ class QueueAdapter:
             raise ValueError("The saved transcript has no words to caption.")
         return record
 
-    def _silence_gap_seconds(self) -> float:
+    def _load_settings(self) -> Settings:
         if self._settings is None:
             self._settings = Settings.load()
-        return float(self._settings.silence_gap_seconds)
+        return self._settings
+
+    def _silence_gap_seconds(self) -> float:
+        return float(self._load_settings().silence_gap_seconds)
 
     def retry(self, job_id: str) -> WebJob:
         self._capture_loop()
@@ -408,6 +436,7 @@ def _to_web_options(options: PipelineJobOptions) -> WebJobOptions:
         preset=options.preset,
         burn_in=options.burn,
         translate_to_english=options.translate,
+        client=getattr(options, "client", None),
     )
 
 
@@ -418,6 +447,7 @@ def _to_pipeline_options(options: WebJobOptions) -> PipelineJobOptions:
         preset=options.preset,
         burn=options.burn_in,
         translate=options.translate_to_english,
+        client=getattr(options, "client", None),
     )
 
 

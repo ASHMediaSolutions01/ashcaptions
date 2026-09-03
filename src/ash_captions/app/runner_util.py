@@ -138,6 +138,20 @@ def load_glossary_entries(glossary_path: Path) -> Any:
         return None
 
 
+def load_glossary_entries_for(glossary_dir: Path, client: str | None) -> Any:
+    """The shared glossary merged with ``client``'s own, loaded once per
+    job (``languages.load_glossary_entries_for``). On an older languages
+    package without the merge, the shared file alone. ``None`` when the
+    load fails -- a bad glossary must never fail a job."""
+    merged = getattr(languages, "load_glossary_entries_for", None)
+    if merged is None:
+        return load_glossary_entries(Path(glossary_dir) / "glossary.txt")
+    try:
+        return merged(glossary_dir, client)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _is_within(path: Path, directory: Path) -> bool:
     """True if ``path`` resolves to somewhere inside ``directory``."""
     try:
@@ -145,6 +159,26 @@ def _is_within(path: Path, directory: Path) -> bool:
     except (OSError, ValueError):
         return False
     return True
+
+
+def client_for_watch_path(path: Path, watch_dir: Path) -> str | None:
+    """The client a watch-folder drop belongs to: the first subfolder under
+    ``watch_dir`` (``in\\Acme\\clip.mp4`` -> ``"Acme"``), sanitized the same
+    way the control page's field is. ``None`` for a file directly in
+    ``watch_dir``, one outside it, or a folder name that isn't a usable
+    client name (that drop still runs, with the shared glossary only)."""
+    from ash_captions.web.validation import sanitize_client_name
+
+    try:
+        relative = Path(path).resolve().relative_to(Path(watch_dir).resolve())
+    except (OSError, ValueError):
+        return None
+    if len(relative.parts) < 2:
+        return None
+    try:
+        return sanitize_client_name(relative.parts[0])
+    except ValueError:
+        return None
 
 
 def _ffprobe_beside(ffmpeg_path: Path) -> Path:
