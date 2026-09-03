@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **1252 passing, 27 skipped** (the skips are the real-ffmpeg and
+- Tests: **1314 passing, 28 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Design decisions and their reasoning: `docs/superpowers/specs/2026-08-29-ash-captions-design.md`
 - Editor instructions: `docs/EDITOR-GUIDE.md`, and inside the app at `/guide`
