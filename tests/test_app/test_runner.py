@@ -326,9 +326,11 @@ class TestPunchInWiring:
 
         punch_filter = received["punch_filter"]
         assert punch_filter  # a non-empty ffmpeg filter chain reached the burn
-        # Either the older zoompan filter or the timestamp-preserving scale/crop chain.
-        assert "zoompan=" in punch_filter or "crop=" in punch_filter
-        assert "1080" in punch_filter and "1920" in punch_filter  # the probed geometry was used
+        # The timestamp-preserving scale/crop chain works in iw/ih and t, so
+        # it carries no literal geometry; the probe still feeds moment
+        # selection (video_duration) and the burn's progress duration.
+        assert "crop=" in punch_filter and "scale=" in punch_filter
+        assert "eval=frame" in punch_filter
 
     def test_punch_is_off_by_default(self, tmp_path, store, monkeypatch):
         received: dict = {}

@@ -332,15 +332,22 @@ def build_run_job(
                     video_duration=geometry.duration_seconds,
                 )
                 # build_punch_filter is the timestamp-preserving scale/crop
-                # chain; build_zoompan_filter is its older name.
-                build_filter = getattr(engine, "build_punch_filter", None) or engine.build_zoompan_filter
-                punch_filter = build_filter(
-                    moments,
-                    width=geometry.width,
-                    height=geometry.height,
-                    fps=geometry.fps,
-                    zoom=settings.punch_zoom,
-                )
+                # chain and needs no geometry (it works in iw/ih and t);
+                # build_zoompan_filter is the older zoompan form, which must
+                # be told the output size and fps. Passing geometry to the
+                # new one raised TypeError, which the guard below turned
+                # into a silent "no punch-in" on every job.
+                build_punch = getattr(engine, "build_punch_filter", None)
+                if build_punch is not None:
+                    punch_filter = build_punch(moments, zoom=settings.punch_zoom)
+                else:
+                    punch_filter = engine.build_zoompan_filter(
+                        moments,
+                        width=geometry.width,
+                        height=geometry.height,
+                        fps=geometry.fps,
+                        zoom=settings.punch_zoom,
+                    )
                 log.info("punch-in: %d moment(s) at zoom %.2f", len(moments), settings.punch_zoom)
             except Exception:  # noqa: BLE001
                 log.warning("punch-in unavailable; burning without it", exc_info=True)
