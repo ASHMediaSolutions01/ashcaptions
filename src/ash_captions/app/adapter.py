@@ -437,6 +437,7 @@ def _to_web_options(options: PipelineJobOptions) -> WebJobOptions:
         burn_in=options.burn,
         translate_to_english=options.translate,
         client=getattr(options, "client", None),
+        behind_speaker=bool(getattr(options, "behind_speaker", False)),
     )
 
 
@@ -448,6 +449,7 @@ def _to_pipeline_options(options: WebJobOptions) -> PipelineJobOptions:
         burn=options.burn_in,
         translate=options.translate_to_english,
         client=getattr(options, "client", None),
+        behind_speaker=bool(getattr(options, "behind_speaker", False)),
     )
 
 

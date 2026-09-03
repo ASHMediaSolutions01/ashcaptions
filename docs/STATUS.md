@@ -16,7 +16,28 @@ running it, not inferred.
 
 ## Where the project is
 
-**v0.3, "pick your look", is what master is now** (2026-09-03). On top of the
+**v0.4, "short-form effects and clients", is what master is now** (2026-09-03).
+On top of v0.3:
+
+- **Captions behind the speaker.** A person matte from Robust Video Matting
+  (MobileNetV3, ONNX, onnxruntime on the CPU) is rendered once per job and
+  composited in the burn: captions drawn on the frame, the original frame
+  masked by the matte laid back on top. Measured on the real reel: matte at
+  480x854 in about real time (20 s for a 20 s clip), burn 6.9 s instead of
+  4.4 s, and the words vanish behind her head and hair in the frames. A
+  per-job option, off by default, aimed at reels.
+- **Clients and per-client glossaries.** A client on every job, a glossary
+  per client merged over the shared one (client wins), editable from the
+  control page, and `in\<Client>\` in the watch folder.
+- **The style editor** exposes alignment and the card-box effect.
+- **The release path was rehearsed for real**: `fetch_model.py`, `build.py`
+  (which had a real bug: a relative `--model-dir` resolved against
+  PyInstaller's build folder), the real installer into a scratch location,
+  the installed exe up in 2 s, guide and Studio served from the bundle, and
+  a real burn job done in 15 s through it. The public
+  `ashcaptions-releases` repo exists and is seeded.
+
+**v0.3, "pick your look", is underneath it** (2026-09-03). On top of the
 v0.2 hardening below, the team's actual request shipped:
 
 - **The Studio** (`/studio/<job>`, opens when a job finishes): the video plays
@@ -100,11 +121,9 @@ installer and the update banner in real use; the style editor does not yet
 expose `align` and `card_box` (edit the JSON, or pick one of the shipped
 looks).
 
-### v0.4 — short-form effects
-- **"Behind the speaker" captions**: an AI matte over the video, captions drawn
-  under the person. A separate compositing pass, aimed at reels; slow on
-  hour-long files without a GPU, and flagged as such in the UI.
-- Per-client glossaries: needs a client field on the job first.
+### v0.4 — short-form effects and clients (done, this release)
+Behind-the-speaker captions, clients with per-client glossaries, the style
+editor gaps, the release rehearsal. See "Where the project is".
 
 ### v0.5 and later
 - Arabic and Urdu styled captions (right-to-left ASS; Noto Naskh is bundled).

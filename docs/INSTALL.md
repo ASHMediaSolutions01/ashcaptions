@@ -104,6 +104,16 @@ For a **source run** (an editor following the guide), the same script with
 `--dest models` puts the cache at `<repo>\models\`, which the app prefers
 over `C:\AshCaptions\models` when it exists.
 
+### 2b. Pre-seed the person-matting model (once)
+
+```powershell
+.venv\Scripts\python.exe scripts\fetch_matte_model.py
+```
+
+Puts the 15 MB Robust Video Matting ONNX file into the same `build\models\`
+root, so "captions behind the speaker" works offline on the installed
+bundle. A source checkout downloads it on first use instead.
+
 ### 3. Build the bundle
 
 ```powershell

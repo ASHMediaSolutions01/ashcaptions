@@ -78,6 +78,7 @@ _CANCEL_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
     exc for exc in (
         getattr(engine, "TranscriptionCancelled", None),
         getattr(engine, "BurnCancelled", None),
+        getattr(engine, "MatteCancelled", None),
     ) if isinstance(exc, type)
 )
 
@@ -461,6 +462,37 @@ def build_run_job(
                 log.warning("punch-in unavailable; burning without it", exc_info=True)
                 punch_filter = None
 
+        # Captions behind the speaker: a person matte first (about the
+        # video's own length on a CPU), then a two-input burn. The matte is
+        # the first 40% of the burn's progress span. Any failure here is a
+        # job failure with a plain message, not a silent fall-through to a
+        # normal burn: the editor asked for the effect.
+        matte_path = None
+        if getattr(job.options, "behind_speaker", False):
+            if info is None or info.width <= 0:
+                raise RuntimeError(
+                    "Captions behind the speaker need the video's frame size, and ffprobe could not read it."
+                )
+            matte_end = start + round((end - start) * 0.4)
+            _stage(report, "matte")
+            model_path = engine.ensure_matte_model(settings.model_cache_dir, download=True)
+            matte_path = _matte_work_dir(job) / "matte.mp4"
+            engine.render_matte(
+                video_path,
+                matte_path,
+                model_path=model_path,
+                width=info.width,
+                height=info.height,
+                fps=info.fps,
+                duration_seconds=duration,
+                ffmpeg_path=resolved_ffmpeg,
+                threads=settings.cpu_threads,
+                on_progress=lambda pct: report(round(start + (matte_end - start) * (pct / 100))),
+                should_stop=should_stop,
+            )
+            start = matte_end
+            _stage(report, "burn")
+
         # fontsdir points libass at the bundled font directory (spec 7A.4)
         # so a style's font resolves identically on all six machines
         # without being installed into Windows.
@@ -474,9 +506,19 @@ def build_run_job(
             fontsdir=styles.fontsdir_arg(),
             punch_filter=punch_filter,
             on_progress=on_burn_progress,
-            optional={"should_stop": should_stop},
+            optional={"should_stop": should_stop, "matte_path": matte_path},
         )
         report(end)
+
+    def _stage(report: Any, name: str) -> None:
+        setter = getattr(report, "stage", None)
+        if callable(setter):
+            setter(name)
+
+    def _matte_work_dir(job: Job) -> Path:
+        path = Path(settings.tmp_dir) / f"job-{job.id}"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     run_job.get_transcriber = get_transcriber  # type: ignore[attr-defined]
     return run_job

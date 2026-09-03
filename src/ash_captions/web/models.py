@@ -44,6 +44,7 @@ class JobOptions(BaseModel):
     preset: str = Field(..., description="Caption style preset: CLEAN or POP")
     burn_in: bool = False
     translate_to_english: bool = False
+    behind_speaker: bool = Field(False, description="Draw the captions behind the person (reels; slower)")
     client: str | None = Field(
         None,
         description=(
@@ -68,6 +69,7 @@ class JobPathRequest(BaseModel):
     preset: str
     burn_in: bool = False
     translate_to_english: bool = False
+    behind_speaker: bool = False
     client: str | None = None
 
 

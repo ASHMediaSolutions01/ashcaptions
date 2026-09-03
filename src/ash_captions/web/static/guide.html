@@ -27,9 +27,11 @@
     <li><a href="#caption">2 · Caption a video</a></li>
     <li><a href="#long">3 · Long videos</a></li>
     <li><a href="#styles">4 · Choosing a look</a></li>
-    <li><a href="#punch">5 · Punch-in</a></li>
-    <li><a href="#problems">6 · Problems and fixes</a></li>
-    <li><a href="#worth">7 · Worth knowing</a></li>
+    <li><a href="#behind">5 · Behind the speaker</a></li>
+    <li><a href="#clients">6 · Clients and glossaries</a></li>
+    <li><a href="#punch">7 · Punch-in</a></li>
+    <li><a href="#problems">8 · Problems and fixes</a></li>
+    <li><a href="#worth">9 · Worth knowing</a></li>
   </ol>
   <div class="guide-progress">
     <strong id="progress-label">Setup: 0 of 6 steps done</strong>
@@ -221,8 +223,30 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p class="note warn">If you save a style under a built-in name like <code>POP</code>, every future job using <code>POP</code> on this PC gets <em>your</em> version. To make your own look, use <strong>Save as…</strong> with a new name. The editor marks a changed built-in as "customized locally".</p>
 </section>
 
+<section id="behind">
+  <h2>Part 5 · Captions behind the speaker</h2>
+  <p class="lede">For reels: tick <strong>Captions behind the speaker</strong> when you submit, and the captions are drawn behind the person, so their head and hands pass in front of the words.</p>
+  <p>The tool works out where the person is in every frame by itself (a small matting model that runs on the CPU), then burns the captions and lays the person back on top. The queue shows a <strong>Finding the speaker</strong> stage before the burn.</p>
+  <ul>
+    <li>It only applies when <strong>Burn captions into the video</strong> is ticked.</li>
+    <li>It costs about the video's own length in extra time: a 60-second reel takes about a minute longer. An hour-long file adds roughly an hour, so keep it for short-form.</li>
+    <li>It wants one clear person against the background. Two people, heavy motion blur or a very dark shot give a soft edge; check the result in the Studio's burned output.</li>
+    <li>The first use downloads the model once (15 MB); the installed version ships it.</li>
+  </ul>
+</section>
+
+<section id="clients">
+  <h2>Part 6 · Clients and glossaries</h2>
+  <p class="lede">Every job can carry a <strong>Client</strong>. Type the name in the Client box on the control page; it remembers the last one and suggests the ones it has seen.</p>
+  <ul>
+    <li>The job card and the Studio show the client, so you can tell whose job is whose.</li>
+    <li><strong>Names and brands spelled right</strong>: under the Client box, open <strong>Glossary</strong> and add one line per word, <code>wrong spelling =&gt; Right Spelling</code>, then Save. Every job for that client from then on gets those corrections in the <code>.srt</code>, <code>.ass</code>, transcript and English translation. A shared glossary applies to everyone.</li>
+    <li><strong>Watch folder</strong>: a video dropped into <code>C:\AshCaptions\in\&lt;Client&gt;\</code> is a job for that client, with that client's glossary.</li>
+  </ul>
+</section>
+
 <section id="punch">
-  <h2>Part 5 · Punch-in (zooming the footage)</h2>
+  <h2>Part 7 · Punch-in (zooming the footage)</h2>
   <p>A punch-in is the picture pushing in slightly on a word. On a talking-head video where the camera never moves, it's most of the difference between a captioned video and an edited one. It's <strong>off by default</strong>, because it changes how a client's video is framed.</p>
   <p>To turn it on, ask Ghazi to set it in <code>C:\AshCaptions\settings.json</code>:</p>
   <div class="cmd"><pre>{
@@ -242,14 +266,15 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="problems">
-  <h2>Part 6 · Problems and fixes</h2>
+  <h2>Part 8 · Problems and fixes</h2>
   <details class="fix"><summary>'python' is not recognised</summary><p>Python isn't on PATH. Re-run the installer, choose Modify, tick "Add python.exe to PATH".</p></details>
   <details class="fix"><summary>The browser page won't load, or an amber "Lost contact" banner appears</summary><p>The terminal window was closed or the app crashed. Start it again with the Step 6 command. A job that was running restarts from the beginning.</p></details>
   <details class="fix"><summary>"ASH Captions is already running"</summary><p>It's already open. Look for the icon near the clock, or another terminal window.</p></details>
   <details class="fix"><summary>The Queue says "Worker: stopped"</summary><p>The part of the app that runs jobs has died but the page is still up. Close the terminal window and start the app again. Send Ghazi the log file (below).</p></details>
   <details class="fix"><summary>A job says FAILED</summary><p>Read the reason under it. Usually the file was moved or renamed after you pasted the path, or the drive is full. Fix the cause, then click <strong>Retry</strong>.</p></details>
   <details class="fix"><summary>Captions are in the wrong language</summary><p>The <strong>Language</strong> dropdown is the language <em>spoken</em> in the video, not the one you want out. For translation, tick "Also translate to English".</p></details>
-  <details class="fix"><summary>Names or brands spelled wrong</summary><p>Expected: the speech model doesn't know them. Ask Ghazi to add them to the glossary file and they're corrected automatically from then on.</p></details>
+  <details class="fix"><summary>Names or brands spelled wrong</summary><p>Expected: the speech model doesn't know them. Open <strong>Glossary</strong> under the Client box, add a line <code>wrong =&gt; Right</code>, Save, and run the job again (from the Studio it takes seconds).</p></details>
+  <details class="fix"><summary>"Captions behind the speaker" left a soft or wrong edge</summary><p>The matting works best on one person against a steady background. For that clip, untick the option and burn normally.</p></details>
   <details class="fix"><summary>Captions are a plain font, not the style's</summary><p>The fonts didn't all download. Re-run the fonts command in Step 5.</p></details>
   <details class="fix"><summary>The preview says "A preview is already rendering"</summary><p>Only one preview runs at a time. Wait for it, then try again.</p></details>
   <details class="fix"><summary>"Not enough free space" when burning</summary><p>Free up the amount it names on the output drive, or take the <code>.srt</code> into Premiere instead of burning.</p></details>
@@ -260,7 +285,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="worth">
-  <h2>Part 7 · Worth knowing</h2>
+  <h2>Part 9 · Worth knowing</h2>
   <ul>
     <li><strong>Accuracy.</strong> English, Spanish and Portuguese are excellent; most European languages very good. <strong>Always skim the result before delivering.</strong> Names, brands and technical words are where mistakes hide.</li>
     <li><strong>Apostrophes, commas and accents in file names are fine.</strong> So are network drives, as long as they stay connected for the whole job.</li>

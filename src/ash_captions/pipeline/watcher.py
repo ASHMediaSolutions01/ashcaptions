@@ -465,8 +465,15 @@ class Watcher:
             # here, not the source of truth. Windows drops some creation
             # events during bulk copies, so the directory listing in
             # poll_once() is the backstop that must not depend on them.
-            self._wake_event.wait(timeout=self._check_interval)
+            woken = self._wake_event.wait(timeout=self._check_interval)
             self._wake_event.clear()
+            if woken:
+                # An event shortens the wait, but two polls must still be a
+                # full interval apart: three identical stat readings a few
+                # milliseconds apart during a pause in a copy are not
+                # "settled" (seen live at 1.1 MB of a 50 MB file). Stop
+                # ends this wait too.
+                self._stop_event.wait(timeout=self._check_interval)
 
 
 class _WakeOnAnyEvent(FileSystemEventHandler):

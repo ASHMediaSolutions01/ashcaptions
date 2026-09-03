@@ -287,7 +287,40 @@ back.
 
 ---
 
-## Part 5 — Punch-in (zooming the footage)
+## Part 5 — Captions behind the speaker
+
+For reels: tick **Captions behind the speaker** when you submit, and the
+captions are drawn *behind* the person, so their head and hands pass in front
+of the words. The tool works out where the person is in every frame on its own
+(a small matting model that runs on the CPU), then burns the captions and lays
+the person back on top.
+
+- It only applies when **Burn captions into the video** is ticked.
+- It costs about the video's own length in extra time: a 60-second reel takes
+  about a minute longer. It works on long files too, but an hour-long file
+  adds roughly an hour, so use it for short-form.
+- It needs a clear single person against the background. Two people, heavy
+  motion blur or a very dark shot give a soft edge; check the result.
+- The first use downloads the model once (15 MB); the installed version ships
+  it.
+
+## Part 6 — Clients and glossaries
+
+Every job can carry a **Client**. Type the client's name in the **Client** box
+on the control page (it remembers the last one, and suggests the ones it has
+seen). Then:
+
+- The output folder is the same, but the job card and the Studio show the
+  client, so you can tell whose job is whose.
+- **Names and brands spelled right**: under the Client box, open **Glossary**
+  and add one line per word: `wrong spelling => Right Spelling`. Save. From
+  then on every job for that client gets those corrections in the `.srt`,
+  `.ass`, transcript and English translation. There is also a shared
+  glossary that applies to everyone.
+- **Watch folder**: a video dropped into `C:\AshCaptions\in\<Client>\` is a
+  job for that client, with that client's glossary.
+
+## Part 7 — Punch-in (zooming the footage)
 
 A punch-in is the picture pushing in slightly on a word. It is **off by
 default**, because it changes how a client's video is framed. To turn it on,
@@ -315,7 +348,7 @@ on hour-long files and costs almost no extra render time.
 
 ---
 
-## Part 6 — Problems and fixes
+## Part 8 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
@@ -325,7 +358,7 @@ on hour-long files and costs almost no extra render time.
 | The queue says **Worker: stopped** | The part that runs jobs has died. Close the terminal, start the app again, send Ghazi the log |
 | A job says **FAILED** | Read the reason under it. Usually the file was moved or renamed, or the drive is full. Fix the cause, click **Retry** |
 | Captions are in the wrong language | **Language** is the language *spoken* in the video. For translation, tick "Also translate to English" |
-| Names or brands spelled wrong | Expected. Ask Ghazi to add them to the glossary file; they're corrected automatically from then on |
+| Names or brands spelled wrong | Expected. Open **Glossary** under the Client box, add `wrong => Right`, Save, and run the job again |
 | Captions are a plain font, not the style's | The fonts didn't all download. Re-run step 5b |
 | "A preview is already rendering" | Only one preview at a time. Wait, then try again |
 | "Not enough free space" when burning | Free up the amount it names, or take the `.srt` into Premiere instead |

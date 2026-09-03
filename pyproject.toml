@@ -1,6 +1,6 @@
 [project]
 name = "ash-captions"
-version = "0.1.0"
+version = "0.4.0"
 description = "In-house captioning tool for Ash Media Solutions"
 requires-python = ">=3.11"
 dependencies = [

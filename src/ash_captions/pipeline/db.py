@@ -43,7 +43,7 @@ LIVE_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
 # Pipeline stages, in order, as stored in ``jobs.stage`` while a job runs
 # so the control page can say "Transcribing - 12 min elapsed".
-STAGES = ("extract", "transcribe", "translate", "postprocess", "write", "burn")
+STAGES = ("extract", "transcribe", "translate", "postprocess", "write", "matte", "burn")
 
 
 @dataclass(frozen=True)
@@ -70,6 +70,10 @@ class JobOptions:
     # Picks that client's glossary on top of the shared one; None means the
     # shared glossary alone. Sanitized at the web/watch-folder boundary.
     client: str | None = None
+    # Draw the captions behind the person (a matte pass before the burn).
+    # Off by default: it costs about the video's length in extra time and
+    # is meant for reels.
+    behind_speaker: bool = False
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -96,6 +100,7 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     "translate": False,
     "mode": "full",
     "client": None,
+    "behind_speaker": False,
 }
 
 # How many recent rows `known_clients` scans for distinct client names.

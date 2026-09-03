@@ -16,6 +16,7 @@
   const presetSelect = document.getElementById("preset-select");
   const burnInCheck = document.getElementById("burn-in-check");
   const translateCheck = document.getElementById("translate-check");
+  const behindCheck = document.getElementById("behind-check");
   const startBtn = document.getElementById("start-btn");
   const cancelBtn = document.getElementById("cancel-btn");
   const submitError = document.getElementById("submit-error");
@@ -236,6 +237,7 @@
         preset: presetSelect.value,
         burn_in: burnInCheck.checked,
         translate_to_english: translateCheck.checked,
+        behind_speaker: !!(behindCheck && behindCheck.checked),
         client: AshClients.value() || null,
       }),
     });
@@ -249,6 +251,7 @@
     form.append("preset", presetSelect.value);
     form.append("burn_in", burnInCheck.checked ? "true" : "false");
     form.append("translate_to_english", translateCheck.checked ? "true" : "false");
+    form.append("behind_speaker", behindCheck && behindCheck.checked ? "true" : "false");
     if (AshClients.value()) form.append("client", AshClients.value());
     return AshApi.request("/api/jobs", { method: "POST", body: form });
   }
@@ -263,6 +266,7 @@
     postprocess: "Cleaning up the text",
     write: "Writing captions",
     cards_and_write: "Writing captions",
+    matte: "Finding the speaker",
     burn: "Burning captions in",
   };
 
@@ -335,7 +339,7 @@
     const pct = job.status === "done" ? 100 : Math.round((job.progress || 0) * 100);
     const label = STATUS_LABEL[job.status] || job.status;
     const opts = job.options || {};
-    const meta = [opts.language, opts.dialect, opts.preset, opts.burn_in ? "burn-in" : null, opts.translate_to_english ? "+ English" : null, opts.client ? `Client: ${opts.client}` : null]
+    const meta = [opts.language, opts.dialect, opts.preset, opts.burn_in ? "burn-in" : null, opts.translate_to_english ? "+ English" : null, opts.behind_speaker ? "behind speaker" : null, opts.client ? `Client: ${opts.client}` : null]
       .filter(Boolean)
       .join(" · ");
 
