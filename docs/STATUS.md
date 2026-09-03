@@ -156,9 +156,13 @@ editor gaps, the release rehearsal. See "Where the project is".
 
 ## Things Ghazi needs to do
 
-1. **Seed the public `ashcaptions-releases` repo** with one commit, then run
-   the four build/publish commands in `docs/INSTALL.md`. Until then editors run
-   from source with the guide, which works.
+1. **Roll the installer out.** v0.4.0 is published at
+   `github.com/ASHMediaSolutions01/ashcaptions-releases` (verified: the real
+   installer downloaded it from the manifest, hash-checked it, installed it,
+   and the installed exe ran a job). Give each editor
+   `installer\Install-AshCaptions.bat` and `installer\install.ps1` from
+   this repo; the installer pulls the release itself. Source installs keep
+   working with `git pull`.
 2. **Run the first real hour-long client file** with the page open, and send
    the log if anything looks wrong. This is the one thing no synthetic test
    replaces.
