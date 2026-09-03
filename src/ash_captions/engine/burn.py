@@ -178,8 +178,8 @@ def ffmpeg_major_version(ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH) -> int |
     return major
 
 
-def filter_file_option(ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH) -> str:
-    """The option that reads the video filtergraph from a file.
+def filter_file_option(ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH, *, complex_graph: bool = False) -> str:
+    """The option that reads the (video or complex) filtergraph from a file.
 
     ffmpeg 7 introduced ``-/option file`` (read any option's value from a
     file) and deprecated ``-filter_script``; ffmpeg 8 removed it. Git
@@ -187,8 +187,8 @@ def filter_file_option(ffmpeg_path: Path | str = DEFAULT_FFMPEG_PATH) -> str:
     """
     major = ffmpeg_major_version(ffmpeg_path)
     if major is not None and major < 7:
-        return "-filter_script:v"
-    return "-/filter:v"
+        return "-filter_complex_script" if complex_graph else "-filter_script:v"
+    return "-/filter_complex" if complex_graph else "-/filter:v"
 
 
 def detect_nvenc(*, nvidia_smi_path: str = DEFAULT_NVIDIA_SMI_PATH) -> bool:
@@ -370,8 +370,15 @@ def build_burn_command(
     audio_codec: str | None = None,
     width: int = 0,
     height: int = 0,
+    matte_path: Path | str | None = None,
+    fps: float = 0.0,
 ) -> list[str]:
     """Stage ``work_dir`` and return the ffmpeg argv that burns the captions.
+
+    With ``matte_path`` (a greyscale person matte from ``engine.matte``)
+    the captions go *behind* the speaker: the graph becomes a two-input
+    ``-filter_complex`` (see ``matte.composite_filtergraph``) and ``fps``
+    must be the rate the matte was rendered at.
 
     Staging means: ``ass_path`` is copied to ``work_dir/captions.ass`` and
     the filtergraph is written to ``work_dir/filter.txt``. The argv refers
@@ -396,9 +403,27 @@ def build_burn_command(
 
     work_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ass_path, work_dir / CAPTIONS_FILENAME)
-    (work_dir / FILTER_SCRIPT_FILENAME).write_text(
-        build_filtergraph(fontsdir=fontsdir, punch_filter=punch_filter), encoding="utf-8"
-    )
+    caption_filter = build_filtergraph(fontsdir=fontsdir, punch_filter=None)
+    if matte_path is not None:
+        from .matte import composite_filtergraph
+
+        if width <= 0 or height <= 0:
+            raise BurnInError("Captions behind the speaker need the video's frame size (probe failed)")
+        graph = composite_filtergraph(
+            caption_filter=caption_filter, width=width, height=height, fps=fps, punch_filter=punch_filter
+        )
+        inputs = ["-i", str(video_path), "-i", str(Path(os.path.abspath(matte_path)))]
+        maps = ["-map", "[out]", "-map", "0:a:0?"]
+        filter_args = [filter_file_option(ffmpeg_path, complex_graph=True), FILTER_SCRIPT_FILENAME]
+    else:
+        graph = build_filtergraph(fontsdir=fontsdir, punch_filter=punch_filter)
+        inputs = ["-i", str(video_path)]
+        # Exactly the first video and (if present) first audio stream: a
+        # camera file's data/timecode tracks would otherwise fail the mux
+        # and a second audio track would be picked by "best", not "first".
+        maps = ["-map", "0:v:0", "-map", "0:a:0?"]
+        filter_args = [filter_file_option(ffmpeg_path), FILTER_SCRIPT_FILENAME]
+    (work_dir / FILTER_SCRIPT_FILENAME).write_text(graph, encoding="utf-8")
 
     encoder = select_video_encoder(ffmpeg_path, use_nvenc=use_nvenc)
 
@@ -408,13 +433,9 @@ def build_burn_command(
         "-hide_banner",
         "-loglevel", "error",
         "-nostdin",
-        "-i", str(video_path),
-        # Exactly the first video and (if present) first audio stream: a
-        # camera file's data/timecode tracks would otherwise fail the mux
-        # and a second audio track would be picked by "best", not "first".
-        "-map", "0:v:0",
-        "-map", "0:a:0?",
-        filter_file_option(ffmpeg_path), FILTER_SCRIPT_FILENAME,
+        *inputs,
+        *maps,
+        *filter_args,
         *encoder_args(encoder, width=width, height=height),
         *audio_args(audio_codec),
         "-progress", "pipe:1",
@@ -474,8 +495,12 @@ def burn_captions(
     should_stop: StopCheck | None = None,
     video_info: VideoInfo | None = None,
     work_dir: Path | str | None = None,
+    matte_path: Path | str | None = None,
 ) -> Path:
     """Burn ``ass_path``'s captions into ``video_path``, writing an MP4.
+
+    ``matte_path`` (from ``engine.matte.render_matte``) puts the captions
+    behind the speaker; see ``build_burn_command``.
 
     Args:
         duration_seconds: total video duration, used to turn ffmpeg's raw
@@ -529,6 +554,8 @@ def burn_captions(
             audio_codec=video_info.audio_codec if video_info else None,
             width=video_info.width if video_info else 0,
             height=video_info.height if video_info else 0,
+            matte_path=matte_path,
+            fps=video_info.fps if video_info else 0.0,
         )
         try:
             run = run_ffmpeg(

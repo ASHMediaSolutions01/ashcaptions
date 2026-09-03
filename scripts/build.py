@@ -323,7 +323,11 @@ def build_pyinstaller_args(
     if ffmpeg_license is not None:
         args += ["--add-data", f"{ffmpeg_license};bin"]
     if model_dir is not None:
-        args += ["--add-data", f"{model_dir};models"]
+        # Absolute on purpose: PyInstaller resolves relative --add-data sources
+        # against its own workpath (build/), so the documented
+        # `--model-dir build\models` silently became build/build\models and
+        # the build failed. Verified on the first real release rehearsal.
+        args += ["--add-data", f"{Path(model_dir).resolve()};models"]
     return args
 
 

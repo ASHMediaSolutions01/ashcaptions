@@ -19,6 +19,17 @@ without breaking callers:
 """
 from .audio import AudioExtractionError, DEFAULT_FFMPEG_PATH, extract_audio
 from .ffmpeg_process import active_processes, kill_active_processes
+from .matte import (
+    MATTE_MODEL_FILENAME,
+    MatteCancelled,
+    MatteError,
+    MatteResult,
+    composite_filtergraph,
+    ensure_matte_model,
+    matte_model_path,
+    render_matte,
+    working_size,
+)
 from .probe import ProbeError, VideoInfo, ffprobe_beside, probe_video
 from .punch import (
     MAX_DURATION_SECONDS,
@@ -87,6 +98,15 @@ __all__ = [
     "detect_nvenc",
     "nvenc_encode_works",
     "probe_video",
+    "MATTE_MODEL_FILENAME",
+    "MatteCancelled",
+    "MatteError",
+    "MatteResult",
+    "composite_filtergraph",
+    "ensure_matte_model",
+    "matte_model_path",
+    "render_matte",
+    "working_size",
     "ffprobe_beside",
     "VideoInfo",
     "ProbeError",

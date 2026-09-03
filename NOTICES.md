@@ -50,6 +50,14 @@ licence named in its `license` field; the full text is the file named in its
 bundled are under the SIL Open Font License 1.1. Font names are trademarks or
 reserved font names of their respective authors, as those licences describe.
 
+## Robust Video Matting (person matte) -- GPL-3.0
+
+`models/rvm_mobilenetv3_fp32.onnx` is the MobileNetV3 variant of Robust Video
+Matting (github.com/PeterL1n/RobustVideoMatting), redistributed unmodified
+under the GPL-3.0 so "captions behind the speaker" works offline. It runs in
+its own onnxruntime session; ASH Captions calls it, it is not linked in. The
+project's licence text is at that repository.
+
 ## JASSUB 1.8.8 (browser caption renderer) -- MIT, with bundled components
 
 `src/ash_captions/web/static/vendor/jassub/` vendors JASSUB, libass compiled to
