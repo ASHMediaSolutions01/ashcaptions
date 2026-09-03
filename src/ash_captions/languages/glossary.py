@@ -25,18 +25,37 @@ Load the file once per job (``load_glossary``) and pass the resulting
 entries to every ``apply_glossary`` / ``languages.postprocess`` call: the
 compiled pattern is cached per entries object, so the per-word calls the
 runner makes cost a regex scan each, not a file read plus a regex build.
+
+Per-client glossaries
+---------------------
+The studio has several clients with their own brand and people names.
+``<glossary_dir>/glossary.txt`` is the shared file every job gets;
+``<glossary_dir>/<client slug>.txt`` (``client_glossary_path``) is one
+client's own. ``load_glossary_entries_for`` merges the two with the
+client's entries winning on the same match key, so "Gazi => Ghazi" in the
+shared file and "Gazi => Gazi Holdings" in a client's file gives that
+client's jobs the second spelling and everyone else the first.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections import OrderedDict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ._textmatch import build_alternation
+
+log = logging.getLogger(__name__)
+
+# The glossary every job gets, client or not.
+SHARED_GLOSSARY_FILENAME = "glossary.txt"
+
+_SLUG_SEPARATOR_RE = re.compile(r"\s+")
+_SLUG_FORBIDDEN = ("/", "\\", "\0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +88,104 @@ def parse_glossary(text: str) -> tuple[GlossaryEntry, ...]:
         else:
             entries.append(GlossaryEntry(line, line))
     return tuple(entries)
+
+
+def validate_glossary_text(text: str) -> list[str]:
+    """Line-level problems in glossary file contents, as plain messages
+    ("line 3: ..."). Empty when every line is a comment, blank, a bare
+    term, or a complete ``wrong => right`` pair -- exactly the lines
+    ``parse_glossary`` keeps. ``parse_glossary`` itself never raises (a
+    bad glossary must never fail a job); this is for the editor saving
+    one, where a skipped line should be a refusal, not a silent drop.
+    """
+
+    problems: list[str] = []
+    for number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=>" not in line:
+            continue
+        left, _, right = line.partition("=>")
+        left, right = left.strip(), right.strip()
+        if "=>" in right:
+            problems.append(f"line {number}: more than one '=>' -- one correction per line")
+        elif not left and not right:
+            problems.append(f"line {number}: '=>' with nothing on either side")
+        elif not left:
+            problems.append(f"line {number}: nothing before '=>' (expected 'wrong spelling => Right Spelling')")
+        elif not right:
+            problems.append(f"line {number}: nothing after '=>' (expected 'wrong spelling => Right Spelling')")
+    return problems
+
+
+def client_slug(client: str) -> str:
+    """The file stem for a client's glossary: trimmed, lower-cased, runs of
+    whitespace replaced by ``-`` ("Acme Corp" -> "acme-corp")."""
+
+    return _SLUG_SEPARATOR_RE.sub("-", client.strip()).lower()
+
+
+def client_glossary_path(glossary_dir: str | os.PathLike[str], client: str) -> Path:
+    """``<glossary_dir>/<client_slug(client)>.txt``.
+
+    The web layer sanitizes client names at its boundary; this is the
+    belt-and-braces check at the point a name becomes a path. Raises
+    ``ValueError`` for an empty slug, one containing a path separator,
+    a dot-only name, or one that would collide with the shared file.
+    """
+
+    slug = client_slug(client)
+    if not slug or slug.strip(".") == "" or any(ch in slug for ch in _SLUG_FORBIDDEN):
+        raise ValueError(f"{client!r} is not a usable client name")
+    if f"{slug}.txt" == SHARED_GLOSSARY_FILENAME:
+        raise ValueError(f"{client!r} would collide with the shared glossary file")
+    return Path(glossary_dir) / f"{slug}.txt"
+
+
+def merge_glossary_entries(
+    shared: Sequence[GlossaryEntry], client: Sequence[GlossaryEntry]
+) -> tuple[GlossaryEntry, ...]:
+    """``shared`` then ``client``, with a client entry replacing any shared
+    entry that has the same (case-insensitive) match text -- the client's
+    spelling of a name is the one that wins on that client's jobs."""
+
+    overridden = {entry.match.lower() for entry in client}
+    kept = tuple(entry for entry in shared if entry.match.lower() not in overridden)
+    return kept + tuple(client)
+
+
+def load_glossary_entries_for(
+    glossary_dir: str | os.PathLike[str],
+    client: str | None,
+    *,
+    loader: Callable[[Path], tuple[GlossaryEntry, ...]] | None = None,
+) -> tuple[GlossaryEntry, ...]:
+    """The shared glossary merged with ``client``'s own (if any), client
+    entries winning on conflicts. Never raises: a missing or malformed
+    file is an empty glossary, and a client name that can't be a path is
+    logged and treated as "no client file". Logs at INFO which files were
+    read and how many entries each contributed, so a job's log answers
+    "which glossary applied?" without guessing.
+
+    ``loader`` (default ``load_glossary``) is how each file is read -- the
+    package-level wrapper passes its own name so a caller counting reads
+    through ``languages.load_glossary`` sees exactly one per file.
+    """
+
+    read = loader or load_glossary
+    directory = Path(glossary_dir)
+    shared_path = directory / SHARED_GLOSSARY_FILENAME
+    shared = read(shared_path)
+    log.info("glossary: %s (%d entries)", shared_path, len(shared))
+    if not client or not client.strip():
+        return shared
+    try:
+        path = client_glossary_path(directory, client)
+    except ValueError as exc:
+        log.warning("glossary: no client file for %r: %s", client, exc)
+        return shared
+    own = read(path)
+    log.info("glossary: client %r -> %s (%d entries)", client, path, len(own))
+    return merge_glossary_entries(shared, own) if own else shared
 
 
 def load_glossary(path: str | os.PathLike[str] | None) -> tuple[GlossaryEntry, ...]:

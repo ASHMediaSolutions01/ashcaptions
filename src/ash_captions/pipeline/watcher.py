@@ -19,6 +19,14 @@ dependency itself, so tests drive it tick-by-tick with no real sleeping.
 Only the background loop started by ``start()`` waits between ticks (a
 short, injectable ``check_interval``); ``poll_once()`` itself never waits.
 
+Client subfolders
+-----------------
+``in\\<Client Name>\\clip.mp4`` is a job for that client: the listing
+covers ``in\\`` itself and exactly one level of subfolders (nothing
+deeper, so a stray project tree copied in does not become a hundred
+jobs). The watcher only reports the path; the queue adapter turns the
+folder name into the job's client.
+
 Memory across restarts
 ----------------------
 ``_enqueued`` is what stops a file being reported twice. It starts empty
@@ -115,6 +123,22 @@ class StabilityTracker:
     def tracked_paths(self) -> list[Path]:
         """Paths currently held in state (observed at least once, not yet forgotten)."""
         return list(self._last.keys())
+
+
+def list_drop_candidates(watch_dir: Path) -> list[Path]:
+    """Every entry of ``watch_dir`` plus the entries of its immediate
+    subfolders (one level, never deeper). Raises ``OSError`` only when the
+    top-level listing fails; an unreadable subfolder is skipped."""
+    candidates: list[Path] = []
+    for entry in watch_dir.iterdir():
+        if entry.is_dir():
+            try:
+                candidates.extend(child for child in entry.iterdir() if not child.is_dir())
+            except OSError:
+                continue
+        else:
+            candidates.append(entry)
+    return candidates
 
 
 def _is_readonly(path: Path) -> bool:
@@ -235,12 +259,24 @@ class Watcher:
         added = 0
         for raw in paths:
             path = Path(raw)
-            if path.parent != self.watch_dir and path.parent.resolve() != self.watch_dir.resolve():
+            if not self._is_drop_location(path.parent):
                 continue
             if path not in self._enqueued:
                 self._enqueued.add(path)
                 added += 1
         return added
+
+    def _is_drop_location(self, folder: Path) -> bool:
+        """``watch_dir`` itself or one of its immediate subfolders."""
+        for candidate in (folder, folder.parent):
+            if candidate == self.watch_dir:
+                return True
+            try:
+                if candidate.resolve() == self.watch_dir.resolve():
+                    return True
+            except OSError:
+                continue
+        return False
 
     def enqueued_paths(self) -> set[Path]:
         return set(self._enqueued)
@@ -257,7 +293,7 @@ class Watcher:
         seen: set[Path] = set()
         listing_ok = True
         try:
-            candidates = list(self.watch_dir.iterdir())
+            candidates = list_drop_candidates(self.watch_dir)
         except OSError:
             # Directory unreachable (network share dropped, folder removed).
             # Nothing to do this tick -- and nothing to forget, since the
@@ -280,7 +316,7 @@ class Watcher:
 
             if path not in self._first_seen:
                 self._first_seen[path] = now
-                log.info("watch: seen %s (%d bytes); waiting for it to settle", path.name, st.st_size)
+                log.info("watch: seen %s (%d bytes); waiting for it to settle", self._label(path), st.st_size)
 
             stable = self._tracker.observe(path, st.st_size, st.st_mtime)
             if not stable:
@@ -298,7 +334,7 @@ class Watcher:
                 self._enqueued.add(path)
                 self._forget(path)
                 newly_ready.append(path)
-                log.info("watch: enqueued %s", path.name)
+                log.info("watch: enqueued %s", self._label(path))
                 self._on_ready(path)
             else:
                 self._note_locked(path, now)
@@ -318,6 +354,14 @@ class Watcher:
 
         self.last_poll_at = time.time()
         return newly_ready
+
+    def _label(self, path: Path) -> str:
+        """``clip.mp4`` for a top-level drop, ``Acme\\clip.mp4`` for a client
+        subfolder -- the log should say which client a drop went to."""
+        try:
+            return str(path.relative_to(self.watch_dir))
+        except ValueError:
+            return path.name
 
     def _forget(self, path: Path) -> None:
         self._tracker.forget(path)
@@ -358,8 +402,11 @@ class Watcher:
 
             observer = Observer()
             try:
+                # recursive: a drop into a client subfolder should wake the
+                # poll as promptly as one into in\ itself. The listing in
+                # poll_once() still decides what counts (one level only).
                 observer.schedule(
-                    _WakeOnAnyEvent(self._wake_event), str(self.watch_dir), recursive=False
+                    _WakeOnAnyEvent(self._wake_event), str(self.watch_dir), recursive=True
                 )
                 observer.start()
             except Exception:

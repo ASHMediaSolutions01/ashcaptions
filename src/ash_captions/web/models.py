@@ -44,6 +44,13 @@ class JobOptions(BaseModel):
     preset: str = Field(..., description="Caption style preset: CLEAN or POP")
     burn_in: bool = False
     translate_to_english: bool = False
+    client: str | None = Field(
+        None,
+        description=(
+            "Which client the footage is for, e.g. 'Acme'. Picks that client's glossary on top "
+            "of the shared one. Sanitized by `validation.validate_client_name`; None = no client."
+        ),
+    )
 
 
 class JobPathRequest(BaseModel):
@@ -61,6 +68,7 @@ class JobPathRequest(BaseModel):
     preset: str
     burn_in: bool = False
     translate_to_english: bool = False
+    client: str | None = None
 
 
 class Job(BaseModel):
@@ -241,6 +249,24 @@ class PresetRequest(BaseModel):
     name of the look to apply, exactly as listed by GET /api/styles."""
 
     preset: str = Field(..., min_length=1)
+
+
+class ClientGlossary(BaseModel):
+    """GET /api/clients/{client}/glossary: one client's glossary file.
+    `text` is the whole file (empty when it doesn't exist yet); `slug` is
+    the file stem it lives under (`<glossary_dir>/<slug>.txt`)."""
+
+    client: str
+    slug: str
+    text: str
+
+
+class GlossaryTextRequest(BaseModel):
+    """Body of PUT /api/clients/{client}/glossary: the whole file, one
+    entry per line -- `wrong spelling => Right Spelling`, or a bare term
+    to force its spelling (see `ash_captions.languages.glossary`)."""
+
+    text: str = Field(..., max_length=200_000)
 
 
 class FontFile(BaseModel):

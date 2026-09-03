@@ -74,8 +74,23 @@
             <label for="preset-select">Caption style</label>
             <select id="preset-select"></select>
           </div>
-          <div></div>
+          <div class="field">
+            <label for="client-input">Client</label>
+            <input type="text" id="client-input" list="client-list" placeholder="e.g. Acme" maxlength="60" autocomplete="off">
+            <datalist id="client-list"></datalist>
+            <p class="hint">Optional. Picks that client's glossary (their names and brands) on top of the shared one.</p>
+          </div>
         </div>
+
+        <details id="glossary-details" class="glossary">
+          <summary>Glossary for this client</summary>
+          <p class="hint" id="glossary-hint">One entry per line: <code>wrong spelling =&gt; Right Spelling</code>. A line with just a name forces that spelling. <code>#</code> starts a comment.</p>
+          <textarea id="glossary-text" rows="6" spellcheck="false" placeholder="Gazi => Ghazi&#10;Acme Corp"></textarea>
+          <div class="glossary-actions">
+            <button type="button" class="btn secondary" id="glossary-save-btn">Save glossary</button>
+            <span id="glossary-status" role="status"></span>
+          </div>
+        </details>
 
         <div class="checks">
           <label class="check">
@@ -114,6 +129,7 @@
 <script src="/static/api.js?v=__VERSION__"></script>
 <script src="/static/updates.js?v=__VERSION__"></script>
 <script src="/static/studio_hook.js?v=__VERSION__"></script>
+<script src="/static/clients.js?v=__VERSION__"></script>
 <script src="/static/app.js?v=__VERSION__"></script>
 </body>
 </html>

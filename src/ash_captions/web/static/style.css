@@ -396,6 +396,43 @@ h2 {
   margin-top: 10px;
 }
 a.btn { text-decoration: none; }
+/* Client glossary disclosure (clients.js) */
+.glossary { margin: -6px 0 18px; }
+.glossary summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  list-style: none;
+}
+.glossary summary::-webkit-details-marker { display: none; }
+.glossary summary:hover { color: var(--accent-dark); }
+.glossary[open] summary { margin-bottom: 6px; }
+.glossary .hint { margin: 0 0 8px; }
+.glossary code { font-size: 12px; background: var(--pending-bg); padding: 1px 5px; border-radius: 4px; }
+#glossary-text {
+  width: 100%;
+  padding: 10px 12px;
+  font: 14px/1.5 Consolas, "Cascadia Mono", monospace;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  resize: vertical;
+}
+#glossary-text:focus { outline: none; border-color: var(--accent); }
+#glossary-text:disabled { background: var(--pending-bg); }
+.glossary-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+#glossary-status { font-size: 13px; color: var(--muted); }
+#glossary-status.ok { color: var(--ok); }
+#glossary-status.err { color: var(--fail); }
+
 /* Page setting under the submit form (studio_hook.js) */
 .check.setting {
   margin-top: 16px;

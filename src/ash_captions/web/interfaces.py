@@ -87,6 +87,10 @@ class JobQueue(Protocol):
     #   that look; returns the new ``pending`` job. Same errors.
     #   Both back the Studio page (``routes_studio.py``); a queue without
     #   them makes those routes answer 501.
+    # * ``known_clients() -> list[str]`` -- distinct ``options.client``
+    #   values on recent jobs, most recent first, for the control page's
+    #   client picker (``routes_clients.py``). Without it the picker lists
+    #   only the clients that have a glossary file.
 
 
 @runtime_checkable
@@ -218,6 +222,49 @@ class PreviewRenderer(Protocol):
 
     def get_preview(self, job_id: str) -> PreviewJob:
         """Current status of a preview job. Raises PreviewNotFoundError."""
+        ...
+
+
+# --- Per-client glossaries --------------------------------------------------
+#
+# One shared glossary plus one file per client (`ash_captions.languages.
+# glossary`). The web layer edits those files through this protocol; the
+# real implementation (`web.glossary_adapter.ClientGlossaryFiles`) is the
+# one allowed to import `ash_captions.languages`, same as the adapters above.
+
+
+class GlossaryValidationFailedError(Exception):
+    """Raised by ClientGlossaryProvider.write_glossary() when the text has
+    lines the glossary parser would skip. `problems` names each one
+    ("line 3: nothing after '=>'"); the route returns them as a 400."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__("; ".join(problems))
+        self.problems = list(problems)
+
+
+@runtime_checkable
+class ClientGlossaryProvider(Protocol):
+    """The per-client glossary files, keyed by client name. Every method
+    takes the *display* name ("Acme Corp"); the implementation derives the
+    file slug. Callers sanitize the name first (`validation.validate_client_name`)."""
+
+    def list_clients(self) -> list[str]:
+        """Slugs of every client glossary file present (never the shared one)."""
+        ...
+
+    def read_glossary(self, client: str) -> str:
+        """The file's text, or "" when the client has no file yet."""
+        ...
+
+    def write_glossary(self, client: str, text: str) -> None:
+        """Validate and atomically replace the client's file. Raises
+        GlossaryValidationFailedError; an empty text is allowed (it empties
+        the file rather than deleting it)."""
+        ...
+
+    def slug_for(self, client: str) -> str:
+        """The file stem the client's glossary lives under."""
         ...
 
 

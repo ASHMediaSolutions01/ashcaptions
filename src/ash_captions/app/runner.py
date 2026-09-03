@@ -59,6 +59,7 @@ from .runner_util import (  # noqa: F401 - re-exported for tests and callers
     atomic_write,
     check_free_space,
     load_glossary_entries,
+    load_glossary_entries_for,
 )
 
 log = logging.getLogger(__name__)
@@ -219,8 +220,16 @@ def build_run_job(
 
         preset_id = dialect_preset_id(job.options.language, job.options.dialect)
         resolved = languages.resolve(job.options.language, preset_id)
+        # The shared glossary merged with this job's client's own file,
+        # client entries winning (languages.load_glossary_entries_for logs
+        # which files applied). The shared path is still passed down as the
+        # fallback an older `postprocess` reads per call when `entries` is
+        # None.
+        client = getattr(job.options, "client", None)
         client_glossary_path = settings.glossary_dir / "glossary.txt"
-        glossary_entries = load_glossary_entries(client_glossary_path)
+        glossary_entries = load_glossary_entries_for(settings.glossary_dir, client)
+        if glossary_entries is not None:
+            log.info("job %s: client %r, %d glossary entries", job.id, client, len(glossary_entries))
         # Never raises -- an unknown or invalid style name falls back to
         # styles.DEFAULT_STYLE (spec 7A.4), so a bad/renamed style can
         # never fail a job.

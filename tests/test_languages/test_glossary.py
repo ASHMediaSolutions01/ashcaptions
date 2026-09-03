@@ -171,3 +171,77 @@ def test_apply_glossary_per_word_is_fast_with_preloaded_entries():
     for w in words:
         apply_glossary(w, entries)
     assert time.perf_counter() - start < 2.0
+
+
+# -- per-client glossaries ----------------------------------------------
+
+
+def test_client_slug_and_path():
+    import pytest
+
+    from ash_captions.languages.glossary import client_glossary_path, client_slug
+
+    assert client_slug("Acme") == "acme"
+    assert client_slug("  Acme   Corp ") == "acme-corp"
+    assert client_glossary_path("C:/g", "Acme Corp").name == "acme-corp.txt"
+    for bad in ("", "   ", "..", "a/b", "a\\b", "glossary", "GLOSSARY"):
+        with pytest.raises(ValueError):
+            client_glossary_path("C:/g", bad)
+
+
+def test_merge_gives_the_client_the_last_word_on_the_same_match():
+    from ash_captions.languages.glossary import merge_glossary_entries
+
+    shared = (GlossaryEntry("gazi", "Ghazi"), GlossaryEntry("broker", "Agent"))
+    client = (GlossaryEntry("Broker", "Brokerage"), GlossaryEntry("widget", "Acme Widget"))
+
+    merged = merge_glossary_entries(shared, client)
+
+    assert merged == (
+        GlossaryEntry("gazi", "Ghazi"),
+        GlossaryEntry("Broker", "Brokerage"),
+        GlossaryEntry("widget", "Acme Widget"),
+    )
+    assert apply_glossary("the broker met gazi", merged)[0] == "the Brokerage met Ghazi"
+
+
+def test_load_glossary_entries_for_merges_shared_and_client_files(tmp_path, caplog):
+    from ash_captions.languages import load_glossary_entries_for
+
+    (tmp_path / "glossary.txt").write_text("gazi => Ghazi\nbroker => Agent\n", encoding="utf-8")
+    (tmp_path / "acme-corp.txt").write_text("broker => Brokerage\n", encoding="utf-8")
+
+    with caplog.at_level("INFO", logger="ash_captions.languages.glossary"):
+        acme = load_glossary_entries_for(tmp_path, "Acme Corp")
+        nobody = load_glossary_entries_for(tmp_path, None)
+        unknown = load_glossary_entries_for(tmp_path, "Globex")
+        unusable = load_glossary_entries_for(tmp_path, "../x")
+
+    assert apply_glossary("broker gazi", acme)[0] == "Brokerage Ghazi"
+    assert apply_glossary("broker gazi", nobody)[0] == "Agent Ghazi"
+    assert unknown == nobody and unusable == nobody
+    assert "acme-corp.txt (1 entries)" in caplog.text
+    assert "glossary.txt (2 entries)" in caplog.text
+    assert "no client file for '../x'" in caplog.text
+
+
+def test_load_glossary_entries_for_survives_a_missing_folder(tmp_path):
+    from ash_captions.languages import load_glossary_entries_for
+
+    assert load_glossary_entries_for(tmp_path / "nope", "Acme") == ()
+
+
+def test_validate_glossary_text_names_the_broken_lines():
+    from ash_captions.languages.glossary import validate_glossary_text
+
+    assert validate_glossary_text("") == []
+    assert validate_glossary_text("# c\n\nAcme\nGazi => Ghazi\n") == []
+    problems = validate_glossary_text("ok => fine\nwrong =>\n=> right\n=>\na => b => c\n")
+    assert [p.split(":")[0] for p in problems] == ["line 2", "line 3", "line 4", "line 5"]
+    assert "nothing after" in problems[0]
+    assert "nothing before" in problems[1]
+    assert "either side" in problems[2]
+    assert "more than one" in problems[3]
+    # everything the validator passes, the parser keeps (and vice versa)
+    text = "ok => fine\nwrong =>\nBare Term\n"
+    assert len(parse_glossary(text)) == 2 and len(validate_glossary_text(text)) == 1

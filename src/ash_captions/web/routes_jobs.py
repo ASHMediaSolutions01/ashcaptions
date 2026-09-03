@@ -28,7 +28,7 @@ from .interfaces import (
     StyleProvider,
 )
 from .models import ALLOWED_VIDEO_EXTENSIONS, Job, JobOptions, JobPathRequest, Language
-from .validation import validate_local_path
+from .validation import validate_client_name, validate_local_path
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MiB
 # Hard ceiling for the upload route. Editors' real footage is routinely
@@ -91,6 +91,7 @@ def build_jobs_router(
             body.preset,
             body.burn_in,
             body.translate_to_english,
+            client=body.client,
         )
         path = await run_in_threadpool(validate_local_path, body.path)
         return queue.submit(path, options)
@@ -104,6 +105,7 @@ def build_jobs_router(
         preset: str = Form(...),
         burn_in: bool = Form(False),
         translate_to_english: bool = Form(False),
+        client: str | None = Form(None),
         queue: JobQueue = Depends(get_queue),
         catalogue: LanguageCatalogueProvider = Depends(get_catalogue),
         style_provider: StyleProvider = Depends(get_style_provider),
@@ -115,7 +117,7 @@ def build_jobs_router(
         slow and wastes disk for the multi-GB files editors work with."""
         _reject_oversized(request)
         options = validate_options(
-            catalogue, style_provider, language, dialect, preset, burn_in, translate_to_english
+            catalogue, style_provider, language, dialect, preset, burn_in, translate_to_english, client=client
         )
         _validate_upload(file)
 
@@ -161,6 +163,7 @@ def validate_options(
     preset: str,
     burn_in: bool,
     translate_to_english: bool,
+    client: str | None = None,
 ) -> JobOptions:
     languages = {lang.code: lang for lang in catalogue.list_languages()}
     lang_entry = languages.get(language)
@@ -193,6 +196,7 @@ def validate_options(
         preset=preset_normalized,
         burn_in=burn_in,
         translate_to_english=translate_to_english,
+        client=validate_client_name(client),
     )
 
 

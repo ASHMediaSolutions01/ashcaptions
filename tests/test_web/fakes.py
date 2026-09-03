@@ -12,13 +12,13 @@ from typing import Any, AsyncIterator
 
 from ash_captions.web.interfaces import (
     BundledFontFile,
+    GlossaryValidationFailedError,
     JobNotFoundError,
     JobNotRetryableError,
     PreviewNotFoundError,
     StyleIsShippedError,
     StyleNotFoundError,
     StyleValidationFailedError,
-    UpdateApplyNotFoundError,
 )
 from ash_captions.web.models import (
     Dialect,
@@ -29,8 +29,6 @@ from ash_captions.web.models import (
     PreviewJob,
     PreviewStatus,
     StyleSummary,
-    UpdateApplyJob,
-    UpdateApplyStatus,
 )
 
 
@@ -183,6 +181,16 @@ class FakeJobQueue:
         self.burns.append(burn)
         self._notify()
         return burn
+
+    def known_clients(self) -> list[str]:
+        """Optional queue extra (see interfaces.JobQueue): distinct clients
+        on jobs, newest first, case-insensitively deduplicated."""
+        seen: dict[str, str] = {}
+        for job in self.list_jobs():
+            client = job.options.client
+            if client:
+                seen.setdefault(client.lower(), client)
+        return list(seen.values())
 
     def _restylable(self, job_id: str, preset: str) -> Job:
         job = self._jobs.get(job_id)
@@ -372,10 +380,16 @@ class FakeStyleProvider:
             raise StyleValidationFailedError(f"size: {size} is out of range (expected 10-300)")
         active_word = definition.get("active_word") or {}
         effect = active_word.get("effect")
-        known_effects = {"none", "pop", "box", "scale_box", "karaoke", "shake", "glow"}
+        known_effects = {"none", "pop", "box", "scale_box", "card_box", "karaoke", "shake", "glow"}
         if effect is not None and effect not in known_effects:
             raise StyleValidationFailedError(
                 f"active_word.effect: unknown value {effect!r} (expected one of {sorted(known_effects)})"
+            )
+        align = (definition.get("layout") or {}).get("align")
+        known_aligns = {"left", "center", "right"}
+        if align is not None and align not in known_aligns:
+            raise StyleValidationFailedError(
+                f"layout.align: unknown value {align!r} (expected one of {sorted(known_aligns)})"
             )
 
 
@@ -411,78 +425,42 @@ class FakePreviewRenderer:
         return updated
 
 
-# --- In-app updates (spec 11.4) ---------------------------------------------
-#
-# Real production checking is owned by `app/__main__.py`, which sets
-# `app.state.update_state` itself, after `create_app()` returns, to an
-# `ash_captions.app.updater.UpdateState` (see interfaces.py's module
-# docstring on this). Tests do the same thing: set `app.state.update_state`
-# to one of these fakes on the `app` fixture, mirroring production exactly
-# rather than routing it through `create_app()`'s constructor.
+# --- Per-client glossaries ---------------------------------------------------
 
 
-class FakeUpdateInfo:
-    """Stands in for `ash_captions.app.updater.UpdateInfo` structurally --
-    only the attributes `app.py`/`update_adapter.py` actually read."""
-
-    def __init__(
-        self,
-        *,
-        version: str = "9.9.9",
-        notes: str | None = "Bug fixes and performance improvements.",
-        download_url: str = "https://example.invalid/update.zip",
-        sha256: str = "deadbeef",
-        size_bytes: int = 123_456_789,
-        manifest: dict[str, Any] | None = None,
-    ) -> None:
-        self.version = version
-        self.notes = notes
-        self.download_url = download_url
-        self.sha256 = sha256
-        self.size_bytes = size_bytes
-        self.manifest = manifest or {}
-
-
-class FakeUpdateState:
-    """Stands in for `ash_captions.app.updater.UpdateState`."""
-
-    def __init__(self, info: FakeUpdateInfo | None = None) -> None:
-        self._info = info
-
-    def get(self) -> FakeUpdateInfo | None:
-        return self._info
-
-    def set(self, info: FakeUpdateInfo | None) -> None:
-        self._info = info
-
-
-class FakeUpdateApplier:
-    """Implements the `UpdateApplier` protocol in memory -- no network
-    download, no zip extraction, no detached restart helper. Jobs stay
-    `pending` until a test calls `force_status()`, same pattern as
-    `FakeJobQueue`/`FakePreviewRenderer`."""
+class FakeGlossaryProvider:
+    """Implements `ClientGlossaryProvider` in memory, keyed by slug. Its
+    validation mirrors `languages.validate_glossary_text`'s one rule the
+    routes care about -- a `=>` line needs both sides -- so the 400 path
+    is exercised without the real package."""
 
     def __init__(self) -> None:
-        self._jobs: dict[str, UpdateApplyJob] = {}
-        self.submitted: list[Any] = []  # the `update` object each submit_apply() call received
-        self.has_running_job_callbacks: list[Any] = []  # the has_running_job each call received
+        self.files: dict[str, str] = {}
+        self.writes: list[tuple[str, str]] = []
 
-    def submit_apply(self, update: Any, *, has_running_job: Any = None) -> UpdateApplyJob:
-        self.submitted.append(update)
-        self.has_running_job_callbacks.append(has_running_job)
-        job = UpdateApplyJob(id=uuid.uuid4().hex, status=UpdateApplyStatus.PENDING)
-        self._jobs[job.id] = job
-        return job
+    def slug_for(self, client: str) -> str:
+        return "-".join(client.strip().lower().split())
 
-    def get_apply_status(self, job_id: str) -> UpdateApplyJob:
-        job = self._jobs.get(job_id)
-        if job is None:
-            raise UpdateApplyNotFoundError(job_id)
-        return job
+    def list_clients(self) -> list[str]:
+        return sorted(self.files)
 
-    # Test helper only -- not part of the UpdateApplier protocol.
-    def force_status(self, job_id: str, status: UpdateApplyStatus, **fields: Any) -> UpdateApplyJob:
-        job = self._jobs[job_id]
-        updated = job.model_copy(update={"status": status, **fields})
-        self._jobs[job_id] = updated
-        return updated
+    def read_glossary(self, client: str) -> str:
+        return self.files.get(self.slug_for(client), "")
+
+    def write_glossary(self, client: str, text: str) -> None:
+        problems = []
+        for number, line in enumerate(text.splitlines(), start=1):
+            if "=>" in line:
+                left, _, right = line.partition("=>")
+                if not left.strip() or not right.strip():
+                    problems.append(f"line {number}: incomplete 'wrong => right' pair")
+        if problems:
+            raise GlossaryValidationFailedError(problems)
+        self.files[self.slug_for(client)] = text
+        self.writes.append((client, text))
+
+
+# --- In-app updates (spec 11.4) ---------------------------------------------
+# Live in fakes_updates.py (this module was over the 500-line limit);
+# re-exported so tests keep importing them from here.
+from .fakes_updates import FakeUpdateApplier, FakeUpdateInfo, FakeUpdateState  # noqa: E402, F401

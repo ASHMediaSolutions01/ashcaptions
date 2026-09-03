@@ -32,12 +32,14 @@ from fastapi.staticfiles import StaticFiles
 from ash_captions.config import DEFAULT_PORT, data_root
 
 from .interfaces import (
+    ClientGlossaryProvider,
     JobQueue,
     LanguageCatalogueProvider,
     PreviewRenderer,
     StyleProvider,
     UpdateApplier,
 )
+from .routes_clients import build_clients_router
 from .routes_events import DEFAULT_SSE_POLL_INTERVAL, build_events_router
 from .routes_jobs import build_jobs_router
 from .routes_review import build_review_router
@@ -68,6 +70,7 @@ def create_app(
     style_provider: StyleProvider | None = None,
     preview_renderer: PreviewRenderer | None = None,
     update_applier: UpdateApplier | None = None,
+    glossary_provider: ClientGlossaryProvider | None = None,
     incoming_dir: Path | None = None,
     sse_poll_interval: float = DEFAULT_SSE_POLL_INTERVAL,
     updates_supported: Callable[[], bool] | None = None,
@@ -78,6 +81,10 @@ def create_app(
     written before being handed to `queue.submit()`; defaults to
     `data_root()/web_uploads` (see `default_incoming_dir`). Production
     passes `settings.upload_dir` here.
+
+    `glossary_provider` backs the per-client glossary routes
+    (`routes_clients.py`); it defaults to the files in the configured
+    `Settings.glossary_dir` -- the same folder the runner reads.
 
     `style_provider`/`preview_renderer`/`update_applier` default to real
     implementations backed by `ash_captions.styles`/`ash_captions.engine`/
@@ -103,6 +110,7 @@ def create_app(
     app.state.style_provider = style_provider or _default_style_provider()
     app.state.preview_renderer = preview_renderer or _default_preview_renderer()
     app.state.update_applier = update_applier or _default_update_applier()
+    app.state.glossary_provider = glossary_provider or _default_glossary_provider()
     app.state.incoming_dir = incoming_dir or default_incoming_dir()
     app.state.sse_poll_interval = sse_poll_interval
     app.state.version = app_version()
@@ -122,6 +130,9 @@ def create_app(
     def get_update_applier(request: Request) -> UpdateApplier:
         return request.app.state.update_applier
 
+    def get_glossary_provider(request: Request) -> ClientGlossaryProvider:
+        return request.app.state.glossary_provider
+
     install_security_middleware(app)
 
     # Serves style.css and app.js alongside the page. index.html is served
@@ -134,6 +145,7 @@ def create_app(
     app.include_router(build_review_router(get_queue))
     app.include_router(build_studio_router(get_queue, get_style_provider))
     app.include_router(build_styles_router(get_style_provider, get_preview_renderer))
+    app.include_router(build_clients_router(get_queue, get_glossary_provider))
     app.include_router(
         build_update_router(get_queue, get_update_applier, updates_supported or _runtime_updates_supported)
     )
@@ -197,6 +209,16 @@ def _default_update_applier() -> UpdateApplier:
     from .update_adapter import UpdaterAdapter
 
     return UpdaterAdapter()
+
+
+def _default_glossary_provider() -> ClientGlossaryProvider:
+    """The configured glossary folder -- `Settings.glossary_dir`, which the
+    runner reads too -- so an editor's save lands where the next job looks."""
+    from ash_captions.config import Settings
+
+    from .glossary_adapter import ClientGlossaryFiles
+
+    return ClientGlossaryFiles(Settings.load().glossary_dir)
 
 
 def run_server(app: FastAPI, host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> None:

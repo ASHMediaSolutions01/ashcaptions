@@ -279,3 +279,68 @@ class TestWatcherLifecycle:
             assert watcher._thread is None
 
         assert errors == []
+
+
+class TestClientSubfolders:
+    """`in\\<Client>\\clip.mp4` is a drop for that client: one level of
+    subfolders is watched, nothing deeper, with the same settle rules."""
+
+    def make_watcher(self, watch_dir: Path) -> tuple[Watcher, list[Path]]:
+        ready: list[Path] = []
+        watcher = Watcher(watch_dir, on_ready=ready.append, stable_checks_required=2, open_check=lambda p: True)
+        return watcher, ready
+
+    def test_file_in_a_client_subfolder_is_reported(self, tmp_path: Path) -> None:
+        watcher, ready = self.make_watcher(tmp_path)
+        (tmp_path / "Acme").mkdir()
+        clip = tmp_path / "Acme" / "clip.mp4"
+        touch(clip, b"a" * 1000)
+
+        assert watcher.poll_once() == []
+        assert watcher.poll_once() == [clip]
+        assert ready == [clip]
+        assert watcher.poll_once() == []  # once
+
+    def test_nothing_deeper_than_one_level(self, tmp_path: Path) -> None:
+        watcher, ready = self.make_watcher(tmp_path)
+        deep = tmp_path / "Acme" / "project" / "clip.mp4"
+        deep.parent.mkdir(parents=True)
+        touch(deep, b"a" * 1000)
+
+        for _ in range(4):
+            watcher.poll_once()
+
+        assert ready == []
+
+    def test_seed_and_forget_cover_subfolder_paths(self, tmp_path: Path) -> None:
+        watcher, ready = self.make_watcher(tmp_path)
+        (tmp_path / "Acme").mkdir()
+        clip = tmp_path / "Acme" / "clip.mp4"
+        touch(clip, b"a" * 1000)
+
+        assert watcher.seed_enqueued([clip, tmp_path / "x" / "y" / "z.mp4"]) == 1  # nested-too-deep is ignored
+        for _ in range(3):
+            watcher.poll_once()
+        assert ready == []  # remembered from a previous run, not re-reported
+
+        clip.unlink()
+        watcher.poll_once()
+        touch(clip, b"b" * 1000)
+        assert watcher.poll_once() == []
+        assert watcher.poll_once() == [clip]  # dropped again after being consumed
+
+    def test_list_drop_candidates_skips_an_unreadable_subfolder(self, tmp_path: Path, monkeypatch) -> None:
+        from ash_captions.pipeline.watcher import list_drop_candidates
+
+        (tmp_path / "Acme").mkdir()
+        touch(tmp_path / "Acme" / "a.mp4", b"x")
+        touch(tmp_path / "top.mp4", b"x")
+        real_iterdir = Path.iterdir
+
+        def flaky(self):
+            if self.name == "Acme":
+                raise OSError("locked")
+            return real_iterdir(self)
+
+        monkeypatch.setattr(Path, "iterdir", flaky)
+        assert list_drop_candidates(tmp_path) == [tmp_path / "top.mp4"]
