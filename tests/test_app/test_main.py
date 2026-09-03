@@ -1,15 +1,13 @@
 """Tests for __main__.py's pure/constructible pieces: CLI arg parsing, port
 probing, the watch-folder submission callback, and that build_application()
-wires every component together without starting threads or a real server
-(that part is exercised by hand / on a real machine, not in the unit suite).
+wires every component together without starting threads or a real server.
+The update-apply shutdown lives in update_flow.py -- see test_update_flow.py.
 """
 
 from __future__ import annotations
 
 import json
 import socket
-import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -17,11 +15,10 @@ import pytest
 from ash_captions import engine, styles
 from ash_captions.app.__main__ import (
     _acquire_single_instance_lock,
-    _apply_update_shutdown,
     _enqueue_watch_file,
     _find_open_port,
     _parse_args,
-    _shutdown_with_watchdog,
+    _queued_watch_paths,
     _validate_default_preset,
     _warn_already_running,
     build_application,
@@ -29,37 +26,24 @@ from ash_captions.app.__main__ import (
 from ash_captions.app.adapter import QueueAdapter
 from ash_captions.app.runner import build_run_job
 from ash_captions.config import Settings
+from ash_captions.pipeline.db import JobStatus as PipelineJobStatus
 from ash_captions.pipeline.db import JobStore
 from ash_captions.web.models import JobStatus
 
-from .test_runner import FakeTranscriber, _result
+from .test_runner import FakeTranscriber, _result, run_to_completion
 
 
 class TestParseArgs:
     def test_bare_invocation_does_not_open_the_browser(self) -> None:
-        """The Task Scheduler "run at logon" entry launches with no
-        arguments -- that must stay tray-only, never popping a browser tab
-        on every boot."""
         assert _parse_args([]).open is False
 
     def test_open_flag_requests_the_browser(self) -> None:
-        """The desktop shortcut / Start Menu entry passes --open."""
         assert _parse_args(["--open"]).open is True
 
 
 class TestSingleInstanceLock:
-    """A second real process launched while the first is still running
-    must not silently race it (two watchers on the same folder, two
-    workers polling the same DB) -- see _acquire_single_instance_lock's
-    docstring. The lock is OS-enforced (msvcrt byte-range lock), so a
-    second `open()` on the same path within *this* test process already
-    proves the exclusion; it's the same mechanism a second OS process
-    would hit.
-    """
-
     def test_first_caller_acquires_the_lock(self, tmp_path: Path) -> None:
-        lock_path = tmp_path / "ash-captions.lock"
-        handle = _acquire_single_instance_lock(lock_path)
+        handle = _acquire_single_instance_lock(tmp_path / "ash-captions.lock")
         try:
             assert handle is not None
         finally:
@@ -71,17 +55,11 @@ class TestSingleInstanceLock:
         first = _acquire_single_instance_lock(lock_path)
         assert first is not None
         try:
-            second = _acquire_single_instance_lock(lock_path)
-            assert second is None
+            assert _acquire_single_instance_lock(lock_path) is None
         finally:
             first.close()
 
     def test_lock_becomes_available_again_once_released(self, tmp_path: Path) -> None:
-        """Simulates a crashed prior instance: closing the handle (which is
-        also what happens when a process dies, cleanly or not -- Windows
-        releases the lock either way) must let the next launch succeed
-        without any manual cleanup.
-        """
         lock_path = tmp_path / "ash-captions.lock"
         first = _acquire_single_instance_lock(lock_path)
         assert first is not None
@@ -104,18 +82,24 @@ class TestSingleInstanceLock:
             if handle is not None:
                 handle.close()
 
+    def test_permission_error_propagates_for_main_to_explain(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(*args, **kwargs):
+            raise PermissionError(13, "Access is denied")
+
+        monkeypatch.setattr("builtins.open", refuse)
+        with pytest.raises(PermissionError):
+            _acquire_single_instance_lock(tmp_path / "ash-captions.lock")
+
 
 class TestWarnAlreadyRunning:
     def test_shows_a_message_box_and_never_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls = []
         monkeypatch.setattr(
-            "ctypes.windll.user32.MessageBoxW",
-            lambda *args: calls.append(args) or 1,
-            raising=False,
+            "ctypes.windll.user32.MessageBoxW", lambda *args: calls.append(args) or 1, raising=False
         )
-
-        _warn_already_running()  # must not raise, must not actually block on a real dialog
-
+        _warn_already_running()
         assert len(calls) == 1
         assert "already running" in calls[0][1]
 
@@ -126,28 +110,83 @@ class TestWarnAlreadyRunning:
             raise OSError("no user32 in this environment")
 
         monkeypatch.setattr("ctypes.windll.user32.MessageBoxW", boom, raising=False)
+        _warn_already_running()
 
-        _warn_already_running()  # must not raise even if the message box itself fails
+
+class TestMainTopLevelHandling:
+    def test_a_crashing_run_is_logged_and_shown_then_exits_1(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Windowed build: the exe must not just vanish."""
+        import ash_captions.app.__main__ as main_module
+
+        monkeypatch.setenv("ASH_CAPTIONS_ROOT", str(tmp_path))
+        boxes: list[str] = []
+        monkeypatch.setattr(main_module, "_message_box", lambda text, **kw: boxes.append(text))
+        monkeypatch.setattr(main_module, "configure_logging", lambda path: None)
+
+        def explode(args, settings):
+            raise RuntimeError("No free port found in range 8756-8775.")
+
+        monkeypatch.setattr(main_module, "_run", explode)
+
+        with pytest.raises(SystemExit) as raised:
+            main_module.main([])
+
+        assert raised.value.code == 1
+        assert len(boxes) == 1 and "log file" in boxes[0]
+
+    def test_settings_warnings_are_logged_after_logging_is_configured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import ash_captions.app.__main__ as main_module
+
+        monkeypatch.setenv("ASH_CAPTIONS_ROOT", str(tmp_path))
+        (tmp_path / "settings.json").write_text(json.dumps({"port": "eighty"}), encoding="utf-8")
+        monkeypatch.setattr(main_module, "configure_logging", lambda path: None)
+        monkeypatch.setattr(main_module, "_run", lambda args, settings: None)
+
+        with caplog.at_level("WARNING", logger="ash_captions.app"):
+            main_module.main([])
+
+        assert any("port" in r.getMessage() for r in caplog.records)
+
+
+class TestUpdateCheckGate:
+    def test_skips_the_check_when_the_web_layer_says_updates_are_unsupported(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import ash_captions.app.__main__ as main_module
+
+        started: list[object] = []
+        monkeypatch.setattr(main_module, "check_for_update_in_background", lambda version, state: started.append(state))
+        monkeypatch.setattr(main_module, "updates_supported", lambda: False)
+        main_module._start_update_check(main_module.UpdateState())
+        assert started == []
+
+        monkeypatch.setattr(main_module, "updates_supported", lambda: True)
+        main_module._start_update_check(main_module.UpdateState())
+        assert len(started) == 1
+
+    def test_checks_when_the_web_layer_has_no_opinion(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import ash_captions.app.__main__ as main_module
+
+        started: list[object] = []
+        monkeypatch.setattr(main_module, "check_for_update_in_background", lambda version, state: started.append(state))
+        monkeypatch.setattr(main_module, "updates_supported", None)
+        main_module._start_update_check(main_module.UpdateState())
+        assert len(started) == 1
 
 
 class TestValidateDefaultPreset:
-    """Diagnostic-only startup check: a bad `default_preset` must never
-    block startup (resolve_style() already handles that at job time), but
-    it should be logged loudly rather than silently degrading every
-    watch-folder job to the default style unnoticed.
-    """
-
     def test_a_real_shipped_style_logs_nothing(self, caplog: pytest.LogCaptureFixture) -> None:
-        settings = Settings(default_preset="POP")
         with caplog.at_level("WARNING", logger="ash_captions.app"):
-            _validate_default_preset(settings)
+            _validate_default_preset(Settings(default_preset="POP"))
         assert caplog.records == []
 
     def test_an_unknown_style_name_logs_a_clear_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        settings = Settings(default_preset="TOTALLY-MADE-UP-STYLE")
         with caplog.at_level("WARNING", logger="ash_captions.app"):
-            _validate_default_preset(settings)
-
+            _validate_default_preset(Settings(default_preset="TOTALLY-MADE-UP-STYLE"))
         assert len(caplog.records) == 1
         message = caplog.records[0].getMessage()
         assert "TOTALLY-MADE-UP-STYLE" in message
@@ -161,17 +200,18 @@ def make_settings(tmp_path: Path) -> Settings:
         db_path=tmp_path / "jobs.db",
         log_path=tmp_path / "log.txt",
         glossary_dir=tmp_path / "glossaries",
-        port=0,  # overridden per-test where relevant
+        upload_dir=tmp_path / "uploads",
+        tmp_dir=tmp_path / "tmp",
+        port=0,
+        min_free_disk_gb=0,
     )
 
 
 class TestFindOpenPort:
     def test_returns_the_preferred_port_when_free(self) -> None:
-        # Bind and release to get a genuinely free ephemeral port to probe for.
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind(("127.0.0.1", 0))
             free_port = probe.getsockname()[1]
-
         assert _find_open_port(free_port, max_probes=1) == free_port
 
     def test_probes_upward_when_preferred_port_is_taken(self) -> None:
@@ -180,9 +220,7 @@ class TestFindOpenPort:
             held.bind(("127.0.0.1", 0))
             held.listen(1)
             taken_port = held.getsockname()[1]
-
             found = _find_open_port(taken_port, max_probes=5)
-
             assert found != taken_port
             assert taken_port < found <= taken_port + 4
 
@@ -192,14 +230,12 @@ class TestFindOpenPort:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
                 probe.bind(("127.0.0.1", 0))
                 base_port = probe.getsockname()[1]
-
             for offset in range(3):
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(("127.0.0.1", base_port + offset))
                 s.listen(1)
                 sockets.append(s)
-
             with pytest.raises(RuntimeError):
                 _find_open_port(base_port, max_probes=3)
         finally:
@@ -211,8 +247,6 @@ class TestEnqueueWatchFile:
     def test_submits_a_job_using_configured_defaults(self, tmp_path: Path) -> None:
         settings = make_settings(tmp_path)
         settings.ensure_dirs()
-        from ash_captions.pipeline.db import JobStore
-
         adapter = QueueAdapter(JobStore(settings.db_path), out_dir=settings.out_dir)
         video = settings.in_dir / "clip.mp4"
         video.write_bytes(b"fake")
@@ -228,54 +262,29 @@ class TestEnqueueWatchFile:
     def test_a_bad_drop_is_logged_not_raised(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         settings = make_settings(tmp_path)
         settings.ensure_dirs()
-        from ash_captions.pipeline.db import JobStore
-
         adapter = QueueAdapter(JobStore(settings.db_path), out_dir=settings.out_dir)
 
         def explode(*args, **kwargs):
             raise RuntimeError("disk fell over")
 
         monkeypatch.setattr(adapter, "submit", explode)
-
-        # Must not raise -- a bad drop must never kill the watcher thread.
         _enqueue_watch_file(adapter, settings, settings.in_dir / "clip.mp4")
 
     def test_default_preset_resolves_through_the_real_style_system_end_to_end(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """spec section 6's "80% path": a file dropped in `in\\` with zero
-        UI interaction must get the *configured default* style, resolved
-        through the same real ``styles.resolve_style()`` a browser
-        submission uses -- not a style hardcoded in this test, and not a
-        silent fallback because the wiring between ``_enqueue_watch_file``
-        and ``runner.build_run_job`` broke. Most jobs never touch the API
-        at all, so if this path is broken, most jobs are broken.
-
-        Hermetic on purpose: this repo's real ``styles/`` directory (and
-        the real, machine-wide ``C:\\AshCaptions\\styles`` user-style
-        directory ``resolve_style()`` also checks) are shared, externally
-        mutable state -- in this project's live, multi-agent workspace,
-        other agents edit files in this same tree while tests run
-        elsewhere. A test's pass/fail must never hinge on that, so this
-        points ``resolve_style()`` at an isolated tmp directory holding a
-        self-contained, minimal ``"POP"`` style (every field but ``name``
-        has a schema default -- see ``styles/schema.py``) for the whole
-        test -- proving the *wiring* end to end without reading the real,
-        shared style files at all.
-        """
-        # No real ffmpeg needed -- FakeTranscriber never reads the audio
-        # file, extraction just needs to not blow up.
+        """spec section 6's "80% path", proven with an isolated style dir so
+        the shared, externally mutable ``styles/`` tree never decides this."""
         monkeypatch.setattr(engine, "extract_audio", lambda video_path, output_path, **kw: Path(output_path))
 
         isolated_shipped = tmp_path / "isolated_shipped_styles"
         isolated_shipped.mkdir()
         (isolated_shipped / "pop.json").write_text(json.dumps({"name": "POP"}), encoding="utf-8")
-        isolated_user = tmp_path / "isolated_user_styles"  # left non-existent: no user overrides
+        isolated_user = tmp_path / "isolated_user_styles"
 
         real_resolve_style = styles.resolve_style
         monkeypatch.setattr(
-            styles,
-            "resolve_style",
+            styles, "resolve_style",
             lambda name, **kw: real_resolve_style(name, shipped_dir=isolated_shipped, user_dir=isolated_user),
         )
 
@@ -283,12 +292,9 @@ class TestEnqueueWatchFile:
         settings.ensure_dirs()
         store = JobStore(settings.db_path)
         adapter = QueueAdapter(store, out_dir=settings.out_dir)
-
         video = settings.in_dir / "clip.mp4"
         video.write_bytes(b"fake video")
 
-        # Exactly what pipeline.Watcher's on_ready callback does for a
-        # file that just stabilised.
         _enqueue_watch_file(adapter, settings, video)
 
         jobs = store.list_jobs()
@@ -296,19 +302,40 @@ class TestEnqueueWatchFile:
         job = jobs[0]
         assert job.options.preset == settings.default_preset
 
-        transcriber = FakeTranscriber(_result(["hello", "there", "friend"]))
-        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=transcriber)
-        run_job(job, lambda _p: None)
+        run_job = build_run_job(settings, watch_dir=settings.in_dir, transcriber=FakeTranscriber(_result(["hello", "there", "friend"])))
+        run_to_completion(run_job, job)
 
         ass_content = (Path(job.output_dir) / "clip.ass").read_text(encoding="utf-8")
-        # "POP" (the ASS-safe name has no spaces/commas to strip) must
-        # appear in the Style line. If resolve_style() ever silently fell
-        # back (a typo'd or renamed default_preset, or a wiring break
-        # between _enqueue_watch_file and runner.build_run_job), this
-        # would say DEFAULT_STYLE.name ("CLEAN") instead -- caught here,
-        # not in a client's delivery.
         assert "Style: POP," in ass_content
         assert "Style: CLEAN," not in ass_content
+
+
+class TestQueuedWatchPaths:
+    def test_lists_non_done_inputs_inside_in_dir_only(self, tmp_path: Path) -> None:
+        settings = make_settings(tmp_path)
+        settings.ensure_dirs()
+        store = JobStore(settings.db_path)
+        adapter = QueueAdapter(store, out_dir=settings.out_dir)
+        from ash_captions.web.models import JobOptions as WebJobOptions
+
+        options = WebJobOptions(language="en", dialect=None, preset="POP", burn_in=False, translate_to_english=False)
+        pending = settings.in_dir / "pending.mp4"
+        failed = settings.in_dir / "failed.mp4"
+        done = settings.in_dir / "done.mp4"
+        elsewhere = tmp_path / "footage" / "clip.mp4"
+        for video in (pending, failed, done, elsewhere):
+            video.parent.mkdir(parents=True, exist_ok=True)
+            video.write_bytes(b"x")
+        adapter.submit(pending, options)
+        failed_id = int(adapter.submit(failed, options).id)
+        done_id = int(adapter.submit(done, options).id)
+        adapter.submit(elsewhere, options)
+        store.mark_running(failed_id)
+        store.mark_failed(failed_id, "boom")
+        store.mark_running(done_id)
+        store.mark_done(done_id)
+
+        assert sorted(p.name for p in _queued_watch_paths(store, settings.in_dir)) == ["failed.mp4", "pending.mp4"]
 
 
 class TestBuildApplication:
@@ -319,226 +346,102 @@ class TestBuildApplication:
 
         assert settings.in_dir.is_dir()
         assert settings.out_dir.is_dir()
+        assert settings.upload_dir.is_dir()
         assert isinstance(adapter, QueueAdapter)
         assert app.state.queue is adapter
         assert app.state.catalogue is not None
-        # None of these have background threads running yet.
         assert worker._thread is None
         assert watcher._thread is None
         assert sweeper._thread is None
 
-    def test_exposes_has_running_job_for_the_future_apply_route(self, tmp_path: Path) -> None:
-        """The correct has_running_job recipe for updater.apply_update(),
-        defined once here and exposed on app.state so whoever wires the
-        actual apply endpoint doesn't reimplement it."""
+    def test_uploads_go_to_the_settings_upload_dir(self, tmp_path: Path) -> None:
+        settings = make_settings(tmp_path)
+        app, *_ = build_application(settings)
+        assert app.state.incoming_dir == settings.upload_dir
+
+    def test_exposes_health_read_from_the_real_worker_and_watcher(self, tmp_path: Path) -> None:
+        settings = make_settings(tmp_path)
+        app, _adapter, worker, watcher, _sweeper = build_application(settings)
+
+        health = app.state.health()
+        assert health["worker_alive"] is False
+        assert health["last_watcher_poll"] is None
+
+        watcher.poll_once()
+        worker.start()
+        try:
+            health = app.state.health()
+        finally:
+            worker.stop(timeout=2.0)
+        assert health["worker_alive"] is True
+        assert health["last_watcher_poll"] is not None
+
+    def test_sweeps_leftover_scratch_at_build(self, tmp_path: Path) -> None:
+        settings = make_settings(tmp_path)
+        leftover = settings.tmp_dir / "job-9" / "clip.wav"
+        leftover.parent.mkdir(parents=True)
+        leftover.write_bytes(b"x")
+
+        build_application(settings)
+
+        assert not leftover.parent.exists()
+
+    def test_exposes_has_running_job_for_the_apply_route(self, tmp_path: Path) -> None:
         settings = make_settings(tmp_path)
         app, adapter, _worker, _watcher, _sweeper = build_application(settings)
-
         assert app.state.has_running_job() is False
 
         video = settings.in_dir / "clip.mp4"
-        video.parent.mkdir(parents=True, exist_ok=True)
         video.write_bytes(b"fake")
         from ash_captions.web.models import JobOptions as WebJobOptions
 
         job = adapter.submit(
-            video,
-            WebJobOptions(language="en", dialect=None, preset="POP", burn_in=False, translate_to_english=False),
+            video, WebJobOptions(language="en", dialect=None, preset="POP", burn_in=False, translate_to_english=False)
         )
-        assert app.state.has_running_job() is False  # still just pending, not running
-
-        # Reach into the real store the same way JobWorker does to mark it running.
-        from ash_captions.pipeline.db import JobStore
-
+        assert app.state.has_running_job() is False
         JobStore(settings.db_path).mark_running(int(job.id))
         assert app.state.has_running_job() is True
 
-    def test_wires_an_update_applier_whose_on_applied_is_the_graceful_shutdown(
+    def test_watcher_is_seeded_from_the_database_at_start(self, tmp_path: Path) -> None:
+        """The restart-duplicates bug, end to end: a file still in in\\ with
+        a pending row must not be enqueued a second time by a new watcher."""
+        settings = make_settings(tmp_path)
+        settings.ensure_dirs()
+        video = settings.in_dir / "clip.mp4"
+        video.write_bytes(b"x" * 10)
+
+        _app, adapter, _worker, watcher, _sweeper = build_application(settings)
+        watcher.start()
+        try:
+            for _ in range(4):
+                watcher.poll_once()
+        finally:
+            watcher.stop(timeout=2.0)
+        assert len(adapter.list_jobs()) == 1
+
+        # "Restart": brand-new components over the same DB and folder.
+        _app2, adapter2, _worker2, watcher2, _sweeper2 = build_application(settings)
+        watcher2.start()
+        try:
+            for _ in range(4):
+                watcher2.poll_once()
+        finally:
+            watcher2.stop(timeout=2.0)
+
+        live = [j for j in adapter2.list_jobs() if j.status == JobStatus.PENDING]
+        assert len(live) == 1
+        assert len(JobStore(settings.db_path).list_jobs(status=PipelineJobStatus.PENDING)) == 1
+
+    def test_wires_an_update_applier_that_waits_for_idle_and_shuts_down_gracefully(
         self, tmp_path: Path
     ) -> None:
-        """create_app() must receive a real UpdaterAdapter, not the crude
-        os._exit(0) default -- that default skips worker.stop() entirely,
-        which is exactly the race this whole feature exists to close."""
         settings = make_settings(tmp_path)
-        app, _adapter, worker, watcher, sweeper = build_application(settings)
+        app, *_ = build_application(settings)
 
-        from ash_captions.web.update_adapter import UpdaterAdapter
+        from ash_captions.app import updater
+        from ash_captions.web.update_adapter import UpdaterAdapter, _default_on_applied
 
-        assert isinstance(app.state.update_applier, UpdaterAdapter)
-        # Not the module's own crude default -- a real closure over this
-        # app's actual worker/watcher/sweeper.
-        from ash_captions.web.update_adapter import _default_on_applied
-
-        assert app.state.update_applier._on_applied is not _default_on_applied
-
-
-class TestApplyUpdateShutdown:
-    """The piece that closes the race apply_update()'s has_running_job
-    guard narrows but can't fully close on its own (team-lead's own
-    framing): a job that slips past the guard must still finish for real
-    before the process exits and the detached helper's robocopy proceeds.
-    """
-
-    class FakeWorker:
-        def __init__(self) -> None:
-            self.stop_calls: list[dict] = []
-
-        def stop(self, timeout=5.0) -> None:
-            self.stop_calls.append({"timeout": timeout})
-
-    class FakeStoppable:
-        def __init__(self) -> None:
-            self.stopped = False
-
-        def stop(self) -> None:
-            self.stopped = True
-
-    def test_uses_the_unbounded_stop_not_the_default(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """The exact thing team-lead asked to see proven: this path must
-        call worker.stop(timeout=None), never JobWorker's normal 5s
-        default -- a test with no job actually running would pass either
-        way, so this asserts on the *argument*, not just "didn't crash".
-        """
-        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
-        exits: list[int] = []
-        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
-
-        worker = self.FakeWorker()
-        watcher = self.FakeStoppable()
-        sweeper = self.FakeStoppable()
-        lock_path = tmp_path / "lock"
-        lock = _acquire_single_instance_lock(lock_path)
-
-        _apply_update_shutdown(worker, watcher, sweeper, lock)
-
-        assert worker.stop_calls == [{"timeout": None}]
-        assert watcher.stopped is True
-        assert sweeper.stopped is True
-        assert exits == [0]
-
-    def test_releases_the_single_instance_lock(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
-        monkeypatch.setattr("ash_captions.app.__main__.os._exit", lambda code: None)
-
-        lock_path = tmp_path / "lock"
-        lock = _acquire_single_instance_lock(lock_path)
-        assert lock is not None
-
-        _apply_update_shutdown(self.FakeWorker(), self.FakeStoppable(), self.FakeStoppable(), lock)
-
-        # Released, not just closed from this handle's own point of view --
-        # a second acquire on the same path must now succeed.
-        second = _acquire_single_instance_lock(lock_path)
-        assert second is not None
-        second.close()
-
-    def test_tolerates_no_lock(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
-        exits: list[int] = []
-        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
-
-        _apply_update_shutdown(self.FakeWorker(), self.FakeStoppable(), self.FakeStoppable(), None)
-
-        assert exits == [0]
-
-    def test_still_exits_if_teardown_itself_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """An update that leaves the app half-shut-down and neither
-        finishing the apply nor able to start again is the worst outcome
-        -- teardown failing must not skip the exit."""
-        monkeypatch.setattr("ash_captions.app.__main__.time.sleep", lambda _s: None)
-        exits: list[int] = []
-        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
-
-        class ExplodingWorker:
-            def stop(self, timeout=5.0) -> None:
-                raise RuntimeError("boom")
-
-        _apply_update_shutdown(ExplodingWorker(), self.FakeStoppable(), self.FakeStoppable(), None)
-
-        assert exits == [0]
-
-
-class TestShutdownWithWatchdog:
-    """POSTMORTEM: an earlier version of `_shutdown_with_watchdog` never
-    cancelled its `threading.Timer`, and the first test below did not
-    monkeypatch `os._exit`. That left a real, armed 5-second timer holding
-    the real `os._exit` running after the test returned "green" -- which
-    fired mid-suite, in whatever unrelated test happened to be running
-    five seconds later, and silently killed the entire pytest process
-    with no traceback, no summary, and a different apparent "stopping
-    point" every run depending purely on wall-clock timing. `test_app` run
-    alone "passed" only because that whole run finished in under 5
-    seconds -- by luck, not correctness. Both fixed below: the function
-    now cancels its timer in a `finally`, and this test asserts that
-    directly (waiting past the timeout and checking `os._exit` was never
-    called) instead of merely checking the call returned, which would
-    pass whether or not the bug existed. `os._exit` is patched in every
-    test in this class now, unconditionally, as a mandatory safety net --
-    no test here may ever hold a live timer over the real one again.
-    """
-
-    def test_returning_normally_cancels_the_watchdog_timer(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        exits: list[int] = []
-        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
-
-        calls = []
-        _shutdown_with_watchdog(lambda: calls.append(1), timeout=0.05)
-        assert calls == [1]
-
-        # If the timer were still armed, it would have fired well within
-        # this wait -- proof of cancellation, not just "the call returned".
-        time.sleep(0.3)
-        assert exits == []
-
-    def test_a_raising_shutdown_fn_still_cancels_the_watchdog_timer(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The cancel lives in a `finally` specifically so an exception
-        from shutdown_fn can't leave the timer armed either."""
-        exits: list[int] = []
-        monkeypatch.setattr("ash_captions.app.__main__.os._exit", exits.append)
-
-        def exploding() -> None:
-            raise RuntimeError("boom")
-
-        with pytest.raises(RuntimeError):
-            _shutdown_with_watchdog(exploding, timeout=0.05)
-
-        time.sleep(0.3)
-        assert exits == []
-
-    def test_forces_exit_if_shutdown_fn_never_returns(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Simulates a genuinely wedged job: shutdown_fn blocks forever.
-        The watchdog's own forced-exit path must still fire on schedule.
-        """
-        exited = threading.Event()
-        exits: list[int] = []
-
-        def fake_exit(code: int) -> None:
-            exits.append(code)
-            exited.set()
-
-        monkeypatch.setattr("ash_captions.app.__main__.os._exit", fake_exit)
-
-        release = threading.Event()
-
-        def wedged_shutdown() -> None:
-            release.wait()  # never returns until this test releases it, below
-
-        watchdog_thread = threading.Thread(
-            target=_shutdown_with_watchdog, args=(wedged_shutdown,), kwargs={"timeout": 0.05}
-        )
-        watchdog_thread.start()
-
-        assert exited.wait(timeout=2), "watchdog did not force-exit on schedule"
-        assert exits == [1]  # the watchdog's forced-exit code, distinct from the graceful path's 0
-
-        release.set()  # let wedged_shutdown return so the background thread can end cleanly
-        watchdog_thread.join(timeout=2)
-        assert not watchdog_thread.is_alive()
+        applier = app.state.update_applier
+        assert isinstance(applier, UpdaterAdapter)
+        assert applier._on_applied is not _default_on_applied
+        assert applier._apply is not updater.apply_update  # the idle-waiting, watcher-stopping wrapper

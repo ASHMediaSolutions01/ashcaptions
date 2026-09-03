@@ -5,6 +5,11 @@ store, the ``QueueAdapter``/``LanguageCatalogue`` bridges into the web
 layer, the watch-folder watcher, the single-worker queue, the FastAPI
 control page, retention cleanup, and the pystray tray icon that is this
 app's actual identity on an editor's desktop.
+
+``main()`` itself is one big try/except: this ships as a windowed build
+with no console, so an unwritable data root, a dead network ``in_dir`` or
+an exhausted port range used to make the exe vanish with nothing logged.
+Now it logs the traceback and shows one message box naming the log file.
 """
 
 from __future__ import annotations
@@ -17,10 +22,9 @@ import os
 import socket
 import sys
 import threading
-import time
 import webbrowser
 from pathlib import Path
-from typing import IO, Callable
+from typing import IO
 
 from ash_captions import styles
 from ash_captions.config import MAX_PORT_PROBES, Settings
@@ -30,13 +34,30 @@ from ash_captions.web import create_app, run_server
 from ash_captions.web.models import JobOptions
 from ash_captions.web.update_adapter import UpdaterAdapter
 
+from . import jobobject
 from .adapter import QueueAdapter
 from .catalogue import LanguageCatalogue
-from .lifecycle import RetentionSweeper, configure_logging
-from .runner import build_run_job
+from .lifecycle import RetentionSweeper, configure_logging, folder_is_live, sweep_tmp_dir
+from .runner import SharedTranscriber, _is_within, build_run_job
+from .runner_util import accepted_kwargs
+
+try:  # the web layer's "is the in-app updater usable here" answer, when it has one
+    from ash_captions.web.runtime import updates_supported
+except ImportError:  # pragma: no cover - older web package
+    updates_supported = None  # type: ignore[assignment]
+from .update_flow import (  # noqa: F401 - re-exported: tests and older callers import these from here
+    UPDATE_SHUTDOWN_WATCHDOG_SECONDS,
+    apply_update_shutdown as _apply_update_shutdown,
+    apply_update_when_idle,
+    shutdown_with_watchdog as _shutdown_with_watchdog,
+)
 from .updater import UpdateState, check_for_update_in_background
 
 logger = logging.getLogger("ash_captions.app")
+
+MB_OK = 0x0
+MB_ICONINFORMATION = 0x40
+MB_ICONERROR = 0x10
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -81,24 +102,20 @@ def _acquire_single_instance_lock(lock_path: Path) -> IO[str] | None:
     object holding an OS-level exclusive byte-range lock on success, or
     ``None`` if another instance already holds it.
 
-    Two real processes launching a `pystray.Icon` never collide with each
-    other (each gets its own address space, so the Win32 window class
-    name it registers -- derived from `id(self)` -- never collides across
-    processes; see `tray.build_tray_icon`'s docstring for the *same*-
-    process collision that guards against). But two live ASH Captions
-    processes absolutely would collide on everything downstream of the
-    tray icon: both would watch the same folder and could both pick up
-    the same dropped file (`pipeline.JobStore.fetch_oldest_pending()` +
-    `mark_running()` aren't one atomic transaction, so two processes could
-    both grab the same pending job), both would try to bind a control-page
-    port, and an editor would see two tray icons. This lock -- held for
-    the life of the caller's process -- is what stops the second launch
-    before any of that.
+    Two live ASH Captions processes would collide on everything downstream
+    of the tray icon: both would watch the same folder and could both pick
+    up the same dropped file (`pipeline.JobStore.fetch_oldest_pending()` +
+    `mark_running()` aren't one atomic transaction), both would try to
+    bind a control-page port, and an editor would see two tray icons. This
+    lock -- held for the life of the caller's process -- stops the second
+    launch before any of that.
 
     The lock is released by Windows the moment this process exits, cleanly
     or via a crash, so a stale lock can never survive a dead process --
     same crash-recovery philosophy as `JobStore.reset_stale_running()`:
-    nothing here needs manual cleanup on restart.
+    nothing here needs manual cleanup on restart. A ``PermissionError``
+    opening the file (a data root this account can't write) propagates:
+    ``main()`` turns it into a message that names the folder.
     """
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     handle = open(lock_path, "a+")
@@ -110,16 +127,22 @@ def _acquire_single_instance_lock(lock_path: Path) -> IO[str] | None:
     return handle
 
 
+def _message_box(text: str, *, icon: int = MB_ICONINFORMATION) -> None:
+    """A native message box is the only UI available before -- or instead
+    of -- a tray icon (spec section 11: windowed build, no console). Never
+    load-bearing: if it can't be shown, the log line already exists."""
+    try:
+        ctypes.windll.user32.MessageBoxW(None, text, "ASH Captions", MB_OK | icon)  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 - courtesy only
+        logger.warning("Could not show message box: %s", text)
+
+
 def _warn_already_running() -> None:
     """A second launch (an editor double-clicking the desktop shortcut
     while the logon task's instance is already running, say) must never
-    surface a raw error -- there is no console to show one in anyway
-    (spec section 11: windowed build). A native message box is the only
-    UI available before -- or instead of -- a tray icon.
+    surface a raw error -- there is no console to show one in anyway.
     """
     try:
-        MB_OK = 0x0
-        MB_ICONINFORMATION = 0x40
         ctypes.windll.user32.MessageBoxW(  # type: ignore[attr-defined]
             None,
             "ASH Captions is already running. Look for its icon in the system tray.",
@@ -153,11 +176,9 @@ def _validate_default_preset(settings: Settings) -> None:
     ``styles.resolve_style()`` already falls back to the default style for
     an unknown name (spec 7A.4), so a bad ``default_preset`` can't fail a
     job. But that fallback firing for the *configured default* -- the
-    style every watch-folder job uses (spec section 6's 80% path) -- would
-    otherwise go unnoticed until a client sees plain CLEAN captions
-    instead of whatever look was actually configured. A settings typo or a
-    renamed style file should show up in the log the moment the app
-    starts, not get discovered downstream.
+    style every watch-folder job uses -- would otherwise go unnoticed
+    until a client sees plain CLEAN captions instead of whatever look was
+    actually configured.
     """
     if settings.default_preset not in styles.list_styles():
         logger.warning(
@@ -187,98 +208,47 @@ def _current_version() -> str:
 
 def _has_running_job(store: JobStore) -> bool:
     """The exact, correct answer to ``updater.apply_update``'s required
-    ``has_running_job`` question, defined once here (this module already
-    imports ``pipeline.db``; ``updater.py`` deliberately does not, to stay
-    decoupled from the pipeline package) so whoever wires the actual
-    "apply this update" action -- the control-page route, not built here,
-    see the tray/control-page UX split -- has the correct recipe instead
-    of reinventing it. Exposed as ``app.state.has_running_job`` (same
-    pattern as ``app.state.update_state``).
+    ``has_running_job`` question, defined once here. Exposed as
+    ``app.state.has_running_job`` (same pattern as ``app.state.update_state``).
     """
     return bool(store.list_jobs(status=JobStatus.RUNNING))
 
 
-# Generous on purpose: this bounds the *graceful* update-apply shutdown
-# path, which deliberately calls JobWorker.stop(timeout=None) so any
-# in-flight job -- one that slipped past apply_update()'s has_running_job
-# checks -- finishes for real rather than getting cut off mid-transcode.
-# 15 minutes comfortably covers any realistic single job for this tool
-# (short-form video captioning, not feature-length) while staying safely
-# under updater._HELPER_WAIT_DEADLINE_SECONDS (20 minutes) -- the detached
-# PS1 helper's own last-resort deadline for a Python process wedged badly
-# enough that even this timer can't fire. Under normal circumstances this
-# one fires first, if it ever needs to fire at all.
-UPDATE_SHUTDOWN_WATCHDOG_SECONDS = 15 * 60
+def _queued_watch_paths(store: JobStore, in_dir: Path) -> list[Path]:
+    """Every non-done job's input inside ``in_dir`` -- what the watcher
+    must remember across a restart so it doesn't re-report them (the
+    database's one-live-job-per-input index is the second line)."""
+    return [
+        Path(job.input_path)
+        for job in store.list_jobs()
+        if job.status != JobStatus.DONE and _is_within(Path(job.input_path), in_dir)
+    ]
 
 
-def _shutdown_with_watchdog(shutdown_fn: Callable[[], None], *, timeout: float) -> None:
-    """Run ``shutdown_fn`` with a last-resort forced exit if it never
-    returns. An update that leaves the app wedged and un-restartable is
-    worse than one that exits abruptly after a very generous wait --
-    see ``UPDATE_SHUTDOWN_WATCHDOG_SECONDS``.
-
-    The watchdog timer is cancelled in a ``finally`` the moment
-    ``shutdown_fn`` returns (or raises) -- this is not optional
-    housekeeping. A live, uncancelled ``threading.Timer`` holding a real
-    ``os._exit`` call is a timer bomb: in the real path ``shutdown_fn``
-    (``_apply_update_shutdown``) itself calls ``os._exit()`` at the end, so
-    an uncancelled timer looked harmless there -- the process was already
-    gone before it could matter. But this function's own contract allows
-    ``shutdown_fn`` to simply return instead, and anything that does would
-    leave a live timer armed to kill a perfectly healthy process
-    ``timeout`` seconds later, from *outside* the call that created it,
-    with exit code 1 and nothing in the logs to explain why. (This
-    happened for real, here, in this project's own test suite -- see the
-    fixed version of ``TestShutdownWithWatchdog`` for the postmortem.)
-    """
-    watchdog = threading.Timer(timeout, lambda: os._exit(1))
-    watchdog.daemon = True
-    watchdog.start()
+def _shared_preview_renderer(settings: Settings, run_job):
+    """The style editor's preview renderer sharing the queue's one loaded
+    Whisper model (web owner's request) -- only when this tree's
+    ``InProcessPreviewRenderer`` accepts ``transcriber``/``settings``;
+    otherwise ``create_app`` builds its own default."""
     try:
-        shutdown_fn()
-    finally:
-        watchdog.cancel()
+        from ash_captions.web.preview_adapter import InProcessPreviewRenderer
+    except ImportError:  # pragma: no cover
+        return None
+    getter = getattr(run_job, "get_transcriber", None)
+    if getter is None:
+        return None
+    if {"transcriber", "settings"} <= accepted_kwargs(InProcessPreviewRenderer.__init__, ("transcriber", "settings")):
+        return InProcessPreviewRenderer(transcriber=SharedTranscriber(getter), settings=settings)
+    return None
 
 
-def _apply_update_shutdown(
-    worker: JobWorker, watcher: Watcher, sweeper: RetentionSweeper, lock: IO[str] | None
-) -> None:
-    """The graceful half of applying an update (spec 11.4) -- passed as
-    ``UpdaterAdapter(on_applied=...)`` so ``apply_update()``'s detached
-    helper only ever robocopies over a cleanly-stopped app, never one
-    frozen mid-transcode.
-
-    Deliberately different from a normal Quit: ``worker.stop(timeout=None)``
-    blocks for real until any in-flight job finishes (``JobWorker.stop``'s
-    own 5s default is correct for a normal Quit, where an editor wants the
-    app to close promptly -- it stays untouched; this path just doesn't
-    use it). Wrapped in ``_shutdown_with_watchdog`` so a genuinely wedged
-    job still can't leave the app hung forever. Always ends the process
-    itself, on every path -- a teardown error must not leave a half-shut-
-    down app sitting there instead of either finishing the update or
-    plainly failing to start again.
-    """
-
-    def _teardown_and_exit() -> None:
-        try:
-            logger.info(
-                "Shutting down for update apply (waiting for any in-flight job to finish)..."
-            )
-            watcher.stop()
-            worker.stop(timeout=None)
-            sweeper.stop()
-            if lock is not None:
-                lock.close()
-        except Exception:  # noqa: BLE001 - still exit even if teardown itself misbehaves
-            logger.exception("Error during update-apply shutdown; exiting anyway")
-        finally:
-            # A moment for the "apply status: done" HTTP response the
-            # editor's click is waiting on to actually reach the browser
-            # before the server that would serve it disappears.
-            time.sleep(1.5)
-            os._exit(0)
-
-    _shutdown_with_watchdog(_teardown_and_exit, timeout=UPDATE_SHUTDOWN_WATCHDOG_SECONDS)
+def _start_update_check(update_state: UpdateState) -> None:
+    """Background update check -- skipped where the web layer says the
+    in-app updater isn't usable (a source checkout, an unfrozen run)."""
+    if updates_supported is not None and not updates_supported():
+        logger.info("Update checks disabled: not a frozen install (source checkout or dev run).")
+        return
+    check_for_update_in_background(_current_version(), update_state)
 
 
 def build_application(settings: Settings, *, lock: IO[str] | None = None):
@@ -288,29 +258,55 @@ def build_application(settings: Settings, *, lock: IO[str] | None = None):
     server.
 
     ``lock`` is the single-instance lock ``main()`` already holds by the
-    time it calls this (see ``_acquire_single_instance_lock``) -- passed
-    through only so the update-apply shutdown path can release it as part
-    of its own teardown; a test that never applies an update can safely
-    omit it.
+    time it calls this -- passed through only so the update-apply shutdown
+    path can release it as part of its own teardown.
     """
     settings.ensure_dirs()
     _validate_default_preset(settings)
+    sweep_tmp_dir(settings.tmp_dir)
 
     store = JobStore(settings.db_path)
     adapter = QueueAdapter(store, out_dir=settings.out_dir)
     catalogue = LanguageCatalogue()
-    run_job = build_run_job(settings, watch_dir=settings.in_dir)
+    run_job = build_run_job(settings, watch_dir=settings.in_dir, upload_dir=settings.upload_dir)
     worker = JobWorker(store=adapter.notifying_store, run_job=run_job)
     watcher = Watcher(
         settings.in_dir,
         on_ready=lambda path: _enqueue_watch_file(adapter, settings, path),
+        known_paths=lambda: _queued_watch_paths(store, settings.in_dir),
     )
-    sweeper = RetentionSweeper(settings.out_dir, retention_days=settings.retention_days)
+    sweeper = RetentionSweeper(
+        settings.out_dir,
+        retention_days=settings.retention_days,
+        upload_dir=settings.upload_dir,
+        folder_is_live=lambda folder: folder_is_live(store, folder),
+    )
+    adapter.attach_health(worker=worker, watcher=watcher)
+
+    has_running_job = lambda: _has_running_job(store)  # noqa: E731
     update_applier = UpdaterAdapter(
-        on_applied=lambda: _apply_update_shutdown(worker, watcher, sweeper, lock)
+        on_applied=lambda: _apply_update_shutdown(
+            worker, watcher, sweeper, lock, has_running_job=has_running_job
+        ),
+        apply=lambda artifact_path, *, has_running_job: apply_update_when_idle(
+            artifact_path, has_running_job=has_running_job, watcher=watcher
+        ),
     )
-    app = create_app(adapter, catalogue, update_applier=update_applier)
-    app.state.has_running_job = lambda: _has_running_job(store)
+    # Optional create_app keywords, passed only where this tree's web layer
+    # declares them: the shared-model preview renderer and the updater gate.
+    extras: dict = {}
+    preview_renderer = _shared_preview_renderer(settings, run_job)
+    if preview_renderer is not None:
+        extras["preview_renderer"] = preview_renderer
+    if updates_supported is not None and "updates_supported" in accepted_kwargs(create_app, ("updates_supported",)):
+        extras["updates_supported"] = updates_supported
+    app = create_app(
+        adapter, catalogue, update_applier=update_applier, incoming_dir=settings.upload_dir, **extras
+    )
+    app.state.has_running_job = has_running_job
+    # Health line for the control page: worker_alive, worker_last_error,
+    # current_job_id, watcher_alive, last_watcher_poll.
+    app.state.health = adapter.health
 
     return app, adapter, worker, watcher, sweeper
 
@@ -318,29 +314,62 @@ def build_application(settings: Settings, *, lock: IO[str] | None = None):
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
 
-    settings = Settings.load()
-    configure_logging(settings.log_path)
+    load_warnings: list[str] = []
+    settings = Settings.load(on_warning=load_warnings.append)
+    try:
+        configure_logging(settings.log_path)
+    except OSError as exc:
+        _message_box(
+            f"ASH Captions cannot write its log file at {settings.log_path}: {exc}\n\n"
+            "Check that the folder exists and this account can write to it.",
+            icon=MB_ICONERROR,
+        )
+        sys.exit(1)
+    for warning in load_warnings:
+        logger.warning(warning)
 
-    # Held for the rest of this function's lifetime (see docstring) -- do
-    # not let `lock` go out of scope or get closed before shutdown.
+    try:
+        _run(args, settings)
+    except SystemExit:
+        raise
+    except BaseException:  # noqa: BLE001 - last line of defence for a windowed build
+        logger.exception("ASH Captions failed to start or crashed")
+        _message_box(
+            "ASH Captions hit an error and had to stop.\n\n"
+            f"Details are in the log file:\n{settings.log_path}",
+            icon=MB_ICONERROR,
+        )
+        sys.exit(1)
+
+
+def _run(args: argparse.Namespace, settings: Settings) -> None:
+    # Held for the rest of this function's lifetime -- do not let `lock`
+    # go out of scope or get closed before shutdown.
     lock_path = settings.db_path.parent / "ash-captions.lock"
-    lock = _acquire_single_instance_lock(lock_path)
+    try:
+        lock = _acquire_single_instance_lock(lock_path)
+    except PermissionError as exc:
+        logger.error("Cannot create the single-instance lock at %s: %s", lock_path, exc)
+        _message_box(
+            f"ASH Captions cannot write to its data folder:\n{lock_path.parent}\n\n"
+            "Check that this account has permission to write there.",
+            icon=MB_ICONERROR,
+        )
+        sys.exit(1)
     if lock is None:
         logger.warning("Another ASH Captions instance is already running; exiting.")
         _warn_already_running()
         return
 
     logger.info("ASH Captions starting (open_browser=%s)", args.open)
+    # ffmpeg children die with this process, however it dies (see jobobject.py).
+    jobobject.assign_current_process()
 
     app, _adapter, worker, watcher, sweeper = build_application(settings, lock=lock)
 
-    # Exposed on app.state (same pattern as app.state.queue/catalogue) so a
-    # future control-page route can read the last check's result; the tray
-    # menu reads it directly. The check itself never blocks startup and
-    # never blocks on a dead network -- see updater.check_for_update.
     update_state = UpdateState()
     app.state.update_state = update_state
-    check_for_update_in_background(_current_version(), update_state)
+    _start_update_check(update_state)
 
     port = _find_open_port(settings.port, max_probes=MAX_PORT_PROBES)
     url = f"http://127.0.0.1:{port}"
@@ -353,6 +382,7 @@ def main(argv: list[str] | None = None) -> None:
         target=lambda: run_server(app, port=port), name="ash-captions-web", daemon=True
     )
     server_thread.start()
+    logger.info("Control page at %s; health: %s", url, _adapter.health())
 
     # Bare invocation (the logon task) is tray-only -- no browser tab on
     # every boot. --open (the desktop shortcut / Start Menu entry) also
@@ -363,7 +393,7 @@ def main(argv: list[str] | None = None) -> None:
     def shutdown() -> None:
         logger.info("ASH Captions shutting down")
         watcher.stop()
-        worker.stop()
+        worker.stop()  # cancels any running job (requeued as pending) and waits up to 30 s
         sweeper.stop()
         lock.close()  # release the single-instance lock explicitly, don't wait on process exit
 
