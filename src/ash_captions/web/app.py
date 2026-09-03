@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from ash_captions.config import DEFAULT_PORT, data_root
@@ -150,6 +150,12 @@ def create_app(
     @app.get("/style-editor", response_class=HTMLResponse)
     async def style_editor_page() -> HTMLResponse:
         return HTMLResponse(pages["style_editor.html"])
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> FileResponse:
+        # Browsers ask for /favicon.ico unprompted; a 404 there was the one
+        # console error on every page.
+        return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
 
     @app.get("/guide", response_class=HTMLResponse)
     async def guide_page() -> HTMLResponse:

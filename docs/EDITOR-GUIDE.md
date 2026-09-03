@@ -223,9 +223,30 @@ Long files work; they just take a while.
 
 ## Part 4 — Choosing a look
 
-Click **"Design your own caption styles →"** on the control page.
+When a job finishes, the **Studio** opens: your video with the captions drawn
+live on it, and every look one click away.
 
-![The style editor](images/style-editor.png)
+![The Studio](images/studio.png)
+
+1. **Open it.** It opens by itself when a job you started finishes (untick
+   "Open Studio when a job finishes" on the control page if you'd rather not),
+   or click **Open in Studio** on any finished job.
+2. **Click through the looks** on the right. They are grouped by where the
+   caption sits: top, centre, bottom, lower third, with left and right
+   variants. The captions on the video change in about a second and the
+   playhead stays put.
+3. **Space** plays and pauses; click a line in the transcript strip to jump.
+4. **Burn this look** when it's right. A burn-only job goes into the queue and
+   reuses the transcript, so it starts rendering immediately. About two
+   minutes for a 5-minute 1080p file.
+
+What you see in the Studio is what gets burned: the browser draws the captions
+with the same engine ffmpeg uses. The `.srt` and `.ass` in the output folder
+are rewritten each time you pick a look.
+
+### The 36 looks
+
+Every look is a small JSON file in the `styles` folder. The original nine:
 
 | Style | Use it for |
 |---|---|
@@ -241,10 +262,15 @@ Click **"Design your own caption styles →"** on the control page.
 
 ![Burned-in captions in ASH BRAND](images/burned-example.png)
 
-Pick a style on the left, then change anything: font (24 to choose from), size,
-letter spacing, ALL CAPS, the four colours, how the active word behaves, how
-captions enter, and **where they sit** (top, centre, bottom; left, middle,
-right).
+### Making your own
+
+Click **"Design your own caption styles →"** on the control page.
+
+![The style editor](images/style-editor.png)
+
+Change anything: font (24 to choose from), size, letter spacing, ALL CAPS, the
+four colours, how the active word behaves, how captions enter, and **where they
+sit** (top, centre, bottom; left, middle, right).
 
 **Always preview first.** At the bottom, paste a video path and a start time in
 seconds where someone is talking, then click **Render preview**. A few seconds

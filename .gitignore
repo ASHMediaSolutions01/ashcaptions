@@ -34,3 +34,6 @@ bin/
 # Font files are fetched (python -m ash_captions.styles.fonts download);
 # their licence texts under assets/fonts/licenses/ are committed.
 assets/fonts/*.ttf
+
+# Playwright MCP session artefacts
+.playwright-mcp/

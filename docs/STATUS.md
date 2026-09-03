@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **1193 passing, 27 skipped** (the skips are the real-ffmpeg and
+- Tests: **1252 passing, 27 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Design decisions and their reasoning: `docs/superpowers/specs/2026-08-29-ash-captions-design.md`
 - Editor instructions: `docs/EDITOR-GUIDE.md`, and inside the app at `/guide`
@@ -16,7 +16,29 @@ running it, not inferred.
 
 ## Where the project is
 
-**v0.2, "long-form safe", is what master is now.** On 2026-09-02 four
+**v0.3, "pick your look", is what master is now** (2026-09-03). On top of the
+v0.2 hardening below, the team's actual request shipped:
+
+- **The Studio** (`/studio/<job>`, opens when a job finishes): the video plays
+  in the browser with the captions drawn on it by libass compiled to
+  WebAssembly (JASSUB, vendored, offline), so what you see is what burns. A
+  strip of looks on the right, grouped by position; clicking one re-renders
+  the `.ass` from the saved transcript in ~30 ms and the overlay reloads
+  without touching the playhead. **Burn this look** enqueues a burn-only job
+  that starts at the burn stage.
+- **Transcripts are saved beside the outputs** (`<stem>.transcript.json`, with
+  the source file's size and mtime). Re-styling, burning and retrying no
+  longer transcribe; a changed file is transcribed again.
+- **36 looks** (was 9) across bottom, centre, top and lower third, with left
+  and right variants (`layout.align`), plus a `card_box` effect that puts the
+  whole caption on one bar for news and tag styles.
+- **Spanish verified**: a 4:48 Creative Commons interview produced Spanish
+  `.srt`, English `.en.srt`, transcript and burned MP4 in 139 s; the Studio
+  rendered it live and burned it from the chosen look. Found and fixed on
+  the way: the translate pass was being primed with the Spanish dialect
+  prompt and left chunks untranslated.
+
+**v0.2, "long-form safe", is underneath it.** On 2026-09-02 four
 independent reviews found thirteen verified critical failures that only
 appear on hour-long files or in the real bundle, and a separate read-only
 audit found eight more. All are fixed, each with a regression test, and the
@@ -71,16 +93,12 @@ Everything above. Remaining to close it out: publish a build so editors get
 the one-click installer (`scripts/release.py` has still never been run; the
 public `ashcaptions-releases` repo needs a seed commit first, see INSTALL.md).
 
-### v0.3 — pick your look (next)
-The team's actual request: choose a caption style the way Veed lets you.
-- A **style picker on the real video**: play it in the browser, click through
-  looks, captions redraw live in that style and position (libass compiled to
-  WebAssembly, so the preview is the burn), then hit Burn from that page. The
-  routes it needs (`/api/jobs/{id}/video` with Range support, `/ass`) already
-  exist.
-- The preset library grown from 9 to 30-plus, organised by position (top,
-  centre, bottom; left, middle, right) and mood. Each is a JSON file; no code.
-- Published installer and the update banner in real use.
+### v0.3 — pick your look (done, this release)
+The Studio, saved transcripts, burn-only jobs, 36 looks with left/right
+alignment and the card-box effect. Still open from v0.3: the published
+installer and the update banner in real use; the style editor does not yet
+expose `align` and `card_box` (edit the JSON, or pick one of the shipped
+looks).
 
 ### v0.4 — short-form effects
 - **"Behind the speaker" captions**: an AI matte over the video, captions drawn

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <title>ASH Captions — Editor's guide</title>
 <link rel="stylesheet" href="/static/style.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/guide.css?v=__VERSION__">
@@ -178,8 +179,19 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 
 <section id="styles">
   <h2>Part 4 · Choosing a look</h2>
-  <p class="lede">Click <strong>"Design your own caption styles"</strong> on the control page.</p>
-  <figure><img src="/static/guide/style-editor.png" alt="The style editor: a list of looks on the left, settings in the middle, and a live preview"><figcaption>The style editor. Pick a look on the left, change anything, render a real 3-second clip of your own footage at the bottom.</figcaption></figure>
+  <p class="lede">When a job finishes, the <strong>Studio</strong> opens: your video with the captions drawn live on it, and every look one click away.</p>
+  <figure><img src="/static/guide/studio.png" alt="The Studio: the video playing with captions drawn on it, a strip of looks on the right, the transcript below"><figcaption>The Studio. Play the video, click a look on the right, the captions redraw in that style and position while it plays. Frame from "Entrevista Creative Commons" (CC BY).</figcaption></figure>
+  <ol>
+    <li><strong>Open it</strong>: it opens by itself when a job you started finishes (untick "Open Studio when a job finishes" on the control page if you'd rather not), or click <strong>Open in Studio</strong> on any finished job.</li>
+    <li><strong>Click through the looks</strong> on the right. They are grouped by where the caption sits: top, centre, bottom, lower third, with left and right variants. The captions on the video change in about a second, and the playhead stays where it was.</li>
+    <li><strong>Press Space</strong> to play and pause; click a line in the transcript strip to jump there.</li>
+    <li><strong>Burn this look</strong> when it's right. A burn-only job goes into the queue and reuses the transcript, so it starts rendering immediately instead of listening to the video again. On a 5-minute 1080p file that is about two minutes.</li>
+  </ol>
+  <p class="note">What you see in the Studio is what gets burned: the browser draws the captions with the same engine ffmpeg uses.</p>
+  <p>The <code>.srt</code> and <code>.ass</code> in the output folder are rewritten each time you pick a look, so dragging them into Premiere gives you the same style too.</p>
+
+  <h3>The 36 looks</h3>
+  <p>Every look is a small JSON file in the <code>styles</code> folder, so the library grows without a release. The original nine, for reference:</p>
   <table class="plain">
     <tr><th>Style</th><th>Use it for</th></tr>
     <tr><td><strong>CLEAN</strong></td><td>Client work. Deliberately no colour, so it can't clash with a client's brand.</td></tr>
@@ -194,8 +206,10 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   </table>
   <figure><img src="/static/guide/burned-example.png" alt="Burned-in captions in the ASH BRAND style, the spoken word highlighted in the accent colour"><figcaption>ASH BRAND burned in: the word being spoken is highlighted in the Ash accent colour.</figcaption></figure>
 
-  <h3>Changing a style</h3>
-  <p>Pick one on the left, then change anything: font (24 to choose from), size, letter spacing, ALL CAPS, the four colours, how the active word behaves, how captions enter, and <strong>where they sit</strong> (top, centre, bottom; left, middle, right).</p>
+  <h3>Making your own</h3>
+  <p>Click <strong>"Design your own caption styles"</strong> on the control page for the style editor.</p>
+  <figure><img src="/static/guide/style-editor.png" alt="The style editor: a list of looks on the left, settings in the middle, and a live preview"><figcaption>The style editor. Pick a look on the left, change anything, render a real 3-second clip of your own footage at the bottom.</figcaption></figure>
+  <p>Change anything: font (24 to choose from), size, letter spacing, ALL CAPS, the four colours, how the active word behaves, how captions enter, and <strong>where they sit</strong> (top, centre, bottom; left, middle, right).</p>
 
   <h3>Always preview first</h3>
   <p>At the bottom, paste a video path and a <strong>start time in seconds</strong> where someone is talking. Click <strong>Render preview</strong>; a few seconds later you get a real clip of your own footage in that style, at the video's real size. It saves you discovering the style was wrong after a 30-minute render.</p>
