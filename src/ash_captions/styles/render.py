@@ -394,14 +394,27 @@ def _exit_tag(style: Style, x: float, y: float, event_ms: int) -> str:
 
 
 def _anchor_xy(style: Style, width: int, height: int) -> tuple[float, float]:
+    """Where libass would place the caption's anchor for this style's
+    ``\an`` and margins -- the point ``\move``/``\pos`` animations start
+    from and return to. It must agree with the Style line's alignment for
+    all nine numpad positions, or an animated caption lands somewhere
+    other than a static one would (a TOP RIGHT style once rendered its
+    sliding captions dead centre because only ``\an2`` and ``\an8`` were
+    handled here)."""
     an = ass_alignment(style.layout.position, getattr(style.layout, "align", "center"))
-    x = width / 2
-    if an == 2:
+    row, column = (an - 1) // 3, (an - 1) % 3  # numpad: rows bottom/middle/top, columns left/centre/right
+    if row == 0:
         y = height - style.layout.margin_v
-    elif an == 8:
+    elif row == 2:
         y = style.layout.margin_v
     else:
         y = height / 2
+    if column == 0:
+        x = style.layout.margin_l
+    elif column == 2:
+        x = width - style.layout.margin_r
+    else:
+        x = width / 2
     return x, y
 
 

@@ -29,3 +29,20 @@ def test_align_defaults_to_center_and_round_trips():
 def test_bad_align_is_rejected():
     with pytest.raises(StyleValidationError):
         Style.from_dict({"name": "X", "layout": {"align": "middle"}})
+
+
+def test_animation_anchor_follows_position_and_align():
+    from ash_captions.styles.render import _anchor_xy
+
+    def anchor(position, align):
+        style = Style.from_dict({"name": "A", "layout": {"position": position, "align": align,
+                                                           "margin_l": 90, "margin_r": 70, "margin_v": 130}})
+        return _anchor_xy(style, 1080, 1920)
+
+    assert anchor("top", "right") == (1010, 130)
+    assert anchor("top", "left") == (90, 130)
+    assert anchor("bottom", "left") == (90, 1790)
+    assert anchor("bottom", "center") == (540, 1790)
+    assert anchor("center", "center") == (540, 960)
+    assert anchor("center", "right") == (1010, 960)
+    assert anchor("lower_third", "left") == (90, 1790)
