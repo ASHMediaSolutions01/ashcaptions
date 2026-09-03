@@ -89,9 +89,11 @@
     return res.json();
   }
 
+  // Is this stream there? A one-byte Range GET (200 or 206) -- the routes
+  // are GET-only, so HEAD would be a 405 even when the file exists.
   async function probe(url) {
     try {
-      return (await fetch(url, { method: "HEAD" })).ok;
+      return (await fetch(url, { headers: { Range: "bytes=0-0" } })).ok;
     } catch (err) {
       return false;
     }
@@ -455,8 +457,12 @@
   els.burnBtn.addEventListener("click", burn);
   document.addEventListener("keydown", (e) => {
     if (e.code !== "Space" || !player) return;
-    const tag = (e.target && e.target.tagName) || "";
-    if (["BUTTON", "INPUT", "SELECT", "TEXTAREA", "A"].includes(tag)) return; // those handle Space themselves
+    const target = e.target || document.body;
+    const tag = target.tagName || "";
+    // Form fields, links and the transport buttons handle Space themselves
+    // (Space on the play button already toggles). Anywhere else -- the
+    // page, a look card, a transcript chip -- Space is play/pause.
+    if (["INPUT", "SELECT", "TEXTAREA", "A"].includes(tag) || target.classList.contains("ctl")) return;
     e.preventDefault();
     player.toggle();
   });
