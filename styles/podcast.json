@@ -1,0 +1,35 @@
+{
+  "name": "PODCAST",
+  "font": "Figtree",
+  "size": 66,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#A78BFA",
+    "outline": "#1A1030",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "pop",
+    "scale": 1.08,
+    "box": false
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 140
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "lower_third",
+    "max_words": 5,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

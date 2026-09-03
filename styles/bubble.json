@@ -1,0 +1,35 @@
+{
+  "name": "BUBBLE",
+  "font": "Baloo 2 SemiBold",
+  "size": 86,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#2A1B3D",
+    "active": "#2A1B3D",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#B3E5FC"
+  },
+  "active_word": {
+    "effect": "box",
+    "scale": 1.1,
+    "box": true
+  },
+  "entrance": {
+    "effect": "rise",
+    "duration_ms": 130
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 3,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 0,
+    "align": "center"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "OUTLINE",
+  "font": "Bebas Neue",
+  "size": 110,
+  "uppercase": true,
+  "letter_spacing": 2.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FF3B3B",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "pop",
+    "scale": 1.15,
+    "box": false
+  },
+  "entrance": {
+    "effect": "rise",
+    "duration_ms": 100
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 3,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

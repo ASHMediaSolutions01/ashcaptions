@@ -59,6 +59,7 @@ class StyleValidationError(ValueError):
 ACTIVE_WORD_EFFECTS = frozenset({"none", "pop", "box", "scale_box", "karaoke", "shake", "glow"})
 TRANSITION_EFFECTS = frozenset({"none", "fade", "rise", "slide"})
 POSITIONS = frozenset({"bottom", "center", "top", "lower_third"})
+ALIGNS = frozenset({"left", "center", "right"})
 
 _HEX_COLOUR_RE = re.compile(r"^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
 
@@ -187,14 +188,19 @@ class Layout:
     margin_l: int = 80
     margin_r: int = 80
     margin_v: int = 120
+    # Horizontal anchor within the position band: "bottom-left" captions
+    # sit at align=left, margin_l from the edge. Combined with position
+    # this maps onto the ASS numpad alignment (1-9).
+    align: str = "center"
 
     @classmethod
     def from_dict(cls, data: dict) -> "Layout":
         _reject_unknown_keys(
-            "layout", data, {"position", "max_words", "margin_l", "margin_r", "margin_v"}
+            "layout", data, {"position", "max_words", "margin_l", "margin_r", "margin_v", "align"}
         )
         defaults = cls()
         position = _require_choice("layout.position", data.get("position", defaults.position), POSITIONS)
+        align = _require_choice("layout.align", data.get("align", defaults.align), ALIGNS)
         max_words = _require_number(
             "layout.max_words",
             data.get("max_words", defaults.max_words),
@@ -216,6 +222,7 @@ class Layout:
             margin_l=int(margin_l),
             margin_r=int(margin_r),
             margin_v=int(margin_v),
+            align=align,
         )
 
 

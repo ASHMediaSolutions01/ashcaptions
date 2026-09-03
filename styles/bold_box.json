@@ -1,0 +1,35 @@
+{
+  "name": "BOLD BOX",
+  "font": "Anton",
+  "size": 96,
+  "uppercase": true,
+  "letter_spacing": 1.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#111111",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#FFE600"
+  },
+  "active_word": {
+    "effect": "scale_box",
+    "scale": 1.1,
+    "box": true
+  },
+  "entrance": {
+    "effect": "rise",
+    "duration_ms": 120
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 3,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

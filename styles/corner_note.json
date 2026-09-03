@@ -1,0 +1,35 @@
+{
+  "name": "CORNER NOTE",
+  "font": "Manrope",
+  "size": 54,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#F5F5F5",
+    "active": "#F5F5F5",
+    "outline": "#00000099",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "none",
+    "scale": 1.1,
+    "box": false
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 160
+  },
+  "exit": {
+    "effect": "fade",
+    "duration_ms": 120
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 6,
+    "margin_l": 100,
+    "margin_r": 80,
+    "margin_v": 120,
+    "align": "left"
+  }
+}

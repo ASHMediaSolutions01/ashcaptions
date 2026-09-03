@@ -1,0 +1,35 @@
+{
+  "name": "NEWS",
+  "font": "Noto Sans",
+  "size": 58,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FFFFFF",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#0B2545EE"
+  },
+  "active_word": {
+    "effect": "box",
+    "scale": 1.1,
+    "box": true
+  },
+  "entrance": {
+    "effect": "slide",
+    "duration_ms": 160
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "lower_third",
+    "max_words": 7,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 120,
+    "align": "left"
+  }
+}

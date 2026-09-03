@@ -1,0 +1,35 @@
+{
+  "name": "MINIMAL",
+  "font": "Inter",
+  "size": 52,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FFFFFF",
+    "outline": "#00000080",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "none",
+    "scale": 1.1,
+    "box": false
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 200
+  },
+  "exit": {
+    "effect": "fade",
+    "duration_ms": 160
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 6,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 110,
+    "align": "center"
+  }
+}

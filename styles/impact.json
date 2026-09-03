@@ -1,0 +1,35 @@
+{
+  "name": "IMPACT",
+  "font": "Alfa Slab One",
+  "size": 130,
+  "uppercase": true,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FF2E63",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "shake",
+    "scale": 1.2,
+    "box": false
+  },
+  "entrance": {
+    "effect": "rise",
+    "duration_ms": 90
+  },
+  "exit": {
+    "effect": "rise",
+    "duration_ms": 90
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 1,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 0,
+    "align": "center"
+  }
+}

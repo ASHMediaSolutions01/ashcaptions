@@ -1,0 +1,35 @@
+{
+  "name": "DOCU",
+  "font": "Manrope",
+  "size": 56,
+  "uppercase": false,
+  "letter_spacing": 0.5,
+  "colors": {
+    "text": "#F3EFE6",
+    "active": "#F3EFE6",
+    "outline": "#000000AA",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "none",
+    "scale": 1.1,
+    "box": false
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 220
+  },
+  "exit": {
+    "effect": "fade",
+    "duration_ms": 180
+  },
+  "layout": {
+    "position": "lower_third",
+    "max_words": 7,
+    "margin_l": 110,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "left"
+  }
+}

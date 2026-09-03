@@ -36,12 +36,15 @@ when the integer percentage hasn't changed.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import re
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
 
+from ash_captions import engine, styles
+from ash_captions.config import Settings
 from ash_captions.pipeline.db import DuplicateJobError
 from ash_captions.pipeline.db import Job as PipelineJob
 from ash_captions.pipeline.db import JobOptions as PipelineJobOptions
@@ -51,6 +54,9 @@ from ash_captions.web.interfaces import JobNotFoundError, JobNotRetryableError
 from ash_captions.web.models import Job as WebJob
 from ash_captions.web.models import JobOptions as WebJobOptions
 from ash_captions.web.models import JobStatus as WebJobStatus
+
+from .runner_util import atomic_write
+from .transcript import TranscriptError, TranscriptRecord, load_transcript, transcript_path
 
 # The control page never needs the whole history; the newest rows are
 # what an editor is looking at.
@@ -92,6 +98,7 @@ class QueueAdapter:
         self._last_publish: float = 0.0
         self._trailing_handle: asyncio.TimerHandle | None = None
         self._health_sources: dict[str, Any] = {}
+        self._settings: Settings | None = None  # lazily loaded for restyle card rules
         # Hand this to JobWorker in place of the raw store -- see module
         # docstring. Kept as a public attribute (not a method) since it is
         # a long-lived object identity JobWorker holds onto, not a call.
@@ -134,6 +141,82 @@ class QueueAdapter:
             n += 1
             candidate = self._out_dir / f"{stem} ({n})"
         return candidate
+
+    # -- Studio (v0.3): re-style and burn from the saved transcript ---------
+
+    def restyle(self, job_id: str, preset: str) -> WebJob:
+        """Re-render the job's ``.ass`` in ``preset`` from its saved transcript,
+        in place, and record the new preset on the row. Seconds, not
+        minutes: nothing is transcribed. Raises ``JobNotFoundError`` for an
+        unknown job and ``ValueError`` when there is no usable transcript or
+        the preset is not a known style."""
+        job = self._require_job(job_id)
+        record = self._transcript_for(job)
+        if not preset in styles.list_styles():
+            raise ValueError(f"Unknown caption style {preset!r}")
+        style = styles.resolve_style(preset)
+        stem = Path(job.input_path).stem
+        max_words = style.layout.max_words
+        cards = engine.build_cards(
+            record.words,
+            max_words=max_words,
+            min_words=min(3, max_words),
+            silence_gap=self._silence_gap_seconds(),
+        )
+        optional = {"play_res": record.play_res} if record.play_res else {}
+        atomic_write(
+            lambda p: engine.write_ass(cards, p, style, **optional),
+            Path(job.output_dir) / f"{stem}.ass",
+        )
+        new_options = dataclasses.replace(job.options, preset=style.name)
+        self._store.update_options(job.id, new_options)
+        updated = self._store.get_job(job.id)
+        assert updated is not None
+        self._notify()
+        return _to_web_job(updated)
+
+    def submit_burn(self, job_id: str, preset: str) -> WebJob:
+        """Enqueue a burn-only job for the same input, in ``preset``, into the
+        same output folder. Reuses the saved transcript; fails at run time
+        if the input has since changed."""
+        self._capture_loop()
+        job = self._require_job(job_id)
+        self._transcript_for(job)  # raise now, not an hour later in the worker
+        if not preset in styles.list_styles():
+            raise ValueError(f"Unknown caption style {preset!r}")
+        if not Path(job.input_path).is_file():
+            raise ValueError("The original video is no longer where it was, so it cannot be burned.")
+        options = dataclasses.replace(job.options, preset=styles.resolve_style(preset).name, burn=True, mode="burn_only")
+        new_id = self._store.insert_job(job.input_path, job.output_dir, options)
+        created = self._store.get_job(new_id)
+        assert created is not None
+        self._notify()
+        return _to_web_job(created)
+
+    def _require_job(self, job_id: str) -> PipelineJob:
+        numeric_id = _parse_job_id(job_id)
+        job = self._store.get_job(numeric_id) if numeric_id is not None else None
+        if job is None:
+            raise JobNotFoundError(job_id)
+        return job
+
+    def _transcript_for(self, job: PipelineJob) -> TranscriptRecord:
+        stem = Path(job.input_path).stem
+        try:
+            record = load_transcript(transcript_path(Path(job.output_dir), stem))
+        except TranscriptError as exc:
+            raise ValueError(
+                "This job has no saved transcript (it ran before the Studio existed, or the "
+                "transcript file was removed). Run it again to get one."
+            ) from exc
+        if not record.words:
+            raise ValueError("The saved transcript has no words to caption.")
+        return record
+
+    def _silence_gap_seconds(self) -> float:
+        if self._settings is None:
+            self._settings = Settings.load()
+        return float(self._settings.silence_gap_seconds)
 
     def retry(self, job_id: str) -> WebJob:
         self._capture_loop()

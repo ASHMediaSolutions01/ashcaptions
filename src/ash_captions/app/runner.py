@@ -39,6 +39,14 @@ from ash_captions.pipeline.db import Job
 from ash_captions.pipeline.queue import AfterDone, JobCancelled
 
 from .catalogue import dialect_preset_id
+from .transcript import (
+    SourceStamp,
+    TranscriptError,
+    TranscriptRecord,
+    load_transcript,
+    save_transcript,
+    transcript_path,
+)
 from .lifecycle import write_job_marker
 from .runner_util import (  # noqa: F401 - re-exported for tests and callers
     DiskSpaceError,
@@ -96,6 +104,56 @@ def _call_with_optionals(fn: Callable[..., Any], *args: Any, optional: dict[str,
     accepted = accepted_kwargs(fn, optional)
     extras = {name: value for name, value in optional.items() if name in accepted}
     return fn(*args, **kwargs, **extras)
+
+
+def _reusable_transcript(
+    output_dir: Path, stem: str, video_path: Path, *, needs_translation: bool
+) -> "TranscriptRecord | None":
+    """The saved transcript for this exact file, or None when there is none,
+    it is for a different version of the file, or it lacks the English
+    words a translate job needs."""
+    path = transcript_path(output_dir, stem)
+    if not path.is_file():
+        return None
+    try:
+        record = load_transcript(path)
+    except TranscriptError as exc:
+        log.warning("ignoring saved transcript %s: %s", path, exc)
+        return None
+    if not record.matches(video_path):
+        log.info("saved transcript %s is for a different version of the file; transcribing again", path)
+        return None
+    if needs_translation and record.en_words is None:
+        return None
+    return record
+
+
+def _save_transcript(
+    output_dir: Path,
+    stem: str,
+    video_path: Path,
+    job: Job,
+    resolved: languages.ResolvedDialect,
+    words: tuple,
+    segments: tuple,
+    en_words: tuple | None,
+    info: "engine.VideoInfo | None",
+) -> None:
+    """Best effort: a transcript that fails to save must not fail the job
+    (the captions are already about to be written)."""
+    try:
+        record = TranscriptRecord(
+            language=job.options.language,
+            dialect=job.options.dialect,
+            words=tuple(words),
+            segments=tuple(segments),
+            en_words=tuple(en_words) if en_words is not None else None,
+            play_res=(info.width, info.height) if info is not None else None,
+            source=SourceStamp.of(video_path),
+        )
+        save_transcript(transcript_path(output_dir, stem), record)
+    except Exception:  # noqa: BLE001
+        log.warning("could not save the transcript beside the outputs", exc_info=True)
 
 
 def _probe_or_none(video_path: Path, ffmpeg_path: Path) -> "engine.VideoInfo | None":
@@ -171,7 +229,18 @@ def build_run_job(
         card_min_words = min(_DEFAULT_MIN_WORDS_PER_CARD, card_max_words)
 
         budget = _progress_budget(translate=job.options.translate, burn=job.options.burn)
-        model = get_transcriber()
+        # A saved transcript beside the outputs makes re-styling and burning
+        # a matter of seconds. burn_only *requires* one (it never
+        # transcribes); a full job reuses one only when it provably came
+        # from this exact file and already has everything the job needs.
+        saved = _reusable_transcript(output_dir, stem, video_path, needs_translation=job.options.translate)
+        mode = getattr(job.options, "mode", "full")
+        if mode == "burn_only" and saved is None:
+            raise RuntimeError(
+                "No saved transcript for this video (or the file changed since it was "
+                "transcribed). Run a normal captioning job first, then burn from the Studio."
+            )
+        model = get_transcriber() if saved is None else None
         # One probe, up front: PlayRes for the .ass (a 1920x1080 landscape
         # file rendered at the 1080x1920 default comes out ~56% size),
         # duration for the burn progress bar, geometry for punch-in.
@@ -182,24 +251,45 @@ def build_run_job(
             job_tmp.mkdir(parents=True, exist_ok=True)
             audio_path = job_tmp / f"{stem}.wav"
 
-            set_stage("extract")
-            report(budget["extract"][0])
-            engine.extract_audio(video_path, audio_path, ffmpeg_path=resolved_ffmpeg)
-            report(budget["extract"][1])
+            en_words: tuple | None = None
+            if saved is not None:
+                # Skip straight to writing: the words are already clean
+                # (post-processed before they were saved).
+                for skipped in ("extract", "transcribe") + (("translate",) if job.options.translate else ()):
+                    set_stage(skipped)
+                    report(budget[skipped][1])
+                words, segments, en_words = saved.words, saved.segments, saved.en_words
+                if info is None and saved.play_res is not None:
+                    info = engine.VideoInfo(saved.play_res[0], saved.play_res[1], 0.0, 0.0)
+            else:
+                set_stage("extract")
+                report(budget["extract"][0])
+                engine.extract_audio(video_path, audio_path, ffmpeg_path=resolved_ffmpeg)
+                report(budget["extract"][1])
 
-            set_stage("transcribe")
-            result = _run_transcriber(model.transcribe, audio_path, resolved, budget["transcribe"], report, should_stop)
+                set_stage("transcribe")
+                result = _run_transcriber(model.transcribe, audio_path, resolved, budget["transcribe"], report, should_stop)
 
-            translation = None
-            if job.options.translate:
-                set_stage("translate")
-                translation = _run_transcriber(model.translate, audio_path, resolved, budget["translate"], report, should_stop)
+                translation = None
+                if job.options.translate:
+                    set_stage("translate")
+                    translation = _run_transcriber(model.translate, audio_path, resolved, budget["translate"], report, should_stop)
 
-            set_stage("postprocess")
-            report(budget["postprocess"][0])
-            words = _postprocess_words(result.words, resolved, client_glossary_path, entries=glossary_entries)
-            segments = _postprocess_segments(result.segments, resolved, client_glossary_path, entries=glossary_entries)
-            report(budget["postprocess"][1])
+                set_stage("postprocess")
+                report(budget["postprocess"][0])
+                words = _postprocess_words(result.words, resolved, client_glossary_path, entries=glossary_entries)
+                segments = _postprocess_segments(result.segments, resolved, client_glossary_path, entries=glossary_entries)
+                if translation is not None:
+                    # The translation is English whatever the source was, so it
+                    # takes English conventions (not, say, Portuguese spelling
+                    # rules that would rewrite English words). The client
+                    # glossary still applies: brand and product names are the
+                    # same in both.
+                    en_words = _postprocess_words(
+                        translation.words, languages.resolve("en"), client_glossary_path, entries=glossary_entries
+                    )
+                report(budget["postprocess"][1])
+                _save_transcript(output_dir, stem, video_path, job, resolved, words, segments, en_words, info)
 
             set_stage("write")
             report(budget["cards_and_write"][0])
@@ -216,15 +306,7 @@ def build_run_job(
                 output_dir / f"{stem}.ass",
             )
             atomic_write(lambda p: engine.write_txt(segments, p), output_dir / f"{stem}.txt")
-            if translation is not None:
-                # The translation is English whatever the source was, so it
-                # takes English conventions (not, say, Portuguese spelling
-                # rules that would rewrite English words). The client
-                # glossary still applies: brand and product names are the
-                # same in both.
-                en_words = _postprocess_words(
-                    translation.words, languages.resolve("en"), client_glossary_path, entries=glossary_entries
-                )
+            if en_words is not None:
                 en_cards = engine.build_cards(
                     en_words,
                     max_words=card_max_words,
@@ -236,7 +318,7 @@ def build_run_job(
 
             if job.options.burn:
                 set_stage("burn")
-                _burn(job, video_path, output_dir, stem, words, result, info, budget["burn"], report, should_stop)
+                _burn(job, video_path, output_dir, stem, words, segments, info, budget["burn"], report, should_stop)
         except _CANCEL_EXCEPTIONS as exc:
             raise JobCancelled(str(exc)) from exc
         finally:
@@ -296,7 +378,7 @@ def build_run_job(
         output_dir: Path,
         stem: str,
         words: tuple,
-        result: Any,
+        segments: tuple,
         info: "engine.VideoInfo | None",
         span: tuple[int, int],
         report: Callable[[int], None],
@@ -314,7 +396,7 @@ def build_run_job(
         # but it stops early on a file that ends in silence or music).
         duration = info.duration_seconds if info is not None and info.duration_seconds > 0 else 0.0
         if duration <= 0:
-            duration = max((seg.end for seg in result.segments), default=0.0)
+            duration = max((seg.end for seg in segments), default=0.0)
 
         def on_burn_progress(pct: float) -> None:
             report(round(start + (end - start) * (pct / 100)))

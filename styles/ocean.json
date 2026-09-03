@@ -1,0 +1,35 @@
+{
+  "name": "OCEAN",
+  "font": "Nunito",
+  "size": 76,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#EAF6FF",
+    "active": "#39B6FF",
+    "outline": "#06233A",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "glow",
+    "scale": 1.1,
+    "box": false
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 140
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 4,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

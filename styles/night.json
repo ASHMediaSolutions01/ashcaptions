@@ -1,0 +1,35 @@
+{
+  "name": "NIGHT",
+  "font": "Montserrat ExtraBold",
+  "size": 80,
+  "uppercase": true,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FFFFFF",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#000000CC"
+  },
+  "active_word": {
+    "effect": "box",
+    "scale": 1.1,
+    "box": true
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 100
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 4,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

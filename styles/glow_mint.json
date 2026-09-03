@@ -1,0 +1,35 @@
+{
+  "name": "GLOW MINT",
+  "font": "Outfit",
+  "size": 88,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#4DFFC3",
+    "outline": "#00332A",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "glow",
+    "scale": 1.1,
+    "box": false
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 140
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 3,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 0,
+    "align": "center"
+  }
+}

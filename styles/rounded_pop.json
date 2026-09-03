@@ -1,0 +1,35 @@
+{
+  "name": "ROUNDED POP",
+  "font": "Fredoka Medium",
+  "size": 84,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#1B1B1B",
+    "active": "#1B1B1B",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#FFFFFF"
+  },
+  "active_word": {
+    "effect": "scale_box",
+    "scale": 1.1,
+    "box": true
+  },
+  "entrance": {
+    "effect": "rise",
+    "duration_ms": 130
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 3,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 0,
+    "align": "center"
+  }
+}

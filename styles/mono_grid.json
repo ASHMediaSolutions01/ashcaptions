@@ -1,0 +1,35 @@
+{
+  "name": "MONO GRID",
+  "font": "Space Grotesk",
+  "size": 70,
+  "uppercase": false,
+  "letter_spacing": 1.0,
+  "colors": {
+    "text": "#E8FFE8",
+    "active": "#00FF88",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#0B0F0BCC"
+  },
+  "active_word": {
+    "effect": "box",
+    "scale": 1.1,
+    "box": true
+  },
+  "entrance": {
+    "effect": "slide",
+    "duration_ms": 120
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 4,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

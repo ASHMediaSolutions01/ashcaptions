@@ -1,0 +1,35 @@
+{
+  "name": "RETRO",
+  "font": "Luckiest Guy",
+  "size": 104,
+  "uppercase": true,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFF200",
+    "active": "#FF4FA3",
+    "outline": "#3A0033",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "shake",
+    "scale": 1.18,
+    "box": false
+  },
+  "entrance": {
+    "effect": "rise",
+    "duration_ms": 110
+  },
+  "exit": {
+    "effect": "rise",
+    "duration_ms": 110
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 2,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 0,
+    "align": "center"
+  }
+}

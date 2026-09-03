@@ -1,0 +1,35 @@
+{
+  "name": "SOFT WHITE",
+  "font": "Inter",
+  "size": 64,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FFFFFF",
+    "outline": "#00000099",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "none",
+    "scale": 1.1,
+    "box": false
+  },
+  "entrance": {
+    "effect": "fade",
+    "duration_ms": 160
+  },
+  "exit": {
+    "effect": "fade",
+    "duration_ms": 120
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 5,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

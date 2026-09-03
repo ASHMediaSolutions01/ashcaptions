@@ -63,7 +63,7 @@ from collections.abc import Sequence
 
 from ..engine.rules import Card
 from .ass_format import (
-    _ALIGNMENT,
+    ass_alignment,
     ass_header,
     ass_inline_colour,
     format_ass_time,
@@ -394,7 +394,7 @@ def _exit_tag(style: Style, x: float, y: float, event_ms: int) -> str:
 
 
 def _anchor_xy(style: Style, width: int, height: int) -> tuple[float, float]:
-    an = _ALIGNMENT[style.layout.position]
+    an = ass_alignment(style.layout.position, getattr(style.layout, "align", "center"))
     x = width / 2
     if an == 2:
         y = height - style.layout.margin_v

@@ -9,7 +9,14 @@ from __future__ import annotations
 
 from .schema import Style
 
-_ALIGNMENT = {"bottom": 2, "lower_third": 2, "center": 5, "top": 8}
+# ASS "numpad" alignment: row from the vertical position (1-3 bottom, 4-6
+# middle, 7-9 top), column from the horizontal align (left, centre, right).
+_ROW_BASE = {"bottom": 1, "lower_third": 1, "center": 4, "top": 7}
+_COLUMN_OFFSET = {"left": 0, "center": 1, "right": 2}
+
+
+def ass_alignment(position: str, align: str = "center") -> int:
+    return _ROW_BASE[position] + _COLUMN_OFFSET.get(align, 1)
 
 
 def outline_width(style: Style) -> int:
@@ -23,7 +30,7 @@ def outline_width(style: Style) -> int:
 
 
 def ass_header(style: Style, base_name: str, box_name: str, width: int, height: int) -> str:
-    alignment = _ALIGNMENT[style.layout.position]
+    alignment = ass_alignment(style.layout.position, getattr(style.layout, "align", "center"))
     outline = outline_width(style)
     shadow_width = 2 if style.colors.shadow.upper() not in ("#00000000",) else 0
 

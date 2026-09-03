@@ -1,0 +1,35 @@
+{
+  "name": "SUNSET",
+  "font": "Rubik",
+  "size": 78,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFF1E6",
+    "active": "#FF6A3D",
+    "outline": "#2B0F0A",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "pop",
+    "scale": 1.12,
+    "box": false
+  },
+  "entrance": {
+    "effect": "rise",
+    "duration_ms": 140
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "bottom",
+    "max_words": 4,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 140,
+    "align": "center"
+  }
+}

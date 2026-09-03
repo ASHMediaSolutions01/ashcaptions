@@ -1,0 +1,35 @@
+{
+  "name": "TOP LEFT TAG",
+  "font": "Space Grotesk",
+  "size": 60,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#00E5FF",
+    "outline": "#000000",
+    "shadow": "#00000000",
+    "box": "#111111DD"
+  },
+  "active_word": {
+    "effect": "box",
+    "scale": 1.1,
+    "box": true
+  },
+  "entrance": {
+    "effect": "slide",
+    "duration_ms": 140
+  },
+  "exit": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "layout": {
+    "position": "top",
+    "max_words": 4,
+    "margin_l": 90,
+    "margin_r": 80,
+    "margin_v": 130,
+    "align": "left"
+  }
+}

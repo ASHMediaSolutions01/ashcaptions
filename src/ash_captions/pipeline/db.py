@@ -62,6 +62,10 @@ class JobOptions:
     preset: str
     burn: bool
     translate: bool
+    # "full" transcribes; "burn_only" reuses the saved transcript beside the
+    # outputs and only re-renders captions (and burns). The Studio page
+    # submits burn_only after the editor has picked a look.
+    mode: str = "full"
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -82,6 +86,7 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     "preset": "POP",
     "burn": False,
     "translate": False,
+    "mode": "full",
 }
 
 
@@ -336,6 +341,14 @@ class JobStore:
                 "stage = NULL, stage_started_at = NULL WHERE id = ?",
                 (JobStatus.DONE.value, _now_iso(), job_id),
             )
+
+    def update_options(self, job_id: int, options: JobOptions) -> None:
+        """Replace a job's stored options (the Studio changes the preset
+        after a restyle so the row matches the .ass on disk)."""
+        if not isinstance(options, JobOptions):
+            raise TypeError("options must be a JobOptions instance")
+        with self._tx() as conn:
+            conn.execute("UPDATE jobs SET options_json = ? WHERE id = ?", (options.to_json(), job_id))
 
     def mark_failed(self, job_id: int, error: str) -> None:
         """Mark a job failed. The job row (and its error) is kept, never dropped."""

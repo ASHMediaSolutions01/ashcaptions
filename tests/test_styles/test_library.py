@@ -42,10 +42,16 @@ def test_shipped_styles_dir_points_at_repo_root_styles():
     assert (shipped_styles_dir() / "clean.json").is_file()
 
 
-def test_ships_eight_to_ten_genuinely_distinct_looks(empty_user_dir):
+def test_ships_a_real_library_of_distinct_looks(empty_user_dir):
+    """v0.3: the team picks a look the way Veed lets them, so the library
+    grew from nine to thirty-plus, organised by position and mood."""
     styles = list_styles(user_dir=empty_user_dir)
     assert EXPECTED_SHIPPED_NAMES <= set(styles)
-    assert 8 <= len(styles) <= 10
+    assert len(styles) >= 30
+    positions = {s.layout.position for s in styles.values()}
+    aligns = {s.layout.align for s in styles.values()}
+    assert positions == {"bottom", "center", "top", "lower_third"}
+    assert aligns == {"left", "center", "right"}
 
 
 def test_clean_and_pop_are_both_still_shipped(empty_user_dir):
