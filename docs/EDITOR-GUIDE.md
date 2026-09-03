@@ -99,12 +99,10 @@ The `-e` matters: without it the styles and fonts are not found.
 **5b. The 24 caption fonts** and their licences (about 1 minute):
 
 ```
-.venv\Scripts\python.exe -m ash_captions.styles.fonts download
+.venv\Scripts\python.exe scriptsetch_fonts.py
 ```
 
-You should see `wrote 24 font file(s)`. A yellow `RuntimeWarning` mentioning
-"unpredictable behaviour" is a Python quirk about how the command is launched;
-**ignore it**.
+You should see `wrote 24 font file(s)`.
 
 **5c. The speech model** (about 5 minutes — ~480 MB). Optional: if you skip it,
 the first job downloads it by itself.

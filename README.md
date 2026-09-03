@@ -24,7 +24,7 @@ transcript, an optional English translation, and an optional burned-in MP4.
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 .venv\Scripts\python.exe scripts\fetch_ffmpeg.py
-.venv\Scripts\python.exe -m ash_captions.styles.fonts download
+.venv\Scripts\python.exe scriptsetch_fonts.py
 .venv\Scripts\python.exe scripts\fetch_model.py --model-size small --dest models
 .venv\Scripts\python.exe -m ash_captions --open
 ```
