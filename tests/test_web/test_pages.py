@@ -133,3 +133,23 @@ def test_guide_script_lives_in_its_own_file(client, app):
     assert client.get("/static/guide.js").status_code == 200
     script = (STATIC_DIR / "guide.js").read_text(encoding="utf-8")
     assert 'var KEY = "ashguide.done.v1";' in script  # the checklist keeps its storage key
+
+
+def test_guide_has_the_v05_sections(client):
+    page = client.get("/guide").text
+    for section_id in ("starting", "moving", "check", "uninstall"):
+        assert f'<section id="{section_id}">' in page, section_id
+        assert f'href="#{section_id}"' in page, section_id  # in the side nav
+    for phrase in (
+        "AshCaptionsTray",
+        "Open control page",
+        "Open output folder",
+        "Open log file",
+        "Task Manager",
+        "Reset position",
+        "Show English",
+        "Translate to check",
+        "Uninstall-AshCaptions.bat",
+        "C:\\AshCaptions",
+    ):
+        assert phrase in page, phrase
