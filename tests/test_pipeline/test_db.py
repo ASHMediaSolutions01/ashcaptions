@@ -283,3 +283,38 @@ def test_known_clients_is_distinct_newest_first_case_insensitive(store: JobStore
     assert store.known_clients() == ["Globex", "Initech", "ACME"]
     assert store.known_clients(limit=1) == ["Globex"]
     assert JobStore(store.db_path).known_clients(limit=0) == []
+
+
+def test_caption_position_round_trips_through_json_and_the_store(store: JobStore) -> None:
+    opts = make_options(caption_x=0.5, caption_y=0.25)
+    assert opts.caption_position == (0.5, 0.25)
+    assert JobOptions.from_json(opts.to_json()).caption_position == (0.5, 0.25)
+    assert make_options().caption_position is None
+    job_id = store.insert_job(r"C:\in\pos.mp4", r"C:\out\pos", opts)
+    stored = store.get_job(job_id)
+    assert stored is not None
+    assert (stored.options.caption_x, stored.options.caption_y) == (0.5, 0.25)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '"caption_x": 0.5',
+        '"caption_x": 0.5, "caption_y": null',
+        '"caption_x": 1.5, "caption_y": 0.5',
+        '"caption_x": 0.5, "caption_y": -0.1',
+        '"caption_x": "left", "caption_y": 0.5',
+        '"caption_x": true, "caption_y": 0.5',
+    ],
+)
+def test_a_half_or_out_of_range_position_reads_as_none(raw: str) -> None:
+    """A hand-edited or foreign row must read as "no position", never raise."""
+    options = JobOptions.from_json('{"language": "en", "preset": "POP", ' + raw + "}")
+    assert options.caption_position is None
+    assert options.caption_x is None and options.caption_y is None
+
+
+def test_rows_from_before_the_position_existed_read_as_none() -> None:
+    old_json = '{"language": "en", "dialect": null, "preset": "POP", "burn": false, "translate": false}'
+    assert JobOptions.from_json(old_json).caption_position is None
+    assert JobOptions.from_json(old_json) == make_options(dialect=None)
