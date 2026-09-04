@@ -234,6 +234,19 @@ class TestPage:
         for asset in assets:
             assert client.get(asset).status_code == 200, asset
 
+    def test_studio_page_carries_the_caption_drag_layer(self, client, app):
+        page = client.get("/studio/any-id").text
+        for needle in ('id="caption-drag"', 'id="caption-handle"', 'aria-label="Caption position"', 'id="reset-position-btn"'):
+            assert needle in page, needle
+        assert f"/static/studio_drag.js?v={app.state.version}" in page
+        assert f"/static/studio_drag.css?v={app.state.version}" in page
+        assert page.index("/static/studio.js?v=") < page.index("/static/studio_drag.js?v=")
+        studio_js = (STATIC_DIR / "studio.js").read_text(encoding="utf-8")
+        assert "AshStudio.onReady" in studio_js and "AshStudio.onRestyled" in studio_js
+        drag_js = (STATIC_DIR / "studio_drag.js").read_text(encoding="utf-8")
+        for needle in ("hooks.onReady.push(", "hooks.onRestyled.push(", "caption_x", "setPointerCapture", "ArrowUp", "Escape", "AshApi.request("):
+            assert needle in drag_js, needle
+
     def test_player_script_references_only_vendored_files_that_exist(self, client):
         script = (STATIC_DIR / "studio_player.js").read_text(encoding="utf-8")
         assert 'VENDOR = "/static/vendor/jassub/"' in script

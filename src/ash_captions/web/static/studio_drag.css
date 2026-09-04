@@ -1,0 +1,22 @@
+/* Caption drag layer (studio_drag.js): sits over the JASSUB canvas inside
+   .frame. Only the handle takes pointer events, so the picture stays
+   clickable everywhere else. Tokens come from theme.css. */
+.caption-drag { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.caption-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: auto;
+  cursor: grab;
+  background: transparent;
+  border: 2px dashed transparent;
+  border-radius: var(--radius-sm);
+  touch-action: none;
+  will-change: transform;
+}
+.caption-handle:hover,
+.caption-handle:focus-visible { border-color: var(--accent); outline: none; box-shadow: var(--focus); }
+.caption-handle.dragging { cursor: grabbing; border-color: var(--accent); background: var(--accent-soft); box-shadow: none; }
+.caption-handle.busy { cursor: progress; border-color: var(--warn); }
