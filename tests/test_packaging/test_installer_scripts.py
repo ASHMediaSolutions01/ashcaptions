@@ -176,3 +176,30 @@ def test_install_prints_the_preflight_then_installs_when_it_passes(fake_bundle, 
         assert (tmp_path / "install" / "AshCaptions.exe").is_file()
     finally:
         _unregister(scratch["-TaskName"])
+
+
+# ---------------------------------------------------------------------------
+# download errors in plain words
+# ---------------------------------------------------------------------------
+
+
+def test_install_ps1_explains_download_failures_instead_of_a_dotnet_exception():
+    text = INSTALL_PS1.read_text(encoding="utf-8")
+    assert "function Get-Download" in text
+    assert "Check the internet connection; if this PC uses a proxy, ask Ghazi" in text
+    # Both downloads (manifest, then the zip) must go through the wrapper.
+    assert text.count("Get-Download -Url") == 2
+    assert "Invoke-WebRequest" not in text.split("function Get-Download", 1)[1].split("function Resolve-BundleSource", 1)[1]
+
+
+@WINDOWS_ONLY
+def test_a_refused_download_is_reported_in_plain_words(scratch, tmp_path):
+    # Port 9 on loopback is closed: the connection is refused at once, no
+    # network needed and no real URL touched. The preflight passes first
+    # (this box is 64-bit with space), so the failure is the download itself.
+    result = _run(INSTALL_PS1, "-ManifestUrl", "http://127.0.0.1:9/manifest.json", *_args(scratch))
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    assert "Could not download the release list from http://127.0.0.1:9/manifest.json" in output
+    assert "Check the internet connection; if this PC uses a proxy, ask Ghazi" in output
+    assert not (tmp_path / "install").exists()

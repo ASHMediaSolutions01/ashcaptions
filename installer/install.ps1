@@ -195,6 +195,19 @@ function Test-NvidiaGpu {
     return [ordered]@{ Present = $true; Name = $name.Trim() }
 }
 
+function Get-Download {
+    <# Invoke-WebRequest with the failure explained in words an editor can
+       act on. The raw .NET message is kept in brackets for Ghazi. #>
+    param([string]$Url, [string]$OutFile, [string]$What)
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+    } catch {
+        throw ("Could not download $What from $Url. " +
+               "Check the internet connection; if this PC uses a proxy, ask Ghazi. " +
+               "(Windows said: $($_.Exception.Message))")
+    }
+}
+
 function Resolve-BundleSource {
     <# Returns a path to a directory ready to be mirrored into $InstallDir:
        - -Source pointing at a folder is used as-is.
@@ -216,12 +229,12 @@ function Resolve-BundleSource {
 
     Write-Step "Downloading the latest release manifest"
     $manifestPath = Join-Path $env:TEMP "ash-captions-manifest.json"
-    Invoke-WebRequest -Uri $ManifestUrl -OutFile $manifestPath -UseBasicParsing
+    Get-Download -Url $ManifestUrl -OutFile $manifestPath -What 'the release list'
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 
     Write-Step "Downloading AshCaptions $($manifest.version)"
     $zipPath = Join-Path $env:TEMP $manifest.artifact.filename
-    Invoke-WebRequest -Uri $manifest.artifact.url -OutFile $zipPath -UseBasicParsing
+    Get-Download -Url $manifest.artifact.url -OutFile $zipPath -What "AshCaptions $($manifest.version)"
 
     $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $expectedHash = $manifest.artifact.sha256.ToLowerInvariant()
@@ -420,7 +433,19 @@ if ($gpu.Present) {
 }
 
 Write-Step "Getting the app"
-$extractedRoot = Resolve-BundleSource -Source $Source -ManifestUrl $ManifestUrl
+try {
+    $extractedRoot = Resolve-BundleSource -Source $Source -ManifestUrl $ManifestUrl
+} catch {
+    # Caught and re-printed with Write-Host, not left to PowerShell's default
+    # uncaught-exception formatting: that wraps long lines mid-word and adds
+    # a stack trace an editor cannot act on (see Get-Download's docstring).
+    Write-Host ""
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host ""
+    Write-Host "ASH Captions was not installed." -ForegroundColor Red
+    Write-Host ""
+    exit 1
+}
 Write-Done "Ready to install"
 
 Write-Step "Installing to $InstallDir"
