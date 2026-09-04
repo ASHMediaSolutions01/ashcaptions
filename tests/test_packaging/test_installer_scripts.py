@@ -203,3 +203,152 @@ def test_a_refused_download_is_reported_in_plain_words(scratch, tmp_path):
     assert "Could not download the release list from http://127.0.0.1:9/manifest.json" in output
     assert "Check the internet connection; if this PC uses a proxy, ask Ghazi" in output
     assert not (tmp_path / "install").exists()
+
+
+# ---------------------------------------------------------------------------
+# uninstaller: static
+# ---------------------------------------------------------------------------
+
+
+def test_uninstall_ps1_exists_and_takes_the_same_location_overrides_as_install():
+    text = UNINSTALL_PS1.read_text(encoding="utf-8")
+    for name in ("$InstallDir", "$DataRoot", "$TaskName", "$DesktopDir", "$StartMenuProgramsDir", "$StartupDir"):
+        assert name in text.split("$ErrorActionPreference", 1)[0], f"{name} missing from the param block"
+    assert "[switch]$RemoveData" in text
+    assert "[switch]$CheckOnly" in text
+    assert "$DataRoot = 'C:\\AshCaptions'" in text
+    assert "$TaskName = 'AshCaptionsTray'" in text
+
+
+def test_uninstall_ps1_does_each_step_the_spec_lists():
+    text = UNINSTALL_PS1.read_text(encoding="utf-8")
+    assert "Stop-Process" in text  # quit the running app
+    assert "Unregister-ScheduledTask" in text  # the logon task
+    assert "'ASH Captions.lnk'" in text  # Desktop, Start Menu and Startup shortcuts
+    assert "Remove-Item -Recurse -Force" in text  # the install folder
+    assert "Kept (not deleted):" in text  # says what it kept
+    assert "-RemoveData" in text
+
+
+def test_uninstall_ps1_only_stops_the_exe_from_the_install_folder():
+    # Killing every AshCaptions.exe on the machine would also kill a real
+    # install while a test uninstalls a scratch one.
+    text = UNINSTALL_PS1.read_text(encoding="utf-8")
+    assert "$_.Path.StartsWith($InstallDir" in text
+
+
+def test_uninstall_bat_mirrors_the_install_bat():
+    text = UNINSTALL_BAT.read_text(encoding="utf-8")
+    assert "uninstall.ps1" in text
+    assert "%~dp0" in text
+    assert "-ExecutionPolicy Bypass" in text
+    assert "Set-ExecutionPolicy" not in text
+    assert "%*" in text
+    assert "ERRORLEVEL" in text
+    assert "pause" in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# uninstaller: real round trips against a scratch install
+# ---------------------------------------------------------------------------
+
+
+def _install_scratch(fake_bundle: Path, scratch: dict[str, str]) -> None:
+    result = _run(INSTALL_PS1, "-Source", str(fake_bundle), *_args(scratch))
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+
+
+@WINDOWS_ONLY
+def test_uninstall_removes_the_install_and_keeps_the_data(fake_bundle, scratch, tmp_path):
+    install_dir, data_root = tmp_path / "install", tmp_path / "data"
+    desktop_lnk = tmp_path / "desktop" / "ASH Captions.lnk"
+    start_menu_lnk = tmp_path / "startmenu" / "ASH Captions.lnk"
+    startup_lnk = tmp_path / "startup" / "ASH Captions.lnk"
+    task_name = scratch["-TaskName"]
+    try:
+        _install_scratch(fake_bundle, scratch)
+        # Simulate the Startup-folder fallback as well, so both removal paths run.
+        startup_lnk.parent.mkdir(parents=True, exist_ok=True)
+        startup_lnk.write_bytes(b"fake shortcut")
+        # Something the app wrote into the data root once it ran.
+        (data_root / "settings.json").write_text("{}", encoding="utf-8")
+        (data_root / "out" / "reel").mkdir(parents=True)
+        (data_root / "out" / "reel" / "reel.srt").write_text("1\n", encoding="utf-8")
+        assert _ps(f"(Get-ScheduledTask -TaskName '{task_name}' -ErrorAction SilentlyContinue).TaskName") == task_name
+
+        result = _run(UNINSTALL_PS1, *_args(scratch))
+        assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+
+        assert not install_dir.exists()
+        assert not desktop_lnk.exists()
+        assert not start_menu_lnk.exists()
+        assert not startup_lnk.exists()
+        assert _ps(f"(Get-ScheduledTask -TaskName '{task_name}' -ErrorAction SilentlyContinue).TaskName") == ""
+        # Data kept, and the script said so, naming the folder.
+        assert (data_root / "out" / "reel" / "reel.srt").is_file()
+        assert (data_root / "settings.json").is_file()
+        assert "Kept (not deleted):" in result.stdout
+        assert str(data_root) in result.stdout
+        assert "-RemoveData" in result.stdout
+        assert "ASH Captions has been uninstalled." in result.stdout
+    finally:
+        _unregister(task_name)
+
+
+@WINDOWS_ONLY
+def test_uninstall_remove_data_deletes_the_data_root_too(fake_bundle, scratch, tmp_path):
+    data_root = tmp_path / "data"
+    try:
+        _install_scratch(fake_bundle, scratch)
+        (data_root / "settings.json").write_text("{}", encoding="utf-8")
+
+        result = _run(UNINSTALL_PS1, "-RemoveData", *_args(scratch))
+        assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+
+        assert not (tmp_path / "install").exists()
+        assert not data_root.exists()
+        assert "Kept (not deleted):" not in result.stdout
+        assert f"Removed {data_root}" in result.stdout
+    finally:
+        _unregister(scratch["-TaskName"])
+
+
+@WINDOWS_ONLY
+def test_uninstall_check_only_reports_without_changing_anything(fake_bundle, scratch, tmp_path):
+    try:
+        _install_scratch(fake_bundle, scratch)
+
+        result = _run(UNINSTALL_PS1, "-CheckOnly", *_args(scratch))
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        payload = json.loads(result.stdout)
+
+        assert payload["install_dir"] == str(tmp_path / "install")
+        assert payload["install_dir_exists"] is True
+        assert payload["data_root"] == str(tmp_path / "data")
+        assert payload["data_root_exists"] is True
+        assert payload["remove_data"] is False
+        assert payload["task_name"] == scratch["-TaskName"]
+        assert payload["task_exists"] is True
+        assert payload["startup_shortcut_exists"] is False
+        assert sorted(payload["shortcuts"]) == sorted(
+            [str(tmp_path / "desktop" / "ASH Captions.lnk"), str(tmp_path / "startmenu" / "ASH Captions.lnk")]
+        )
+        assert payload["app_running"] is False
+
+        assert (tmp_path / "install" / "AshCaptions.exe").is_file()  # nothing removed
+        assert _ps(f"(Get-ScheduledTask -TaskName '{scratch['-TaskName']}' -ErrorAction SilentlyContinue).TaskName") == scratch["-TaskName"]
+    finally:
+        _unregister(scratch["-TaskName"])
+
+
+@WINDOWS_ONLY
+def test_uninstall_with_nothing_installed_is_a_clean_no_op(scratch, tmp_path):
+    # Task already gone, no folders, no shortcuts: exactly the state the
+    # rehearsal install at Temp\ashinst4 is in, and the state a second
+    # double-click of the uninstaller finds.
+    result = _run(UNINSTALL_PS1, *_args(scratch))
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    assert "ASH Captions is not running." in result.stdout
+    assert "No start-at-logon entry found." in result.stdout
+    assert "already removed" in result.stdout
+    assert "ASH Captions has been uninstalled." in result.stdout
