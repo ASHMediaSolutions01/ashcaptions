@@ -31,9 +31,12 @@ Effect -> tag mapping (spec 7A.1):
                                  card's first (entrance) and last (exit)
                                  Dialogue event
   * shake                    -- a ``\\t`` chain on ``\\frz``
-  * glow                     -- ``\\blur`` + ``\\be`` over a widened,
-                                 colour-matched ``\\bord``/``\\3c`` on the
-                                 active word, restored on the closing tag
+  * glow                     -- two Dialogue lines per word event: a
+                                 layer-0 halo (other words transparent,
+                                 active word hollow with a wide, blurred
+                                 outline in the active colour -- see
+                                 ``render_glow``) under a layer-1 line that
+                                 is exactly the ``pop`` rendering
   * letter spacing, all-caps -- ``\\fsp``, ``str.upper()``
   * position variants        -- ``\\an`` + margins
 
@@ -67,9 +70,9 @@ from .ass_format import (
     ass_header,
     ass_inline_colour,
     format_ass_time,
-    outline_width,
     safe_style_name,
 )
+from .render_glow import HALO_LAYER, POP_HALF_MS, TEXT_LAYER, halo_line_text, scale_transform_tags
 from .schema import Style
 
 DEFAULT_PLAY_RES = (1080, 1920)  # vertical short-form default
@@ -157,6 +160,7 @@ def _standard_events(card: Card, style: Style, style_name: str, width: int, heig
     words = card.words
     count = len(words)
     x, y = _anchor_xy(style, width, height)
+    glow = style.active_word.effect == "glow"
     lines: list[str] = []
     for i, word in enumerate(words):
         start = word.start
@@ -168,8 +172,16 @@ def _standard_events(card: Card, style: Style, style_name: str, width: int, heig
         leading = _leading_override(
             style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms
         )
-        dialogue_text = f"{{{leading}}}{text}" if leading else text
-        lines.append(_dialogue_line(start, end, style_name, dialogue_text))
+        prefix = f"{{{leading}}}" if leading else ""
+        if glow:
+            # Halo first (layer 0), the crisp pop-style text over it (layer
+            # 1); both carry the same entrance/exit block -- see render_glow.
+            prepared = [_prepare_word_text(w.text, style) for w in words]
+            halo = halo_line_text(prepared, i, style)
+            lines.append(_dialogue_line(start, end, style_name, prefix + halo, layer=HALO_LAYER))
+            lines.append(_dialogue_line(start, end, style_name, prefix + text, layer=TEXT_LAYER))
+        else:
+            lines.append(_dialogue_line(start, end, style_name, prefix + text))
     return lines
 
 
@@ -219,8 +231,8 @@ def _karaoke_events(card: Card, style: Style, style_name: str, width: int, heigh
     return [_dialogue_line(card.start, card.end, style_name, dialogue_text)]
 
 
-def _dialogue_line(start: float, end: float, style_name: str, text: str) -> str:
-    return f"Dialogue: 0,{format_ass_time(start)},{format_ass_time(end)},{style_name},,0,0,0,,{text}"
+def _dialogue_line(start: float, end: float, style_name: str, text: str, layer: int = 0) -> str:
+    return f"Dialogue: {layer},{format_ass_time(start)},{format_ass_time(end)},{style_name},,0,0,0,,{text}"
 
 
 # ---------------------------------------------------------------------------
@@ -267,10 +279,10 @@ def _join_words(parts: list[str]) -> list[str]:
 
 def _active_word_tags(style: Style, active_colour: str, text_colour: str) -> tuple[str, str]:
     effect = style.active_word.effect
-    if effect == "pop":
-        scale = round(style.active_word.scale * 100)
-        d = _POP_HALF_MS
-        open_tags = f"\\c{active_colour}\\t(0,{d},\\fscx{scale}\\fscy{scale})\\t({d},{2 * d},\\fscx100\\fscy100)"
+    if effect in ("pop", "glow"):
+        # glow's visible text is the pop rendering; its halo is a separate
+        # layer-0 event built by render_glow.halo_line_text.
+        open_tags = f"\\c{active_colour}{scale_transform_tags(style.active_word.scale)}"
         close_tags = f"\\c{text_colour}\\fscx100\\fscy100"
     elif effect == "shake":
         q = _SHAKE_QUARTER_MS
@@ -280,37 +292,18 @@ def _active_word_tags(style: Style, active_colour: str, text_colour: str) -> tup
             f"\\t({2 * q},{3 * q},\\frz-2)\\t({3 * q},{4 * q},\\frz0)"
         )
         close_tags = f"\\c{text_colour}\\frz0"
-    elif effect == "glow":
-        # A glow is a soft, widened outline in the active colour: widen
-        # \bord so the blur has something to spread, colour it with \3c,
-        # then \blur/\be soften it. The closing tag restores the style's
-        # own outline width and colour for the words that follow.
-        outline_glow = ass_inline_colour(style.colors.active)
-        base_bord = outline_width(style)
-        open_tags = f"\\c{active_colour}\\3c{outline_glow}\\bord{_glow_width(style)}\\blur4\\be1"
-        outline = ass_inline_colour(style.colors.outline)
-        close_tags = f"\\c{text_colour}\\3c{outline}\\bord{base_bord}\\blur0\\be0"
     else:  # "none" -- colour swap only
         open_tags = f"\\c{active_colour}"
         close_tags = f"\\c{text_colour}"
     return open_tags, close_tags
 
 
-_POP_HALF_MS = 90
 _SHAKE_QUARTER_MS = 45
-
-
-def _glow_width(style: Style) -> int:
-    """The widened \\bord behind a glowing word: roughly double the base
-    outline, and never less than 3px wider, so the blur reads as a halo
-    rather than a slightly thicker stroke."""
-    base = outline_width(style)
-    return max(base + 3, base * 2)
 
 
 def _pop_scale_tags(style: Style, event_ms: int) -> str:
     scale = round(style.active_word.scale * 100)
-    d = min(_POP_HALF_MS, max(1, event_ms // 2))
+    d = min(POP_HALF_MS, max(1, event_ms // 2))
     return f"{{\\t(0,{d},\\fscx{scale}\\fscy{scale})\\t({d},{2 * d},\\fscx100\\fscy100)}}"
 
 
