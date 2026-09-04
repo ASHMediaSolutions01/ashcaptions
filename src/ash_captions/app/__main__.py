@@ -400,9 +400,12 @@ def _run(args: argparse.Namespace, settings: Settings) -> None:
         lock.close()  # release the single-instance lock explicitly, don't wait on process exit
 
     try:
-        from .tray import build_tray_icon
+        from .tray import build_tray_icon, subscribe_job_notifications
 
         icon = build_tray_icon(url=url, settings=settings, on_quit=shutdown, update_state=update_state)
+        # A tray balloon when a job finishes or fails (the browser toast only
+        # reaches a tab that is open).
+        subscribe_job_notifications(icon, _adapter)
     except RuntimeError:
         # No usable tray backend on this machine. There is still no
         # console to fall back to (this ships as a windowed PyInstaller
