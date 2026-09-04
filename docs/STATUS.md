@@ -5,19 +5,72 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **1377 passing, 28 skipped** (the skips are the real-ffmpeg and
+- Tests: **1536 passing, 30 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Design decisions and their reasoning: `docs/superpowers/specs/2026-08-29-ash-captions-design.md`
 - Editor instructions: `docs/EDITOR-GUIDE.md`, and inside the app at `/guide`
 - Build/release instructions: `docs/INSTALL.md`
 - The independent audit that shaped v0.2: `docs/audits/2026-09-02-codex-audit.md`
 - The release-readiness scan that shaped 0.4.1/0.4.2: `docs/audits/2026-09-04-readiness-scan.md`
+- What v0.5 is and why: `docs/superpowers/specs/2026-09-04-v0.5-design.md`
 
 ---
 
 ## Where the project is
 
-**v0.4.2 is what master is now, and what is published** (2026-09-04). It is
+**v0.5.0 is what master is now, and what is published** (2026-09-04). It is
+the build the six editors install and test. On top of v0.4.2:
+
+- **Move the caption anywhere.** Drag it on the video in the Studio and the
+  captions redraw there in about a second; arrow keys nudge by 1% of the
+  frame, Shift by 5%, and **Reset position** puts it back where the look
+  wants it. The position belongs to the job, not the look, so changing look
+  keeps it, and it is what gets burned. Stored as a fraction of the frame,
+  so it lands in the same place at any video size. Verified in the real
+  Studio: dragged to 50% across and 25% down, all 1456 caption events
+  pinned to (962, 236) in the `.ass`, position kept when the look changed,
+  and Reset returned it to the look's own placement.
+  Until now a caption could only sit at one of twelve fixed spots, which is
+  the thing every competitor has had for years.
+- **Checking captions in a language nobody on the desk speaks.** The
+  transcript panel under the video shows the English line under each source
+  line, and underlines the words the speech model was unsure of, amber under
+  0.5 confidence and red under 0.3, with a chip that counts them and jumps
+  to the next one. When a job was never translated, **Translate to check**
+  runs only the English pass from the saved transcript, in seconds, without
+  transcribing again. Verified on the Spanish interview: 728 Spanish words,
+  760 English, 25 flagged. The confidence numbers were always saved and
+  never shown; now they are the answer to "is this Spanish caption right?".
+- **The glow looks are readable.** GLOW MINT, NEON GLOW and OCEAN drew the
+  highlighted word's halo in the same colour as its fill, so the word turned
+  into a blob. The glow is now a blurred halo on its own layer under crisp
+  text. Verified in the burn, in a real-libass pixel test, and in the
+  browser; switching looks still takes about 230 ms.
+- **The installer checks the PC first.** 64-bit Windows or it stops, the
+  Windows build, 4 GB free on the install drive with the real figure in the
+  message, TLS 1.2 for the download, and a warning when long paths are off.
+  Download failures say to check the connection or ask about a proxy instead
+  of printing a .NET stack trace. `-CheckOnly` reports all of it without
+  installing.
+- **An uninstaller.** `Uninstall-AshCaptions.bat` quits the app, removes the
+  logon task and both shortcuts, and deletes the program folder. It keeps
+  `C:\AshCaptions` (the editors' captions) unless asked otherwise, and says
+  so. Verified by running it against a scratch install: program folder gone,
+  captions kept, and a second run is a clean no-op.
+- **Polish and the guide.** One primary action per queue row, no green bar
+  on finished jobs, a readable disabled Start button, the job thumbnail as
+  the Studio video's poster. The guide gained "Starting and stopping",
+  "Moving a caption", "Checking captions in a language you don't speak" and
+  "Uninstalling", every screenshot recaptured from this build, and a
+  standalone `docs/ASH-Captions-Guide.html` that opens from a file with the
+  pictures inside it, to send the team before they install.
+- **Two bugs found by clicking, not by tests.** Two Studio tabs restyling
+  one job could still fail one of them on Windows, because two renames onto
+  the same file collide; the rename now retries. And picking a look while
+  the video was paused appeared to do nothing, because the caption renderer
+  only draws on a video frame; it now repaints the current moment.
+
+**v0.4.2 is underneath it** (2026-09-04). It is
 the v0.4 feature set below plus one UX pass and the fixes from a deep
 readiness scan, and it is the first build the editors should install:
 
@@ -183,13 +236,34 @@ actually relaunches; licence texts. See "Where the project is". v0.4.1 is
 published but superseded the same day (its page never came up when launched
 by the logon task); v0.4.2 is the one to install.
 
-### v0.5 and later
-- Arabic and Urdu styled captions (right-to-left ASS; Noto Naskh is bundled).
+### v0.5 — move it, check it, install it anywhere (done, this release)
+Caption placement anywhere on the frame, the caption check for languages
+nobody on the desk speaks, the glow fix, installer preflight and an
+uninstaller, the polish pass and the shareable guide. See "Where the
+project is".
+
+### v0.6 and later
+Ranked by how often an editor would hit the gap, from the 2026-09-04
+competitor scan (Veed, CapCut, Submagic, Captions.ai, Opus Clip, Descript,
+Premiere, Resolve, and the regional tools Kalakar, Bayaan and Bolti):
+
+- Turning a landscape interview into a 9:16 reel, cropping to follow the
+  speaker. Every short-form competitor does this; the matting model already
+  in the bundle can supply the tracking signal.
 - Emoji and sticker bursts (a compositing pass; not possible in ASS).
+- Arabic and Urdu styled captions (right-to-left ASS; Noto Naskh is
+  bundled). The karaoke looks sweep the wrong way in Arabic today, which
+  the guide says.
+- Speaker names for podcasts, which needs a diarisation model and the
+  install weight that comes with it.
 - A GPU bundle variant, once there is an NVIDIA machine to test on. Until
   then `enable_gpu.ps1` refuses by design and the engine falls back to CPU.
 - Review-page video for watch-folder jobs (the input is deleted on success,
   so the review route can only stream by-path and uploaded inputs).
+
+Deliberately not chasing: auto B-roll and the "virality score" features.
+They are a second product, and the thing this tool has that none of the
+cloud ones do is that client footage never leaves the building.
 
 ---
 
@@ -214,11 +288,12 @@ by the logon task); v0.4.2 is the one to install.
 
 ## Things Ghazi needs to do
 
-1. **Roll the installer out.** v0.4.2 is published at
+1. **Roll the installer out.** v0.5.0 is published at
    `github.com/ASHMediaSolutions01/ashcaptions-releases` (verified: the real
    installer downloaded it from the manifest, hash-checked it, installed it,
    the installed exe ran a behind-the-speaker client job and a rotated
-   phone reel, and an in-app update relaunched it). Give each editor
+   phone reel, and an in-app update relaunched it). Send each editor
+   `docs\ASH-Captions-Guide.html` to read first, then
    `installer\Install-AshCaptions.bat` and `installer\install.ps1` from
    this repo; the installer pulls the release itself. Anyone who already
    has 0.4.0 must run the installer again (0.4.0 cannot self-update); from
@@ -227,6 +302,11 @@ by the logon task); v0.4.2 is the one to install.
 2. **Run the first real hour-long client file** with the page open, and send
    the log if anything looks wrong. This is the one thing no synthetic test
    replaces.
+3. **Decide about code signing.** On a PC where IT has set AppLocker, or
+   SmartScreen to block rather than warn, an unsigned exe will not run at
+   all and no installer check can fix that. A signing certificate is a few
+   hundred dollars a year and also removes the blue "protected your PC"
+   box every editor sees on first run.
 3. **Validate three numbers against real client work**, all tunable without a
    release, in `C:\AshCaptions\settings.json`:
    - `silence_gap_seconds` (1.5)

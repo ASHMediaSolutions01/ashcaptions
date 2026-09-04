@@ -307,11 +307,11 @@ exactly the one this manifest said, not a guess.
 {
   "schema_version": 1,
   "channel": "stable",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "build_date": "2026-09-04T11:17:09+00:00",
   "artifact": {
-    "filename": "AshCaptions-0.4.2-win64.zip",
-    "url": "https://github.com/ASHMediaSolutions01/ashcaptions-releases/releases/download/v0.4.2/AshCaptions-0.4.2-win64.zip",
+    "filename": "AshCaptions-0.5.0-win64.zip",
+    "url": "https://github.com/ASHMediaSolutions01/ashcaptions-releases/releases/download/v0.5.0/AshCaptions-0.5.0-win64.zip",
     "sha256": "<64 hex chars>",
     "size_bytes": 1234567890
   },
