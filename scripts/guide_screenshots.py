@@ -352,13 +352,21 @@ def fig_moving_caption(s: Session) -> None:
 def fig_check_captions(s: Session) -> None:
     open_studio(s)
     seek_to_spoken_moment(s)
-    if s.page.locator(".transcript-panel").count():
+    # The panel that shipped uses its own class names (studio_check.js);
+    # the older `.transcript-panel` markup is only a fallback for a build
+    # without it.
+    if s.page.locator("#check-list").count():
+        toggle = s.page.locator("#check-show-en")
+        if toggle.count() and not toggle.is_checked():
+            toggle.check()
+            s.page.wait_for_timeout(400)
+    elif s.page.locator(".transcript-panel").count():
         toggle = s.page.locator("#show-english")
         if toggle.count() and not toggle.is_checked():
             toggle.check()
             s.page.wait_for_timeout(400)
     else:
-        print("check-captions.png: staged (.transcript-panel not on the page; rerun after track B is merged)")
+        print("check-captions.png: staged (no caption-check panel on the page)")
         s.page.evaluate(STAGED_CHECK_MARKUP, staged_check_lines(s))
     s.page.wait_for_timeout(200)
     shoot(s, "check-captions.png", selector=".stage-column")

@@ -347,6 +347,8 @@ Every look puts the caption at a fixed spot: bottom, centre, top or lower
 third. When that spot covers a face, a logo or a lower-third graphic, drag
 the caption somewhere else. The position belongs to the job, so it survives
 changing the look and is what gets burned.
+![A dashed outline around the caption on the video, ready to drag](images/moving-caption.png)
+
 
 1. In the Studio, point at the caption on the video. A dashed outline
    appears around it.
@@ -364,6 +366,8 @@ position you see, and so does the `.ass` in the output folder.
 
 A Spanish interview for a client, and nobody on the desk speaks Spanish. The
 transcript panel under the video tells you *where to look*.
+![The transcript panel: Spanish lines with the English underneath and uncertain words underlined](images/check-captions.png)
+
 
 - **Uncertain words** are underlined: amber when the model was unsure, red
   when it was guessing. The chip above the panel says how many there are;
