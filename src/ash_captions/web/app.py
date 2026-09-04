@@ -33,13 +33,16 @@ from ash_captions.config import DEFAULT_PORT, data_root
 
 from .interfaces import (
     ClientGlossaryProvider,
+    FilePicker,
     JobQueue,
     LanguageCatalogueProvider,
+    PathRevealer,
     PreviewRenderer,
     StyleProvider,
     UpdateApplier,
 )
 from .routes_clients import build_clients_router
+from .routes_desktop import build_desktop_router
 from .routes_events import DEFAULT_SSE_POLL_INTERVAL, build_events_router
 from .routes_jobs import build_jobs_router
 from .routes_review import build_review_router
@@ -71,11 +74,19 @@ def create_app(
     preview_renderer: PreviewRenderer | None = None,
     update_applier: UpdateApplier | None = None,
     glossary_provider: ClientGlossaryProvider | None = None,
+    file_picker: FilePicker | None = None,
+    revealer: PathRevealer | None = None,
     incoming_dir: Path | None = None,
     sse_poll_interval: float = DEFAULT_SSE_POLL_INTERVAL,
     updates_supported: Callable[[], bool] | None = None,
 ) -> FastAPI:
     """Build the FastAPI app.
+
+    `file_picker`/`revealer` back the desktop routes (`routes_desktop.py`:
+    the Browse... dialog and "Open folder"). They default to the real
+    Windows implementations in `ash_captions.app.desktop` (imported
+    lazily, so this module never needs them at import time); tests inject
+    fakes. `app/__main__.py` passes nothing and gets the real ones.
 
     `incoming_dir` is where files uploaded through the control page are
     written before being handed to `queue.submit()`; defaults to
@@ -111,6 +122,8 @@ def create_app(
     app.state.preview_renderer = preview_renderer or _default_preview_renderer()
     app.state.update_applier = update_applier or _default_update_applier()
     app.state.glossary_provider = glossary_provider or _default_glossary_provider()
+    app.state.file_picker = file_picker or _default_file_picker()
+    app.state.revealer = revealer or _default_revealer()
     app.state.incoming_dir = incoming_dir or default_incoming_dir()
     app.state.sse_poll_interval = sse_poll_interval
     app.state.version = app_version()
@@ -133,6 +146,12 @@ def create_app(
     def get_glossary_provider(request: Request) -> ClientGlossaryProvider:
         return request.app.state.glossary_provider
 
+    def get_file_picker(request: Request) -> FilePicker:
+        return request.app.state.file_picker
+
+    def get_revealer(request: Request) -> PathRevealer:
+        return request.app.state.revealer
+
     install_security_middleware(app)
 
     # Serves style.css and app.js alongside the page. index.html is served
@@ -146,6 +165,7 @@ def create_app(
     app.include_router(build_studio_router(get_queue, get_style_provider))
     app.include_router(build_styles_router(get_style_provider, get_preview_renderer))
     app.include_router(build_clients_router(get_queue, get_glossary_provider))
+    app.include_router(build_desktop_router(get_queue, get_file_picker, get_revealer))
     app.include_router(
         build_update_router(get_queue, get_update_applier, updates_supported or _runtime_updates_supported)
     )
@@ -219,6 +239,20 @@ def _default_glossary_provider() -> ClientGlossaryProvider:
     from .glossary_adapter import ClientGlossaryFiles
 
     return ClientGlossaryFiles(Settings.load().glossary_dir)
+
+
+def _default_file_picker() -> FilePicker:
+    """The real Windows Open File dialog. Lazy: `app.desktop` is only
+    needed once a route actually runs, and tests never load it."""
+    from ash_captions.app.desktop import WindowsFilePicker
+
+    return WindowsFilePicker()
+
+
+def _default_revealer() -> PathRevealer:
+    from ash_captions.app.desktop import ExplorerRevealer
+
+    return ExplorerRevealer()
 
 
 def run_server(app: FastAPI, host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> None:

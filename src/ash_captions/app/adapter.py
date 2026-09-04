@@ -17,26 +17,22 @@ Four real impedance mismatches sit between the two layers:
 Push-driven SSE
 ----------------
 ``subscribe()`` must never poll (spec section 8.3). Each subscriber gets
-its own ``asyncio.Queue``; ``notify()`` (called on every state change --
-see ``_NotifyingStore`` below) pushes a fresh snapshot into every
-subscriber's queue. The queue worker thread that actually processes jobs
-runs *outside* the event loop, so publishing from it must be marshalled
-back with ``loop.call_soon_threadsafe`` -- calling ``asyncio.Queue.put``
-directly from a foreign thread is not safe and either deadlocks or
-silently corrupts the queue's internal state.
-
-Publishing is throttled to one snapshot per ``notify_interval`` (trailing
-edge, so the last value always lands): ffmpeg reports progress several
-times a second, and each publish is a full ``SELECT`` plus a JSON encode
-per open tab, on the event loop -- for an hour-long burn that adds up.
-``_NotifyingStore.mark_progress`` additionally skips the write itself
-when the integer percentage hasn't changed.
+its own ``asyncio.Queue``; ``notify()`` (every state change -- see
+``_NotifyingStore``) pushes a fresh snapshot into each. The worker thread
+runs outside the event loop, so publishing is marshalled back with
+``loop.call_soon_threadsafe`` (``asyncio.Queue.put`` from a foreign thread
+deadlocks or corrupts the queue). Publishing is throttled to one snapshot
+per ``notify_interval`` (trailing edge, so the last value always lands):
+ffmpeg reports several times a second and each publish is a ``SELECT``
+plus a JSON encode per tab. ``mark_progress`` also skips the write when
+the integer percentage hasn't changed.
 """
 
 from __future__ import annotations
 
 import asyncio
 import dataclasses
+import logging
 import re
 import time
 from datetime import datetime
@@ -50,7 +46,7 @@ from ash_captions.pipeline.db import Job as PipelineJob
 from ash_captions.pipeline.db import JobOptions as PipelineJobOptions
 from ash_captions.pipeline.db import JobStatus as PipelineJobStatus
 from ash_captions.pipeline.db import JobStore
-from ash_captions.web.interfaces import JobNotFoundError, JobNotRetryableError
+from ash_captions.web.interfaces import JobNotFoundError, JobNotRemovableError, JobNotRetryableError
 from ash_captions.web.models import Job as WebJob
 from ash_captions.web.models import JobOptions as WebJobOptions
 from ash_captions.web.models import JobStatus as WebJobStatus
@@ -58,14 +54,15 @@ from ash_captions.web.models import JobStatus as WebJobStatus
 from .runner_util import atomic_write, client_for_watch_path
 from .transcript import TranscriptError, TranscriptRecord, load_transcript, transcript_path
 
+logger = logging.getLogger("ash_captions.app.adapter")
+
 # The control page never needs the whole history; the newest rows are
 # what an editor is looking at.
 DEFAULT_LIST_LIMIT = 200
 DEFAULT_NOTIFY_INTERVAL_SECONDS = 1.0
 
-# Extra fields the web Job model may grow; set only when it declares them
-# (a plain pydantic model silently drops unknown kwargs, which would hide
-# a wiring gap rather than surface it).
+# Extra web Job fields, set only when the model declares them (pydantic
+# would silently drop unknown kwargs and hide a wiring gap).
 _OPTIONAL_WEB_FIELDS = ("stage", "stage_started_at", "started_at", "input_path", "output_dir")
 
 _SUFFIX_RE = re.compile(r"^(.*) \((\d+)\)$")
@@ -74,17 +71,13 @@ _SUFFIX_RE = re.compile(r"^(.*) \((\d+)\)$")
 class QueueAdapter:
     """Implements web's ``JobQueue`` protocol over ``pipeline.JobStore``.
 
-    ``out_dir`` is the retail output root (``settings.out_dir``); each
-    submitted job gets its own ``out_dir/<video stem>`` subfolder (spec
-    section 10) -- made unique (``<stem> (2)``, ``<stem> (3)``...) against
-    both the disk and every job row, so two videos sharing a stem never
-    overwrite each other's outputs.
-
+    ``out_dir`` is the output root (``settings.out_dir``); each job gets
+    its own ``out_dir/<video stem>`` subfolder (spec section 10), made
+    unique (``<stem> (2)``...) against the disk and every job row.
     ``watch_dir`` (``settings.in_dir``) lets ``submit`` name the client for
     a watch-folder drop from its subfolder (``in\\Acme\\clip.mp4`` ->
-    client "Acme") when the caller's options carry none. Left unset, it
-    is read from ``Settings.load()`` on first use -- the same source
-    ``app/__main__.py`` builds the watcher from.
+    "Acme") when the options carry none; unset, it is read from
+    ``Settings.load()`` on first use.
     """
 
     def __init__(
@@ -107,10 +100,13 @@ class QueueAdapter:
         self._trailing_handle: asyncio.TimerHandle | None = None
         self._health_sources: dict[str, Any] = {}
         self._settings: Settings | None = None  # lazily loaded for restyle card rules
-        # Hand this to JobWorker in place of the raw store -- see module
-        # docstring. Kept as a public attribute (not a method) since it is
-        # a long-lived object identity JobWorker holds onto, not a call.
-        self.notifying_store = _NotifyingStore(store, self._notify)
+        # Called with the finished web ``Job`` when the worker marks one
+        # done/failed (the tray's balloon subscribes here). Worker thread;
+        # a failing subscriber is logged, never allowed to kill the worker.
+        self.on_job_finished: list[Callable[[WebJob], None]] = []
+        # Handed to JobWorker in place of the raw store (see module
+        # docstring); a long-lived object JobWorker holds onto.
+        self.notifying_store = _NotifyingStore(store, self._notify, self._fire_finished)
 
     # -- JobQueue protocol -----------------------------------------------
 
@@ -136,8 +132,7 @@ class QueueAdapter:
         output_dir = self.unique_output_dir(file_path.stem)
         pipeline_options = _to_pipeline_options(options)
         if pipeline_options.client is None:
-            # A drop into in\<Client>\ names its client by the folder; the
-            # watcher's default-options callback knows nothing about it.
+            # A drop into in\<Client>\ names its client by the folder.
             derived = client_for_watch_path(file_path, self._resolve_watch_dir())
             if derived is not None:
                 pipeline_options = dataclasses.replace(pipeline_options, client=derived)
@@ -148,9 +143,33 @@ class QueueAdapter:
         return _to_web_job(job)
 
     def known_clients(self) -> list[str]:
-        """Distinct clients on recent jobs, most recent first (the control
-        page's client picker -- see ``interfaces.JobQueue``)."""
+        """Distinct clients on recent jobs, most recent first (the client picker)."""
         return self._store.known_clients()
+
+    def remove_job(self, job_id: str) -> None:
+        """Forget a finished job's row ("Remove from list"); its files stay.
+        Raises ``JobNotFoundError`` / ``JobNotRemovableError`` (still live)."""
+        self._capture_loop()
+        numeric_id = _parse_job_id(job_id)
+        if numeric_id is None:
+            raise JobNotFoundError(job_id)
+        try:
+            self._store.delete_job(numeric_id)
+        except KeyError as exc:
+            raise JobNotFoundError(job_id) from exc
+        except ValueError as exc:
+            raise JobNotRemovableError(str(exc)) from exc
+        self._notify()
+
+    def _fire_finished(self, job_id: int) -> None:  # worker thread
+        job = self._store.get_job(job_id) if self.on_job_finished else None
+        if job is None:
+            return
+        for callback in list(self.on_job_finished):
+            try:
+                callback(_to_web_job(job))
+            except Exception:  # noqa: BLE001 - a notifier must never take the worker down
+                logger.exception("on_job_finished subscriber failed for job %s", job_id)
 
     def _resolve_watch_dir(self) -> Path:
         if self._watch_dir is None:
@@ -303,11 +322,8 @@ class QueueAdapter:
 
     def _capture_loop(self) -> None:
         """Remember the running event loop the first time we're called from
-        one. ``submit``/``retry`` run synchronously inside an ``async def``
-        FastAPI route handler (never thread-pooled -- see web/app.py), and
-        ``subscribe`` is itself a coroutine, so all three genuinely run on
-        the loop thread the first time they're invoked.
-        """
+        one (``submit``/``retry`` run inside an ``async def`` route handler,
+        ``subscribe`` is a coroutine -- all on the loop thread)."""
         if self._loop is None:
             try:
                 self._loop = asyncio.get_running_loop()
@@ -317,14 +333,11 @@ class QueueAdapter:
     def _notify(self) -> None:
         """Wake every subscriber with a fresh snapshot (rate-limited).
 
-        Safe to call from any thread: with no loop captured yet (nobody has
-        subscribed, or a request hasn't happened yet) this is a no-op --
-        there is nothing to wake, and the next subscriber's initial
-        snapshot will already reflect current state. Once a loop is known,
-        publishing always goes through ``call_soon_threadsafe``, which is
-        the only safe way to touch an ``asyncio.Queue`` from the queue
-        worker's background thread (spec section 8.3's push requirement).
-        """
+        Safe from any thread: with no loop captured yet this is a no-op
+        (nothing to wake; the next subscriber's first snapshot is current).
+        Once a loop is known, publishing goes through
+        ``call_soon_threadsafe`` -- the only safe way to touch an
+        ``asyncio.Queue`` from the worker thread (spec section 8.3)."""
         loop = self._loop
         if loop is None or loop.is_closed():
             return
@@ -369,9 +382,15 @@ class _NotifyingStore:
     typing.
     """
 
-    def __init__(self, store: JobStore, notify: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        store: JobStore,
+        notify: Callable[[], None],
+        on_finished: Callable[[int], None] | None = None,
+    ) -> None:
         self._store = store
         self._notify = notify
+        self._on_finished = on_finished or (lambda job_id: None)
         self._last_progress: dict[int, int] = {}
 
     def __getattr__(self, name: str):
@@ -397,11 +416,13 @@ class _NotifyingStore:
         self._last_progress.pop(job_id, None)
         self._store.mark_done(job_id)
         self._notify()
+        self._on_finished(job_id)
 
     def mark_failed(self, job_id: int, error: str) -> None:
         self._last_progress.pop(job_id, None)
         self._store.mark_failed(job_id, error)
         self._notify()
+        self._on_finished(job_id)
 
     def requeue(self, job_id: int) -> None:
         self._last_progress.pop(job_id, None)
@@ -454,8 +475,7 @@ def _to_pipeline_options(options: WebJobOptions) -> PipelineJobOptions:
 
 
 def _to_web_job(job: PipelineJob) -> WebJob:
-    # pipeline.Job has no single "last touched" timestamp; the most recent
-    # of finished/stage-started/started/created is the closest honest equivalent.
+    # pipeline.Job has no "last touched" stamp; the newest of these is the closest.
     updated_raw = job.finished_at or job.stage_started_at or job.started_at or job.created_at
     extras = {
         "stage": job.stage,

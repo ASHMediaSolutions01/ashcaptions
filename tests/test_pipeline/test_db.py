@@ -206,6 +206,32 @@ def test_requeue_unknown_id_raises_key_error(store: JobStore) -> None:
         store.requeue(999)
 
 
+def test_delete_job_removes_only_finished_rows(store: JobStore) -> None:
+    """"Remove from list" forgets the row and nothing else; a live job
+    can't be deleted from under the worker."""
+    done = store.insert_job("a.mp4", "out/a", make_options())
+    store.mark_running(done)
+    store.mark_done(done)
+    failed = store.insert_job("b.mp4", "out/b", make_options())
+    store.mark_running(failed)
+    store.mark_failed(failed, "boom")
+    pending = store.insert_job("c.mp4", "out/c", make_options())
+    running = store.insert_job("d.mp4", "out/d", make_options())
+    store.mark_running(running)
+
+    store.delete_job(done)
+    store.delete_job(failed)
+    assert store.get_job(done) is None and store.get_job(failed) is None
+
+    for live in (pending, running):
+        with pytest.raises(ValueError):
+            store.delete_job(live)
+        assert store.get_job(live) is not None
+    with pytest.raises(KeyError):
+        store.delete_job(999)
+    assert [j.id for j in store.list_jobs()] == [running, pending]
+
+
 def test_wal_mode_enabled(store: JobStore, tmp_path: Path) -> None:
     import sqlite3
 

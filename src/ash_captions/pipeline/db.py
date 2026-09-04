@@ -425,6 +425,21 @@ class JobStore:
                 f"job {job_id} cannot be requeued: another job for the same file is already queued"
             ) from exc
 
+    def delete_job(self, job_id: int) -> None:
+        """Forget one finished job's row (the control page's "Remove from
+        list"). Only the row goes: the outputs on disk are never touched
+        here. Raises ``KeyError`` for an unknown id and ``ValueError`` for
+        a ``pending``/``running`` job -- a live job leaves the list by
+        finishing, not by being deleted from under the worker.
+        """
+        with self._tx() as conn:
+            row = conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"no job with id {job_id}")
+            if JobStatus(row["status"]) in LIVE_STATUSES:
+                raise ValueError(f"job {job_id} is {row['status']}; only finished jobs can be removed")
+            conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+
     def reset_stale_running(self) -> list[int]:
         """Crash recovery: reset every ``running`` job back to ``pending``.
 

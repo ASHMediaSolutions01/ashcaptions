@@ -6,10 +6,12 @@ from fastapi.testclient import TestClient
 from ash_captions.web.app import create_app
 
 from .fakes import (
+    FakeFilePicker,
     FakeGlossaryProvider,
     FakeJobQueue,
     FakeLanguageCatalogue,
     FakePreviewRenderer,
+    FakeRevealer,
     FakeStyleProvider,
     FakeUpdateApplier,
     FakeUpdateState,
@@ -53,6 +55,16 @@ def fake_glossary_provider() -> FakeGlossaryProvider:
 
 
 @pytest.fixture
+def fake_file_picker() -> FakeFilePicker:
+    return FakeFilePicker()
+
+
+@pytest.fixture
+def fake_revealer() -> FakeRevealer:
+    return FakeRevealer()
+
+
+@pytest.fixture
 def sse_poll_interval() -> float:
     """Override in a test module to speed up SSE heartbeat tests."""
     return 1.0
@@ -75,6 +87,8 @@ def app(
     fake_update_applier,
     fake_update_state,
     fake_glossary_provider,
+    fake_file_picker,
+    fake_revealer,
     sse_poll_interval,
     updates_supported,
     tmp_path,
@@ -86,6 +100,8 @@ def app(
         preview_renderer=fake_preview_renderer,
         update_applier=fake_update_applier,
         glossary_provider=fake_glossary_provider,
+        file_picker=fake_file_picker,
+        revealer=fake_revealer,
         incoming_dir=tmp_path / "uploads",
         sse_poll_interval=sse_poll_interval,
         updates_supported=updates_supported,

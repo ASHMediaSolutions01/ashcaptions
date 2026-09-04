@@ -24,6 +24,12 @@ class JobNotRetryableError(Exception):
     that is not currently in the `failed` state."""
 
 
+class JobNotRemovableError(Exception):
+    """Raised by a JobQueue implementation when remove_job() is called on a
+    job that is still `pending` or `running` -- only finished rows leave
+    the list."""
+
+
 @runtime_checkable
 class JobQueue(Protocol):
     """What the web layer needs from the queue.
@@ -91,6 +97,49 @@ class JobQueue(Protocol):
     #   values on recent jobs, most recent first, for the control page's
     #   client picker (``routes_clients.py``). Without it the picker lists
     #   only the clients that have a glossary file.
+    # * ``remove_job(job_id: str) -> None`` -- forget a finished job's row
+    #   (its files stay on disk). Raises ``JobNotFoundError`` or
+    #   ``JobNotRemovableError`` (still pending/running). Backs
+    #   ``DELETE /api/jobs/{id}`` (``routes_desktop.py``); without it the
+    #   route answers 501.
+
+
+# --- The editor's own desktop -----------------------------------------------
+#
+# The app runs on the editor's PC, so a real Windows file dialog and a real
+# Explorer window are available. The web layer reaches them through these
+# two protocols; ``ash_captions.app.desktop`` holds the real implementations
+# and ``create_app()`` constructs them by default (lazily), tests inject
+# fakes. Neither takes a path from the request: the picker returns one, and
+# the revealer only ever gets a job's own ``output_dir``.
+
+
+class PickerBusyError(Exception):
+    """Raised by FilePicker.pick_video() while a dialog is already open --
+    two Open File dialogs at once would fight over the desktop. The route
+    maps this to a 409."""
+
+
+@runtime_checkable
+class FilePicker(Protocol):
+    """Opens a native Open File dialog filtered to video files and blocks
+    until the editor picks something or cancels."""
+
+    def pick_video(self) -> str | None:
+        """The chosen path, or None when the dialog was cancelled or timed
+        out. Blocking; the route runs it in the threadpool."""
+        ...
+
+
+@runtime_checkable
+class PathRevealer(Protocol):
+    """Shows a file or folder in the desktop's file manager."""
+
+    def reveal(self, path: Path) -> None:
+        """Open Explorer at ``path``: a file is shown selected inside its
+        folder, a folder is simply opened. Raises FileNotFoundError when
+        ``path`` does not exist."""
+        ...
 
 
 @runtime_checkable

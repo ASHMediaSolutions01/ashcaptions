@@ -14,7 +14,9 @@ from ash_captions.web.interfaces import (
     BundledFontFile,
     GlossaryValidationFailedError,
     JobNotFoundError,
+    JobNotRemovableError,
     JobNotRetryableError,
+    PickerBusyError,
     PreviewNotFoundError,
     StyleIsShippedError,
     StyleNotFoundError,
@@ -191,6 +193,16 @@ class FakeJobQueue:
             if client:
                 seen.setdefault(client.lower(), client)
         return list(seen.values())
+
+    def remove_job(self, job_id: str) -> None:
+        """Optional queue extra: forget a finished row (files untouched)."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise JobNotFoundError(job_id)
+        if job.status in (JobStatus.PENDING, JobStatus.RUNNING):
+            raise JobNotRemovableError(job_id)
+        del self._jobs[job_id]
+        self._notify()
 
     def _restylable(self, job_id: str, preset: str) -> Job:
         job = self._jobs.get(job_id)
@@ -458,6 +470,38 @@ class FakeGlossaryProvider:
             raise GlossaryValidationFailedError(problems)
         self.files[self.slug_for(client)] = text
         self.writes.append((client, text))
+
+
+# --- The editor's desktop ------------------------------------------------------
+
+
+class FakeFilePicker:
+    """Implements `FilePicker`: answers whatever `result` holds (a path or
+    None for "cancelled"); `busy` makes it behave like a dialog that is
+    already open."""
+
+    def __init__(self, result: str | None = None, *, busy: bool = False) -> None:
+        self.result = result
+        self.busy = busy
+        self.calls = 0
+
+    def pick_video(self) -> str | None:
+        self.calls += 1
+        if self.busy:
+            raise PickerBusyError("already open")
+        return self.result
+
+
+class FakeRevealer:
+    """Implements `PathRevealer`: records what it was asked to show."""
+
+    def __init__(self) -> None:
+        self.revealed: list[Path] = []
+
+    def reveal(self, path: Path) -> None:
+        if not Path(path).exists():
+            raise FileNotFoundError(str(path))
+        self.revealed.append(Path(path))
 
 
 # --- In-app updates (spec 11.4) ---------------------------------------------
