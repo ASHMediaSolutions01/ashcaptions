@@ -385,3 +385,67 @@ def test_entrance_unaffected_when_event_is_long_enough():
     style = Style.from_dict({"name": "E", "entrance": {"effect": "fade", "duration_ms": 200}}, check_font=False)
     out = render_ass([card([word("one", 0.0, 1.0), word("two", 1.0, 2.0)])], style)
     assert "\\fad(200,0)" in _dialogue_lines(out)[0]
+
+
+# ---------------------------------------------------------------------------
+# glow as a halo (design 2026-09-04, section 3): two layers per word event
+# ---------------------------------------------------------------------------
+
+
+_GLOW_BASE = {
+    "name": "G",
+    "size": 88,
+    "colors": {"text": "#FFFFFF", "active": "#4DFFC3", "outline": "#00332A"},
+    "entrance": {"effect": "fade", "duration_ms": 140},
+}
+
+
+def _glow_like_style(effect: str) -> Style:
+    return Style.from_dict({**_GLOW_BASE, "active_word": {"effect": effect, "scale": 1.1}}, check_font=False)
+
+
+def test_glow_emits_a_halo_layer_under_a_crisp_text_layer_per_event():
+    out = render_ass([card([word("one", 0.0, 0.3), word("two", 0.3, 0.6)])], _glow_like_style("glow"))
+    lines = _dialogue_lines(out)
+    assert len(lines) == 4  # two word events x (halo + text)
+    assert [line.split(",")[0] for line in lines] == ["Dialogue: 0", "Dialogue: 1", "Dialogue: 0", "Dialogue: 1"]
+    halo, text = lines[0], lines[1]
+    assert halo.split(",", 9)[1:4] == text.split(",", 9)[1:4]  # same Start, End, Style
+    assert "\\blur4\\be1" in halo
+    assert "\\1a&HFF&" in halo
+    assert "{\\alpha&HFF&}two" in halo
+    assert "\\blur" not in text
+    assert "\\1a" not in text
+    assert "\\alpha" not in text
+
+
+def test_glow_text_layer_is_exactly_the_pop_rendering():
+    glow_lines = _dialogue_lines(render_ass(sample_cards(), _glow_like_style("glow")))
+    text_layer = [line.replace("Dialogue: 1,", "Dialogue: 0,", 1) for line in glow_lines if line.startswith("Dialogue: 1,")]
+    pop_lines = _dialogue_lines(render_ass(sample_cards(), _glow_like_style("pop")))
+    assert text_layer == pop_lines
+
+
+def test_glow_halo_carries_the_same_entrance_as_the_text():
+    lines = _dialogue_lines(render_ass([card([word("one", 0.0, 0.5), word("two", 0.5, 1.0)])], _glow_like_style("glow")))
+    assert lines[0].split(",", 9)[-1].startswith("{\\fad(140,0)}")  # halo of the first word
+    assert lines[1].split(",", 9)[-1].startswith("{\\fad(140,0)}")  # text of the first word
+    assert "\\fad(" not in lines[2]
+    assert "\\fad(" not in lines[3]
+
+
+def test_glow_halo_and_text_share_the_pop_scale_transform():
+    lines = _dialogue_lines(render_ass([card([word("one", 0.0, 0.5)])], _glow_like_style("glow")))
+    transform = "\\t(0,90,\\fscx110\\fscy110)\\t(90,180,\\fscx100\\fscy100)"
+    assert transform in lines[0]
+    assert transform in lines[1]
+
+
+def test_every_shipped_glow_style_emits_two_layers():
+    styles = list_styles(user_dir=shipped_styles_dir().parent / "does-not-exist")
+    glow_styles = {name: s for name, s in styles.items() if s.active_word.effect == "glow"}
+    assert {"GLOW MINT", "NEON GLOW", "OCEAN"} <= set(glow_styles)
+    for name, style in glow_styles.items():
+        lines = _dialogue_lines(render_ass(sample_cards(), style))
+        layers = [line.split(",")[0] for line in lines]
+        assert layers == ["Dialogue: 0", "Dialogue: 1"] * (len(lines) // 2), name
