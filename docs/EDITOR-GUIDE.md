@@ -3,13 +3,13 @@
 Everything you need to set the tool up on your PC and use it every day.
 
 Once the app is running, the same guide lives **inside the app** at
-`http://127.0.0.1:8756/guide` (the "Help & setup guide" link on the control
-page), with a setup checklist, copy buttons on every command, and screenshots
-that always match the version you are running. This page exists so you can do
-the setup before the app exists.
+`http://127.0.0.1:8756/guide` (the **Help** link in the top bar), with a
+setup checklist, copy buttons on every command, and screenshots that always
+match the version you are running. `docs/ASH-Captions-Guide.html` is the
+same guide as one file, for reading before the app exists.
 
 Every command below was run exactly as written on a real machine on
-2026-09-02.
+2026-09-04.
 
 ---
 
@@ -33,6 +33,9 @@ never leaves the building.
 ## Part 1 — Setup (once per PC)
 
 About 15 minutes, most of it downloading.
+
+> Installed with `Install-AshCaptions.bat`? Then this part is already done:
+> the app is in your system tray and starts at logon. Skip to Part 2.
 
 ### Step 1. Install Python
 
@@ -139,10 +142,60 @@ version; on a source install like this one it never appears.
 
 ---
 
-## Part 2 — Captioning a video
+## Part 2 — Starting and stopping
 
-Every time: start the app with the Step 6 command, or the desktop shortcut if
-one was set up.
+On an installed PC the app starts by itself when you log in and lives in the
+system tray, by the clock. You rarely need to start or stop it yourself.
+
+**Is it running?** Look for the round blue **ASH Captions** icon next to the
+clock (click the **^** arrow if Windows has tucked it away). If it is there,
+the app is running and the watch folder is being watched, even with no
+browser window open.
+
+**Opening the control page:**
+
+- Double-click the tray icon, or right-click it and choose **Open control page**.
+- Or type `http://127.0.0.1:8756` into any browser on this PC.
+- The **ASH Captions** icon on the Desktop and in the Start Menu *starts* the
+  app and opens the page. While the app is already running it only says
+  "ASH Captions is already running": use the tray icon instead.
+
+**The tray menu:**
+
+| Item | What it does |
+|---|---|
+| **Open control page** | The queue, in your browser. Same as double-clicking the icon |
+| **Open output folder** | Opens `C:\AshCaptions\out` in Explorer |
+| **Open log file** | Opens `C:\AshCaptions\ash-captions.log`, the file to send Ghazi when something goes wrong |
+| **Quit** | Stops the app. A running job goes back to the front of the queue and picks up next time; the transcript is kept, so only the unfinished stage is redone |
+
+An **Update available** line appears at the top of the menu when there is a
+new version. It opens the control page, where the **Update now** button is.
+
+**Starting it again** after Quit: open the Start Menu, type **ASH Captions**,
+press Enter. It also comes back by itself at the next logon, through a
+scheduled task called `AshCaptionsTray`.
+
+**If the tray icon is missing:**
+
+1. Click the **^** arrow by the clock; Windows hides new tray icons there.
+2. Not there either? Start it from the Start Menu as above.
+3. If that says **"ASH Captions is already running"** but there is no icon,
+   the app is stuck. Press `Ctrl + Shift + Esc` for Task Manager, find
+   **AshCaptions.exe** on the Processes tab, click **End task**, then start it
+   from the Start Menu again.
+4. If nothing starts at logon on this PC, tell Ghazi: the `AshCaptionsTray`
+   task was probably created for a different Windows user.
+
+Running from source (Part 1) instead of the installer? The same tray icon
+appears, plus a black terminal window. Closing that window also stops the app.
+
+---
+
+## Part 3 — Captioning a video
+
+The app is normally already running in the tray (Part 2). Open the control
+page from the tray icon, or type http://127.0.0.1:8756 in your browser.
 
 ### Give it your video
 
@@ -179,8 +232,8 @@ worker is alive. You can queue more videos; they run one at a time.
 
 ![A finished and a failed job](images/queue-done.png)
 
-A failed job shows the reason under it, with a **Retry** button. Every card
-has **Open in Studio**, **Open folder** (Explorer, with the burned file
+A finished card shows its badge and how long it took, one **Open in Studio**
+button, and the smaller **Open folder** (Explorer, with the burned file
 selected), **Copy path** and **Remove** (the row only; your files stay).
 **Clear finished** empties the list the same way. When a job you started
 finishes you get a toast, a tray balloon, and the Studio opens (untick "Open
@@ -197,7 +250,7 @@ If two videos share a name, the second gets its own folder (`name (2)`).
 
 ---
 
-## Part 3 — Hour-long videos
+## Part 4 — Hour-long videos
 
 Long files work; they just take a while.
 
@@ -224,7 +277,7 @@ Long files work; they just take a while.
 
 ---
 
-## Part 4 — Choosing a look
+## Part 5 — Choosing a look
 
 When a job finishes, the **Studio** opens: your video with the captions drawn
 live on it, and every look one click away.
@@ -288,9 +341,50 @@ back.
 > `POP` on this PC gets *your* version. To make your own look, use **Save as…**
 > with a new name. The editor marks a changed built-in as "customized locally".
 
+## Part 6 — Moving a caption
+
+Every look puts the caption at a fixed spot: bottom, centre, top or lower
+third. When that spot covers a face, a logo or a lower-third graphic, drag
+the caption somewhere else. The position belongs to the job, so it survives
+changing the look and is what gets burned.
+
+1. In the Studio, point at the caption on the video. A dashed outline
+   appears around it.
+2. Drag the outline where you want the caption and let go. The captions
+   redraw there in about a second; the playhead stays where it was.
+3. For small adjustments, click the caption once, then nudge it with the
+   arrow keys: 1% of the frame per press, 5% with `Shift` held.
+4. **Reset position** in the top bar (or `Esc` with the caption selected)
+   puts it back where the look wants it.
+
+Picking another look keeps your position. **Burn this look** uses the
+position you see, and so does the `.ass` in the output folder.
+
+## Part 7 — Checking captions in a language you don't speak
+
+A Spanish interview for a client, and nobody on the desk speaks Spanish. The
+transcript panel under the video tells you *where to look*.
+
+- **Uncertain words** are underlined: amber when the model was unsure, red
+  when it was guessing. The chip above the panel says how many there are;
+  click it to jump to the next one, and the video seeks there so you can
+  listen.
+- **Show English.** When the job was translated ("Also translate to English"
+  was ticked), switch it on to see the English line under each source line.
+- **Translate to check.** When the job was not translated, this button takes
+  the toggle's place. It runs only the translation, from the transcript the
+  job already has, so it takes seconds, and it writes the `.en.srt` into the
+  output folder.
+
+The panel does not edit captions. When a name or a brand is wrong, add it to
+the client's **Glossary** (Part 9) and run the job again; for anything else,
+ask a speaker of the language to check the moments the chip points at.
+Underlines mark doubt, not errors: most amber words are right, red ones are
+worth a listen.
+
 ---
 
-## Part 5 — Captions behind the speaker
+## Part 8 — Captions behind the speaker
 
 For reels: tick **Captions behind the speaker** when you submit, and the
 captions are drawn *behind* the person, so their head and hands pass in front
@@ -307,7 +401,7 @@ the person back on top.
 - The first use downloads the model once (15 MB); the installed version ships
   it.
 
-## Part 6 — Clients and glossaries
+## Part 9 — Clients and glossaries
 
 Every job can carry a **Client**. Type the client's name in the **Client** box
 on the control page (it remembers the last one, and suggests the ones it has
@@ -323,7 +417,7 @@ seen). Then:
 - **Watch folder**: a video dropped into `C:\AshCaptions\in\<Client>\` is a
   job for that client, with that client's glossary.
 
-## Part 7 — Punch-in (zooming the footage)
+## Part 10 — Punch-in (zooming the footage)
 
 A punch-in is the picture pushing in slightly on a word. It is **off by
 default**, because it changes how a client's video is framed. To turn it on,
@@ -351,7 +445,7 @@ on hour-long files and costs almost no extra render time.
 
 ---
 
-## Part 8 — Problems and fixes
+## Part 11 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
@@ -378,7 +472,23 @@ C:\AshCaptions\ash-captions.log
 
 ---
 
-## Worth knowing
+## Part 12 — Uninstalling
+
+Double-click `Uninstall-AshCaptions.bat`. It sits beside
+`Install-AshCaptions.bat`, wherever Ghazi gave you that; if you no longer
+have it, ask for it again. Windows may show the same blue "protected your
+PC" box as at install time: **More info**, then **Run anyway**.
+
+It quits the app, removes the logon task and the Desktop and Start Menu
+icons, and deletes the program folder. **Your captions stay:**
+`C:\AshCaptions` (the `in`, `out` and `glossaries` folders, the settings and
+the log) is kept, and the script says so when it finishes. Delete that
+folder yourself if you want it gone. Reinstalling later picks it straight
+back up.
+
+---
+
+## Part 13 — Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
   languages very good. **Arabic**: the `.srt` and transcript are fine; for a
