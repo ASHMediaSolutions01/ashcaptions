@@ -37,3 +37,9 @@ assets/fonts/*.ttf
 
 # Playwright MCP session artefacts
 .playwright-mcp/
+
+# Claude Code / ruflo tooling: kept on the dev machine, not part of the product
+.claude/
+.agents/
+.mcp.json
+CLAUDE.md
