@@ -136,6 +136,7 @@ def render_ass(
     preset: AssPreset | Style,
     *,
     play_res: tuple[int, int] = DEFAULT_PLAY_RES,
+    anchor: tuple[float, float] | None = None,
 ) -> str:
     """Render styled, word-by-word ASS captions with the active word highlighted.
 
@@ -147,9 +148,14 @@ def render_ass(
     the next word's start (or the card's end, for the last word), with the
     active word wrapped in a color override tag using
     ``preset.highlight_colour`` and the rest at ``preset.primary_colour``.
+
+    ``anchor`` (PlayRes pixels; see ``styles.render.render_ass``) pins the
+    captions to one point. Only the ``Style`` path supports it.
     """
     if isinstance(preset, Style):
-        return _render_ass_styled(cards, preset, play_res=play_res)
+        return _render_ass_styled(cards, preset, play_res=play_res, anchor=anchor)
+    if anchor is not None:
+        raise TypeError("anchor is only supported for Style captions, not the legacy AssPreset")
 
     width, height = play_res
     header = _ass_header(preset, width, height)
@@ -165,10 +171,11 @@ def write_ass(
     preset: AssPreset | Style,
     *,
     play_res: tuple[int, int] = DEFAULT_PLAY_RES,
+    anchor: tuple[float, float] | None = None,
 ) -> Path:
     if isinstance(preset, Style):
-        return _write_ass_styled(cards, path, preset, play_res=play_res)
-    return _write(render_ass(cards, preset, play_res=play_res), path)
+        return _write_ass_styled(cards, path, preset, play_res=play_res, anchor=anchor)
+    return _write(render_ass(cards, preset, play_res=play_res, anchor=anchor), path)
 
 
 def _card_dialogue_events(card: Card, preset: AssPreset) -> list[str]:
