@@ -409,6 +409,7 @@
       stage: els.stage, frame: els.frame, video: els.video,
       playBtn: $("play-btn"), muteBtn: $("mute-btn"), seek: $("seek"), timeLabel: $("time-label"),
     });
+    window.AshStudio = Object.assign(window.AshStudio || {}, { player });
     els.controls.hidden = false;
     try {
       await player.load(source.url, { assUrl: live ? assUrl() : null, fonts });
@@ -426,7 +427,7 @@
       AshToast.show("The original footage is gone, so this is the burned result. Looks can't be previewed here.", { ms: 12000 });
     }
     looks.setStyles(styles, live, job.options.preset);
-    loadTranscript();
+    if (window.AshStudioCheck) AshStudioCheck.mount({ jobId, job, player, live }); else loadTranscript();
     refreshBurnState();
     setInterval(refreshBurnState, 3000);
   }

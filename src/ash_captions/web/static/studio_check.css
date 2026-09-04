@@ -1,0 +1,27 @@
+/* Studio caption check panel (studio_check.js). Track E owns theme.css
+   and may fold these rules in; the ids/classes are the script's contract
+   (see docs/superpowers/plans/2026-09-04-v0.5-B-caption-check.md). Tokens
+   come from theme.css. */
+.check { display: flex; flex-direction: column; gap: 6px; min-height: 0; max-height: 30vh; }
+.check[hidden] { display: none; }
+.check-head { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.check-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.check-lang { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; }
+.check-chip { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(245, 184, 74, 0.5); background: var(--warn-soft); color: var(--warn); cursor: pointer; }
+.check-chip:hover:not(:disabled) { border-color: var(--warn); }
+.check-chip:disabled { color: var(--muted); background: transparent; border-color: var(--line); cursor: default; }
+.check-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.check-spacer { flex: 1 1 auto; }
+.check-list { position: relative; overflow-y: auto; scrollbar-width: thin; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.check-row { padding: 6px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.check-row:last-child { border-bottom: none; }
+.check-row:hover { background: var(--raised); }
+.check-row.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.check-src { font-size: 14px; line-height: 1.5; color: var(--ink); }
+.check-src .w { border-radius: 3px; padding: 0 1px; }
+.check-src .w.unsure { text-decoration: underline wavy var(--warn); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.check-src .w.bad { text-decoration: underline wavy var(--bad); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.check-src .w.now { background: var(--accent-soft); }
+.check-src .w.flash { outline: 2px solid var(--warn); outline-offset: 1px; }
+.check-en { font-size: 13px; line-height: 1.45; color: var(--muted); font-style: italic; }
+.check-empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }

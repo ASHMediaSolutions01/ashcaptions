@@ -40,6 +40,7 @@ from ash_captions.pipeline.queue import AfterDone, JobCancelled
 
 from .catalogue import dialect_preset_id
 from .runner_transcript import _reusable_transcript, _save_transcript
+from .runner_translate import run_translate_only
 from .transcript import (
     SourceStamp,
     TranscriptError,
@@ -50,6 +51,7 @@ from .transcript import (
 )
 from .lifecycle import write_job_marker
 from .runner_util import (  # noqa: F401 - re-exported for tests and callers
+    _CANCEL_EXCEPTIONS,
     DiskSpaceError,
     _ffprobe_beside,
     _is_within,
@@ -73,15 +75,6 @@ RunJob = Callable[[Job, Callable[[int], None]], "AfterDone | None"]
 # asking for 1- or 2-word cards (e.g. HYPE) must not have that request
 # undone by a `min_words` floor higher than the style's own max.
 _DEFAULT_MIN_WORDS_PER_CARD = 3
-
-# The engine's cancellation exceptions, when this tree's engine has them.
-_CANCEL_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
-    exc for exc in (
-        getattr(engine, "TranscriptionCancelled", None),
-        getattr(engine, "BurnCancelled", None),
-        getattr(engine, "MatteCancelled", None),
-    ) if isinstance(exc, type)
-)
 
 _TRANSCRIBER_OPTIONALS = ("cpu_threads", "condition_on_previous_text", "hallucination_silence_threshold")
 
@@ -188,6 +181,16 @@ def build_run_job(
         style = styles.resolve_style(job.options.preset)
         card_max_words = style.layout.max_words
         card_min_words = min(_DEFAULT_MIN_WORDS_PER_CARD, card_max_words)
+
+        if getattr(job.options, "mode", "full") == "translate_only":
+            # Caption check (v0.5): English from the saved transcript, no
+            # transcription, no burn, and never a deleted input.
+            run_translate_only(
+                job, report, settings=settings, resolved=resolved, glossary_path=client_glossary_path,
+                glossary_entries=glossary_entries, get_transcriber=get_transcriber, ffmpeg_path=resolved_ffmpeg,
+                run_transcriber=_run_transcriber, card_words=(card_max_words, card_min_words),
+            )
+            return None
 
         budget = _progress_budget(translate=job.options.translate, burn=job.options.burn)
         # A saved transcript beside the outputs makes re-styling and burning

@@ -63,8 +63,9 @@ class JobOptions:
     burn: bool
     translate: bool
     # "full" transcribes; "burn_only" reuses the saved transcript beside the
-    # outputs and only re-renders captions (and burns). The Studio page
-    # submits burn_only after the editor has picked a look.
+    # outputs and only re-renders captions (and burns); "translate_only"
+    # reuses it and adds only the English pass (the Studio's "Translate to
+    # check"). The Studio page submits the last two.
     mode: str = "full"
     # Which client the footage belongs to (display form, e.g. "Acme Corp").
     # Picks that client's glossary on top of the shared one; None means the

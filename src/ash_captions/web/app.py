@@ -2,7 +2,8 @@
 
 This module only assembles the app: it wires the injected dependencies
 onto `app.state`, mounts the routers (`routes_jobs.py`, `routes_events.py`,
-`routes_styles.py`, `routes_updates.py`, `routes_review.py`), installs the
+`routes_styles.py`, `routes_updates.py`, `routes_review.py`,
+`routes_transcript.py`), installs the
 Origin/Host defence (`security.py`), and serves the two HTML pages. The job
 queue and the language catalogue are injected (see `interfaces.py`) so
 this module never imports `ash_captions.engine`, `ash_captions.languages`,
@@ -47,6 +48,7 @@ from .routes_events import DEFAULT_SSE_POLL_INTERVAL, build_events_router
 from .routes_jobs import build_jobs_router
 from .routes_review import build_review_router
 from .routes_studio import build_studio_router
+from .routes_transcript import build_transcript_router
 from .routes_styles import build_styles_router
 from .routes_updates import build_update_router
 from .runtime import app_version
@@ -163,6 +165,7 @@ def create_app(
     app.include_router(build_events_router(get_queue))
     app.include_router(build_review_router(get_queue))
     app.include_router(build_studio_router(get_queue, get_style_provider))
+    app.include_router(build_transcript_router(get_queue))
     app.include_router(build_styles_router(get_style_provider, get_preview_renderer))
     app.include_router(build_clients_router(get_queue, get_glossary_provider))
     app.include_router(build_desktop_router(get_queue, get_file_picker, get_revealer))

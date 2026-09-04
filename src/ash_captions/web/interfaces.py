@@ -93,6 +93,13 @@ class JobQueue(Protocol):
     #   that look; returns the new ``pending`` job. Same errors.
     #   Both back the Studio page (``routes_studio.py``); a queue without
     #   them makes those routes answer 501.
+    # * ``submit_translate(job_id: str) -> Job`` -- enqueues a translate-only
+    #   job for the same footage (v0.5 caption check): the runner reuses the
+    #   saved transcript, runs only the English pass, adds ``en_words`` to
+    #   it and writes ``<stem>.en.srt``; never transcribes. Returns the new
+    #   ``pending`` job. Same errors as ``submit_burn``. Backs
+    #   ``POST /api/jobs/{id}/translate`` (``routes_transcript.py``);
+    #   without it that route answers 501.
     # * ``known_clients() -> list[str]`` -- distinct ``options.client``
     #   values on recent jobs, most recent first, for the control page's
     #   client picker (``routes_clients.py``). Without it the picker lists

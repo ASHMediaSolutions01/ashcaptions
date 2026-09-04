@@ -12,11 +12,9 @@ from typing import Any, AsyncIterator
 
 from ash_captions.web.interfaces import (
     BundledFontFile,
-    GlossaryValidationFailedError,
     JobNotFoundError,
     JobNotRemovableError,
     JobNotRetryableError,
-    PickerBusyError,
     PreviewNotFoundError,
     StyleIsShippedError,
     StyleNotFoundError,
@@ -64,6 +62,7 @@ class FakeJobQueue:
         self.no_saved_words: set[str] = set()
         self.restyled: list[tuple[str, str]] = []
         self.burns: list[Job] = []
+        self.translations: list[Job] = []
 
     def list_jobs(self) -> list[Job]:
         return sorted(self._jobs.values(), key=lambda j: (j.created_at, j.id), reverse=True)
@@ -183,6 +182,32 @@ class FakeJobQueue:
         self.burns.append(burn)
         self._notify()
         return burn
+
+    def submit_translate(self, job_id: str) -> Job:
+        """Optional queue extra (caption check): a translate-only job for the
+        same footage into the same folder."""
+        source = self._jobs.get(job_id)
+        if source is None:
+            raise JobNotFoundError(job_id)
+        if job_id in self.no_saved_words:
+            raise ValueError(f"Job {job_id!r} has no saved transcript to translate from.")
+        now = datetime.now(timezone.utc)
+        created = Job(
+            id=uuid.uuid4().hex,
+            filename=source.filename,
+            status=JobStatus.PENDING,
+            progress=0.0,
+            options=source.options.model_copy(update={"translate_to_english": True, "burn_in": False}),
+            error=None,
+            created_at=now,
+            updated_at=now,
+            input_path=source.input_path,
+            output_dir=source.output_dir,
+        )
+        self._jobs[created.id] = created
+        self.translations.append(created)
+        self._notify()
+        return created
 
     def known_clients(self) -> list[str]:
         """Optional queue extra (see interfaces.JobQueue): distinct clients
@@ -437,74 +462,8 @@ class FakePreviewRenderer:
         return updated
 
 
-# --- Per-client glossaries ---------------------------------------------------
-
-
-class FakeGlossaryProvider:
-    """Implements `ClientGlossaryProvider` in memory, keyed by slug. Its
-    validation mirrors `languages.validate_glossary_text`'s one rule the
-    routes care about -- a `=>` line needs both sides -- so the 400 path
-    is exercised without the real package."""
-
-    def __init__(self) -> None:
-        self.files: dict[str, str] = {}
-        self.writes: list[tuple[str, str]] = []
-
-    def slug_for(self, client: str) -> str:
-        return "-".join(client.strip().lower().split())
-
-    def list_clients(self) -> list[str]:
-        return sorted(self.files)
-
-    def read_glossary(self, client: str) -> str:
-        return self.files.get(self.slug_for(client), "")
-
-    def write_glossary(self, client: str, text: str) -> None:
-        problems = []
-        for number, line in enumerate(text.splitlines(), start=1):
-            if "=>" in line:
-                left, _, right = line.partition("=>")
-                if not left.strip() or not right.strip():
-                    problems.append(f"line {number}: incomplete 'wrong => right' pair")
-        if problems:
-            raise GlossaryValidationFailedError(problems)
-        self.files[self.slug_for(client)] = text
-        self.writes.append((client, text))
-
-
-# --- The editor's desktop ------------------------------------------------------
-
-
-class FakeFilePicker:
-    """Implements `FilePicker`: answers whatever `result` holds (a path or
-    None for "cancelled"); `busy` makes it behave like a dialog that is
-    already open."""
-
-    def __init__(self, result: str | None = None, *, busy: bool = False) -> None:
-        self.result = result
-        self.busy = busy
-        self.calls = 0
-
-    def pick_video(self) -> str | None:
-        self.calls += 1
-        if self.busy:
-            raise PickerBusyError("already open")
-        return self.result
-
-
-class FakeRevealer:
-    """Implements `PathRevealer`: records what it was asked to show."""
-
-    def __init__(self) -> None:
-        self.revealed: list[Path] = []
-
-    def reveal(self, path: Path) -> None:
-        if not Path(path).exists():
-            raise FileNotFoundError(str(path))
-        self.revealed.append(Path(path))
-
-
-# --- In-app updates (spec 11.4) ---------------------------------------------
-# Live in fakes_updates.py (this module was over the 500-line limit);
-# re-exported so tests keep importing them from here.
+# --- In-app updates (spec 11.4), glossary and desktop fakes ------------------
+# Live in fakes_updates.py / fakes_providers.py (this module was over the
+# 500-line limit); re-exported so tests keep importing them from here.
+from .fakes_providers import FakeFilePicker, FakeGlossaryProvider, FakeRevealer  # noqa: E402, F401
 from .fakes_updates import FakeUpdateApplier, FakeUpdateInfo, FakeUpdateState  # noqa: E402, F401
