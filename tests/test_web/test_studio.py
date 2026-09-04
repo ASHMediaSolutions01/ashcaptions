@@ -12,8 +12,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from pydantic import ValidationError
+
 from ash_captions.web.app import STATIC_DIR
-from ash_captions.web.models import JobOptions, JobStatus
+from ash_captions.web.models import JobOptions, JobStatus, PresetRequest
 
 from .conftest import LOCAL_BASE_URL
 from .fakes import FakeJobQueue, FakeStyleProvider
@@ -301,3 +303,48 @@ def test_transcript_strip_prefers_the_source_language_srt(tmp_path):
     (tmp_path / "clip.srt").unlink()
     assert _transcript_srt(tmp_path).name == "clip.en.srt"
     assert _transcript_srt(tmp_path / "missing") is None
+
+
+class TestPresetRequestBody:
+    """Omitted keys mean "keep the job's position"; explicit nulls mean
+    "clear it"; half a pair or a value outside the frame is a 422."""
+
+    def test_omitted_position_is_not_sent(self):
+        body = PresetRequest.model_validate({"preset": "POP"})
+        assert body.position_sent is False
+        assert body.caption_position is None
+
+    def test_nulls_are_sent_and_mean_clear(self):
+        body = PresetRequest.model_validate({"preset": "POP", "caption_x": None, "caption_y": None})
+        assert body.position_sent is True
+        assert body.caption_position is None
+
+    def test_a_pair_comes_back_as_a_tuple(self):
+        body = PresetRequest.model_validate({"preset": "POP", "caption_x": 0.5, "caption_y": 0.25})
+        assert body.position_sent is True
+        assert body.caption_position == (0.5, 0.25)
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"caption_x": 0.5},
+            {"caption_y": 0.5},
+            {"caption_x": 0.5, "caption_y": None},
+            {"caption_x": None, "caption_y": 0.5},
+            {"caption_x": 1.5, "caption_y": 0.5},
+            {"caption_x": 0.5, "caption_y": -0.1},
+            {"caption_x": "middle", "caption_y": 0.5},
+        ],
+    )
+    def test_half_a_pair_or_outside_the_frame_is_rejected(self, extra):
+        with pytest.raises(ValidationError):
+            PresetRequest.model_validate({"preset": "POP", **extra})
+
+    def test_job_options_carry_the_position_with_the_same_rules(self):
+        opts = JobOptions(language="en", preset="POP", caption_x=0.5, caption_y=0.25)
+        assert (opts.caption_x, opts.caption_y) == (0.5, 0.25)
+        assert JobOptions(language="en", preset="POP").caption_x is None
+        with pytest.raises(ValidationError):
+            JobOptions(language="en", preset="POP", caption_x=0.5)
+        with pytest.raises(ValidationError):
+            JobOptions(language="en", preset="POP", caption_x=2.0, caption_y=0.5)
