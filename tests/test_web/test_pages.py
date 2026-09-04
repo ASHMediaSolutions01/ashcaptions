@@ -120,3 +120,16 @@ def test_theme_defines_the_v05_studio_classes():
         ".toggle input:checked",
     ):
         assert selector in theme, selector
+
+
+def test_guide_script_lives_in_its_own_file(client, app):
+    """guide.html stays under 500 lines with the v0.5 sections, and the
+    standalone export (scripts/export_guide.py) inlines guide.js by name."""
+    from ash_captions.web.app import STATIC_DIR
+
+    html = (STATIC_DIR / "guide.html").read_text(encoding="utf-8")
+    assert re.findall(r"<script(?![^>]*\bsrc=)", html) == [], "no inline <script> in guide.html"
+    assert f"/static/guide.js?v={app.state.version}" in client.get("/guide").text
+    assert client.get("/static/guide.js").status_code == 200
+    script = (STATIC_DIR / "guide.js").read_text(encoding="utf-8")
+    assert 'var KEY = "ashguide.done.v1";' in script  # the checklist keeps its storage key
