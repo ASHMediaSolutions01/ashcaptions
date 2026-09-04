@@ -11,6 +11,7 @@ import logging
 import inspect
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -202,12 +203,34 @@ def atomic_write(writer: Callable[[Path], Any], final_path: Path) -> Path:
     under the real name. The sibling's name is unique per call: two Studio
     tabs restyling the same job at once each write their own temp file and
     the last rename wins, instead of one tab's rename hitting the other's
-    open handle (PermissionError on Windows)."""
+    open handle (PermissionError on Windows).
+
+    The rename itself is retried: on Windows two replacements of the *same*
+    destination that overlap in time fail the loser with
+    ``PermissionError: Access is denied`` even though nothing is wrong with
+    either file, and an antivirus scanner holding the new file for a
+    moment does the same. A few short retries turn both into the intended
+    "last writer wins"; a rename that keeps failing still raises."""
     final_path = Path(final_path)
     partial = final_path.with_name(f"{final_path.name}.{uuid.uuid4().hex[:8]}.part")
     writer(partial)
-    os.replace(partial, final_path)
+    _replace_with_retry(partial, final_path)
     return final_path
+
+
+REPLACE_ATTEMPTS = 12
+REPLACE_BACKOFF_SECONDS = 0.02
+
+
+def _replace_with_retry(partial: Path, final_path: Path) -> None:
+    for attempt in range(REPLACE_ATTEMPTS):
+        try:
+            os.replace(partial, final_path)
+            return
+        except PermissionError:
+            if attempt == REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(REPLACE_BACKOFF_SECONDS * (attempt + 1))
 
 
 def format_gb(size_bytes: float) -> str:
