@@ -148,11 +148,10 @@ one was set up.
 
 ![The control page](images/control-idle.png)
 
-1. In **File Explorer**, find your video. Hold **Shift**, right-click it, and
-   choose **"Copy as path"**.
-2. Paste that into **Video file location** and press Enter. The quotes Windows
-   adds are fine.
-3. Pick your options and click **Start captioning**.
+1. Click **Browse…** and pick the video (or paste a path into the box; the
+   quotes Windows adds with "Copy as path" are fine).
+2. Pick your options. They light up as soon as a file is chosen.
+3. Click **Start captioning**.
 
 **Why paste a path instead of uploading?** Your video is already on this
 computer. Pasting the path means the tool reads it where it sits, and your
@@ -180,7 +179,12 @@ worker is alive. You can queue more videos; they run one at a time.
 
 ![A finished and a failed job](images/queue-done.png)
 
-A failed job shows the reason under it, with a **Retry** button.
+A failed job shows the reason under it, with a **Retry** button. Every card
+has **Open in Studio**, **Open folder** (Explorer, with the burned file
+selected), **Copy path** and **Remove** (the row only; your files stay).
+**Clear finished** empties the list the same way. When a job you started
+finishes you get a toast, a tray balloon, and the Studio opens (untick "Open
+Studio when a job finishes" if you'd rather not).
 
 ### Collect your files
 
