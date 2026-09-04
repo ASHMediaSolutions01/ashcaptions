@@ -99,3 +99,24 @@ def test_studio_video_gets_the_job_thumbnail_as_poster(client, app):
     script = (STATIC_DIR / "studio_poster.js").read_text(encoding="utf-8")
     assert "video.poster = `/api/jobs/${encodeURIComponent(jobId)}/thumb`" in script
     assert 'poster="' not in (STATIC_DIR / "studio.html").read_text(encoding="utf-8")
+
+
+def test_theme_defines_the_v05_studio_classes():
+    """Tracks A (caption drag) and B (caption check) attach these classes to
+    their own markup; the styling is E's (spec v0.5 work split)."""
+    from ash_captions.web.app import STATIC_DIR
+
+    theme = (STATIC_DIR / "theme.css").read_text(encoding="utf-8")
+    for selector in (
+        ".caption-drag {",
+        ".caption-drag.dragging",
+        ".caption-drag-label",
+        ".transcript-panel {",
+        ".transcript-panel .line.active",
+        ".word.uncertain-amber",
+        ".word.uncertain-red",
+        ".chip-warn {",
+        ".toggle {",
+        ".toggle input:checked",
+    ):
+        assert selector in theme, selector
