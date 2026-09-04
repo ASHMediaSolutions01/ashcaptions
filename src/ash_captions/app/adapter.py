@@ -18,7 +18,7 @@ Push-driven SSE
 ----------------
 ``subscribe()`` must never poll (spec section 8.3). Each subscriber gets
 its own ``asyncio.Queue``; ``notify()`` (every state change -- see
-``_NotifyingStore``) pushes a fresh snapshot into each. The worker thread
+``adapter_store.NotifyingStore``) pushes a fresh snapshot into each. The worker thread
 runs outside the event loop, so publishing is marshalled back with
 ``loop.call_soon_threadsafe`` (``asyncio.Queue.put`` from a foreign thread
 deadlocks or corrupts the queue). Publishing is throttled to one snapshot
@@ -51,6 +51,7 @@ from ash_captions.web.models import Job as WebJob
 from ash_captions.web.models import JobOptions as WebJobOptions
 from ash_captions.web.models import JobStatus as WebJobStatus
 
+from .adapter_store import NotifyingStore
 from .runner_util import atomic_write, client_for_watch_path
 from .transcript import TranscriptError, TranscriptRecord, load_transcript, transcript_path
 
@@ -106,7 +107,7 @@ class QueueAdapter:
         self.on_job_finished: list[Callable[[WebJob], None]] = []
         # Handed to JobWorker in place of the raw store (see module
         # docstring); a long-lived object JobWorker holds onto.
-        self.notifying_store = _NotifyingStore(store, self._notify, self._fire_finished)
+        self.notifying_store = NotifyingStore(store, self._notify, self._fire_finished)
 
     # -- JobQueue protocol -----------------------------------------------
 
@@ -231,6 +232,28 @@ class QueueAdapter:
         if not Path(job.input_path).is_file():
             raise ValueError("The original video is no longer where it was, so it cannot be burned.")
         options = dataclasses.replace(job.options, preset=styles.resolve_style(preset).name, burn=True, mode="burn_only")
+        new_id = self._store.insert_job(job.input_path, job.output_dir, options)
+        created = self._store.get_job(new_id)
+        assert created is not None
+        self._notify()
+        return _to_web_job(created)
+
+    def submit_translate(self, job_id: str) -> WebJob:
+        """Enqueue a translate-only job for the same input into the same
+        output folder (v0.5 caption check): the runner reuses the saved
+        transcript, runs only the English pass, adds ``en_words`` and
+        writes ``<stem>.en.srt``. Raises ``JobNotFoundError``, or
+        ``ValueError`` when there is no usable transcript or the input
+        file is gone. A translate already queued for this file is
+        returned instead of a duplicate (``insert_job``'s live-row rule)."""
+        self._capture_loop()
+        job = self._require_job(job_id)
+        self._transcript_for(job)  # raise now, not minutes later in the worker
+        if not Path(job.input_path).is_file():
+            raise ValueError("The original video is no longer where it was, so it cannot be translated.")
+        options = dataclasses.replace(
+            job.options, translate=True, burn=False, behind_speaker=False, mode="translate_only"
+        )
         new_id = self._store.insert_job(job.input_path, job.output_dir, options)
         created = self._store.get_job(new_id)
         assert created is not None
@@ -371,63 +394,6 @@ class QueueAdapter:
         snapshot = self.list_jobs()
         for subscriber in list(self._subscribers):
             subscriber.put_nowait(snapshot)
-
-
-class _NotifyingStore:
-    """Wraps a ``pipeline.JobStore`` so ``JobWorker``'s state-changing calls
-    also publish to SSE subscribers. Everything else is forwarded
-    unchanged -- ``JobWorker`` only calls the methods overridden below
-    plus ``fetch_oldest_pending``/``reset_stale_running`` (passed through
-    via ``__getattr__``), never anything requiring real ``JobStore``
-    typing.
-    """
-
-    def __init__(
-        self,
-        store: JobStore,
-        notify: Callable[[], None],
-        on_finished: Callable[[int], None] | None = None,
-    ) -> None:
-        self._store = store
-        self._notify = notify
-        self._on_finished = on_finished or (lambda job_id: None)
-        self._last_progress: dict[int, int] = {}
-
-    def __getattr__(self, name: str):
-        return getattr(self._store, name)
-
-    def mark_running(self, job_id: int) -> None:
-        self._last_progress.pop(job_id, None)
-        self._store.mark_running(job_id)
-        self._notify()
-
-    def mark_progress(self, job_id: int, progress: int) -> None:
-        if self._last_progress.get(job_id) == progress:
-            return  # ffmpeg reports several times a second; same integer, no write
-        self._last_progress[job_id] = progress
-        self._store.mark_progress(job_id, progress)
-        self._notify()
-
-    def mark_stage(self, job_id: int, stage: str) -> None:
-        self._store.mark_stage(job_id, stage)
-        self._notify()
-
-    def mark_done(self, job_id: int) -> None:
-        self._last_progress.pop(job_id, None)
-        self._store.mark_done(job_id)
-        self._notify()
-        self._on_finished(job_id)
-
-    def mark_failed(self, job_id: int, error: str) -> None:
-        self._last_progress.pop(job_id, None)
-        self._store.mark_failed(job_id, error)
-        self._notify()
-        self._on_finished(job_id)
-
-    def requeue(self, job_id: int) -> None:
-        self._last_progress.pop(job_id, None)
-        self._store.requeue(job_id)
-        self._notify()
 
 
 # -- conversions -------------------------------------------------------------

@@ -187,3 +187,67 @@ def test_translate_only_maps_cancellation_to_job_cancelled(tmp_path: Path, store
         build_run_job(settings, watch_dir=settings.in_dir, transcriber=Cancelling())(job, _Reporter())
     assert load_transcript(transcript_path(out, "clip")).en_words is None
     assert not (out / "clip.en.srt").exists()
+
+
+# -- queue adapter ----------------------------------------------------------------
+
+
+def test_submit_translate_enqueues_a_translate_only_job_into_the_same_folder(tmp_path: Path, store: JobStore):
+    from ash_captions.app.adapter import QueueAdapter
+
+    settings, video, out = _spanish_job_done(tmp_path, store)
+    source = store.list_jobs()[0]
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+
+    created = adapter.submit_translate(str(source.id))
+
+    row = store.get_job(int(created.id))
+    assert row.id != source.id
+    assert row.options.mode == "translate_only"
+    assert row.options.translate is True and row.options.burn is False and row.options.behind_speaker is False
+    assert (row.options.language, row.options.dialect, row.options.preset) == ("es", "es-MX", source.options.preset)
+    assert Path(row.output_dir) == out and row.input_path == source.input_path
+    assert created.status.value == "pending" and created.options.translate_to_english is True
+    # Asking again while that one is still queued attaches to it, never a duplicate.
+    assert adapter.submit_translate(str(source.id)).id == created.id
+
+
+def test_submit_translate_refuses_an_unknown_job_and_a_missing_input(tmp_path: Path, store: JobStore):
+    from ash_captions.app.adapter import QueueAdapter
+    from ash_captions.web.interfaces import JobNotFoundError
+
+    settings, video, out = _spanish_job_done(tmp_path, store)
+    source = store.list_jobs()[0]
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    with pytest.raises(JobNotFoundError):
+        adapter.submit_translate("999")
+    video.unlink()
+    with pytest.raises(ValueError, match="no longer where it was"):
+        adapter.submit_translate(str(source.id))
+
+
+def test_submit_translate_needs_a_saved_transcript(tmp_path: Path, store: JobStore):
+    from ash_captions.app.adapter import QueueAdapter
+
+    settings, video, out = _spanish_job_done(tmp_path, store)
+    source = store.list_jobs()[0]
+    transcript_path(out, "clip").unlink()
+    with pytest.raises(ValueError, match="no saved transcript"):
+        QueueAdapter(store, out_dir=tmp_path / "out").submit_translate(str(source.id))
+
+
+def test_notifying_store_moved_but_still_wired(tmp_path: Path, store: JobStore):
+    from ash_captions.app.adapter import QueueAdapter
+    from ash_captions.app.adapter_store import NotifyingStore
+
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    assert isinstance(adapter.notifying_store, NotifyingStore)
+    assert adapter.notifying_store.fetch_oldest_pending() is None  # passthrough still works
+
+
+def test_runner_and_adapter_stay_under_500_lines():
+    from ash_captions.app import runner_translate as runner_translate_module
+
+    for module in (runner_module, adapter_module, runner_translate_module):
+        lines = Path(module.__file__).read_text(encoding="utf-8").splitlines()
+        assert len(lines) < 500, f"{module.__name__} has {len(lines)} lines"
