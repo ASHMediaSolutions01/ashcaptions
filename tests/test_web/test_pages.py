@@ -84,3 +84,18 @@ def test_disabled_primary_button_stays_readable():
     # Start button an unreadable purple ghost. (The nav's disabled Studio
     # link keeps its own 0.45; that one is a link, not a button.)
     assert '.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45;' not in theme
+
+
+def test_studio_video_gets_the_job_thumbnail_as_poster(client, app):
+    """Spec v0.5 section 5: the video shows the job thumbnail as its poster so
+    a clip that opens on white does not look broken. The page is one static
+    file for every job, so studio_poster.js sets it from the URL before
+    studio.js loads the video."""
+    from ash_captions.web.app import STATIC_DIR
+
+    page = client.get("/studio/any-id").text
+    poster_tag = page.index(f"/static/studio_poster.js?v={app.state.version}")
+    assert poster_tag < page.index(f"/static/studio.js?v={app.state.version}")
+    script = (STATIC_DIR / "studio_poster.js").read_text(encoding="utf-8")
+    assert "video.poster = `/api/jobs/${encodeURIComponent(jobId)}/thumb`" in script
+    assert 'poster="' not in (STATIC_DIR / "studio.html").read_text(encoding="utf-8")
