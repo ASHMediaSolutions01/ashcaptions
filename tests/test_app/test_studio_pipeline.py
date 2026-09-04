@@ -293,3 +293,41 @@ def test_translate_pass_gets_no_source_dialect_prompt(tmp_path: Path, store: Job
     build_run_job(settings, watch_dir=settings.in_dir, transcriber=rec)(job, _Reporter())
     assert rec.prompts["transcribe"], "the source pass keeps its dialect priming"
     assert rec.prompts["translate"] is None
+
+
+def test_atomic_write_survives_a_racing_rename(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Windows fails the loser of two simultaneous replacements of one
+    destination with PermissionError even though both files are fine; the
+    write retries instead of surfacing it as a 500 in a Studio tab."""
+    from ash_captions.app import runner_util
+
+    target = tmp_path / "clip.ass"
+    calls: list[int] = []
+    real_replace = runner_util.os.replace
+
+    def flaky_replace(src, dst):
+        calls.append(1)
+        if len(calls) <= 2:
+            raise PermissionError(13, "Access is denied")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(runner_util.os, "replace", flaky_replace)
+    monkeypatch.setattr(runner_util, "REPLACE_BACKOFF_SECONDS", 0.001)
+
+    runner_util.atomic_write(lambda p: p.write_text("x", encoding="utf-8"), target)
+
+    assert target.read_text(encoding="utf-8") == "x"
+    assert len(calls) == 3
+
+
+def test_atomic_write_gives_up_and_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from ash_captions.app import runner_util
+
+    def always_denied(src, dst):
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(runner_util.os, "replace", always_denied)
+    monkeypatch.setattr(runner_util, "REPLACE_BACKOFF_SECONDS", 0.0)
+
+    with pytest.raises(PermissionError):
+        runner_util.atomic_write(lambda p: p.write_text("x", encoding="utf-8"), tmp_path / "clip.ass")
