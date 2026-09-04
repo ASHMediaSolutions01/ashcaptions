@@ -126,3 +126,64 @@ def test_default_budget_is_unchanged_by_the_new_keyword():
 def test_cancel_exceptions_live_in_runner_util_and_stay_reachable_from_runner():
     assert runner_module._CANCEL_EXCEPTIONS is _CANCEL_EXCEPTIONS
     assert TranscriptionCancelled in _CANCEL_EXCEPTIONS
+
+
+# -- runner: translate_only ------------------------------------------------------
+
+
+def test_translate_only_adds_english_without_transcribing(tmp_path: Path, store: JobStore):
+    settings, video, out = _spanish_job_done(tmp_path, store)
+    assert not (out / "clip.en.srt").exists()
+    model = RecordingTranscriber()
+    stages: list[str] = []
+    progress: list[int] = []
+    reporter = ProgressReporter(on_progress=progress.append, on_stage=stages.append, should_stop=lambda: False)
+    job = _job(store, video, out, language="es", dialect="es-MX", translate=True, mode="translate_only")
+
+    after_done = build_run_job(settings, watch_dir=settings.in_dir, transcriber=model)(job, reporter)
+
+    assert model.calls == ["translate"]
+    assert model.prompts["translate"] is None  # no dialect priming on the English pass
+    assert after_done is None  # never deletes the input
+    record = load_transcript(transcript_path(out, "clip"))
+    assert [w.text.lower() for w in record.words] == ["hola", "amigo", "cómo", "estás", "hoy", "bien"]
+    assert [w.text.lower() for w in record.en_words] == ["hello", "there", "friend", "how", "are", "you"]
+    assert record.language == "es" and record.matches(video)
+    en_srt = (out / "clip.en.srt").read_text(encoding="utf-8")
+    assert "-->" in en_srt and "hello" in en_srt
+    assert stages == ["extract", "translate", "postprocess", "write"]
+    assert progress == sorted(progress) and progress[-1] == 100
+    assert not (out / "clip.captioned.mp4").exists()
+    assert not (Path(settings.tmp_dir) / f"job-{job.id}").exists()
+
+
+def test_translate_only_without_a_transcript_fails_plainly(tmp_path: Path, store: JobStore):
+    settings = _settings(tmp_path)
+    video = _video(tmp_path)
+    model = RecordingTranscriber()
+    job = _job(store, video, tmp_path / "out" / "clip", translate=True, mode="translate_only")
+    with pytest.raises(RuntimeError, match="No saved transcript"):
+        build_run_job(settings, watch_dir=settings.in_dir, transcriber=model)(job, _Reporter())
+    assert model.calls == []
+
+
+def test_translate_only_refuses_a_transcript_from_other_footage(tmp_path: Path, store: JobStore):
+    settings, video, out = _spanish_job_done(tmp_path, store)
+    video.write_bytes(b"re-exported, different bytes")
+    job = _job(store, video, out, language="es", translate=True, mode="translate_only")
+    with pytest.raises(RuntimeError, match="No saved transcript"):
+        build_run_job(settings, watch_dir=settings.in_dir, transcriber=RecordingTranscriber())(job, _Reporter())
+
+
+def test_translate_only_maps_cancellation_to_job_cancelled(tmp_path: Path, store: JobStore):
+    settings, video, out = _spanish_job_done(tmp_path, store)
+
+    class Cancelling(RecordingTranscriber):
+        def translate(self, audio_path, **kwargs):
+            raise TranscriptionCancelled("stopped")
+
+    job = _job(store, video, out, language="es", translate=True, mode="translate_only")
+    with pytest.raises(JobCancelled):
+        build_run_job(settings, watch_dir=settings.in_dir, transcriber=Cancelling())(job, _Reporter())
+    assert load_transcript(transcript_path(out, "clip")).en_words is None
+    assert not (out / "clip.en.srt").exists()
