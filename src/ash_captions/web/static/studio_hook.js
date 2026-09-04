@@ -1,8 +1,8 @@
-/* The control page's link to Studio: an "Open in Studio" button on every
-   finished job, and -- when the "Open Studio when a job finishes" setting is
-   on (default, remembered in localStorage) -- opening Studio in this tab the
-   moment a job submitted from this tab finishes. Loaded before app.js, which
-   calls into window.AshStudio at the three points that need it. */
+/* The control page's hand-off to Studio: remembers which jobs this tab
+   started, tells queue.js when one of them finishes (toast + desktop
+   notification), and -- when "Open Studio when a job finishes" is on
+   (default, remembered in localStorage) -- opens Studio in this tab.
+   Loaded before app.js, which calls in at the points that need it. */
 (function () {
   "use strict";
 
@@ -19,11 +19,7 @@
     }
   }
   function writeSetting(on) {
-    try {
-      localStorage.setItem(SETTING_KEY, on ? "1" : "0");
-    } catch (err) {
-      // private mode / blocked storage: the checkbox still works for this visit
-    }
+    try { localStorage.setItem(SETTING_KEY, on ? "1" : "0"); } catch (err) { /* private mode */ }
   }
   if (setting) {
     setting.checked = readSetting();
@@ -34,17 +30,15 @@
     return `/studio/${encodeURIComponent(jobId)}`;
   }
 
-  // Called by app.js for every rendered job card.
+  // Kept for callers that still decorate a card themselves; queue.js now
+  // builds the "Open in Studio" action as part of every finished card.
   function decorate(cardEl, job) {
-    if (job.status !== "done") return;
-    const actions = document.createElement("div");
-    actions.className = "job-actions";
+    if (job.status !== "done" || cardEl.querySelector('a[href^="/studio/"]')) return;
     const link = document.createElement("a");
-    link.className = "btn secondary";
+    link.className = "btn small primary";
     link.href = studioUrl(job.id);
     link.textContent = "Open in Studio";
-    actions.appendChild(link);
-    cardEl.appendChild(actions);
+    cardEl.appendChild(link);
   }
 
   // Called by app.js with the job a submit just created.
@@ -54,18 +48,17 @@
 
   // Called by app.js on every queue snapshot. Only jobs this tab started
   // count: another editor's watch-folder job finishing must never yank
-  // this page away.
+  // this page away or shout about it.
   function onJobs(jobs) {
     if (submittedHere.size === 0) return;
     for (const job of jobs || []) {
       if (!submittedHere.has(job.id)) continue;
-      if (job.status === "failed") submittedHere.delete(job.id);
-      if (job.status === "done") {
-        submittedHere.delete(job.id);
-        if (setting && setting.checked) {
-          window.location.assign(studioUrl(job.id));
-          return;
-        }
+      if (job.status !== "done" && job.status !== "failed") continue;
+      submittedHere.delete(job.id);
+      if (window.AshQueue) AshQueue.jobFinished(job);
+      if (job.status === "done" && setting && setting.checked) {
+        window.location.assign(studioUrl(job.id));
+        return;
       }
     }
   }

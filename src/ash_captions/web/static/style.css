@@ -1,441 +1,146 @@
-/* The `hidden` attribute is only `display:none` from the UA stylesheet, so
-   ANY class rule setting `display` silently beats it -- which made the
-   update banner (`.update-banner{display:flex}`) show on every launch even
-   with `hidden` set, offering an update that did not exist. */
-[hidden] { display: none !important; }
+/* Control page layout (index.html). Tokens and components come from
+   theme.css; this file only places them: submit on the left, queue on the
+   right, stacked on a narrow window. */
 
-:root {
-  --ink: #1c1f26;
-  --muted: #6b7280;
-  --line: #e2e5ea;
-  --bg: #f6f7f9;
-  --card: #ffffff;
-  --accent: #2f5bea;
-  --accent-dark: #1f3fb0;
-  --ok: #1a8f5a;
-  --ok-bg: #e8f7ef;
-  --run: #2f5bea;
-  --run-bg: #eaf0ff;
-  --fail: #c0392b;
-  --fail-bg: #fdecea;
-  --pending: #8a8f98;
-  --pending-bg: #eef0f2;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--ink);
-}
-header {
-  padding: 28px 32px 8px;
-  max-width: 900px;
+.control {
+  display: grid;
+  grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+  grid-template-areas: "notices notices" "submit queue";
+  gap: 20px;
+  max-width: 1440px;
   margin: 0 auto;
+  padding: 20px 20px 48px;
+  align-items: start;
 }
-header h1 {
-  margin: 0 0 4px;
-  font-size: 26px;
-}
-header p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 15px;
-}
-.style-editor-link {
-  display: inline-block;
-  margin-top: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent);
-  text-decoration: none;
-}
-.style-editor-link:hover { text-decoration: underline; }
-main {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 16px 32px 64px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-.card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 24px;
+.notices { grid-area: notices; display: flex; flex-direction: column; gap: 10px; }
+.notices:empty { display: none; }
+.submit-col { grid-area: submit; }
+.queue-col { grid-area: queue; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 980px) {
+  .control { grid-template-columns: 1fr; grid-template-areas: "notices" "submit" "queue"; padding: 14px 14px 40px; }
 }
 
 /* Update banner (spec 11.4) */
-.update-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-  border-color: var(--accent);
-  background: var(--run-bg);
-}
-.update-banner-text strong {
-  font-size: 16px;
-}
-.update-banner-text p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-.update-banner-text .hint {
-  color: var(--fail);
-}
-.update-banner-actions {
+.update-banner { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; border-color: var(--accent-fill); }
+.update-banner-text p { margin-top: 3px; color: var(--muted); }
+.update-banner-text .hint { color: var(--warn); }
+.update-banner-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+/* ---- Submit card ---- */
+.submit-card { display: flex; flex-direction: column; gap: 16px; }
+.submit-card .card-head { margin-bottom: 0; }
+.options { margin: 0; padding: 0; border: none; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.options:disabled .check { opacity: 0.55; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.checks { display: flex; flex-direction: column; gap: 8px; }
+.client-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  gap: 10px;
 }
-.update-banner-actions .hint {
-  margin: 0;
-  text-align: right;
-}
-
-/* Page-level notices: load failures, lost connection */
-.notice {
-  padding: 12px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.notice.error { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail); }
-.notice.warning { background: #fff4e0; color: #8a5300; border: 1px solid #e0a94a; }
-
-/* Path input (primary submission field) */
-.hint {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-input[type="text"],
-input[type="number"] {
-  width: 100%;
-  padding: 12px 14px;
-  font-size: 16px;
-  border: 1.5px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--ink);
-  font-family: inherit;
-}
-input[type="text"]:focus,
-input[type="number"]:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-/* Upload fallback, tucked behind a disclosure */
-#upload-details {
-  margin-top: 18px;
-}
-#upload-details summary {
-  cursor: pointer;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 600;
-  list-style: none;
-}
-#upload-details summary::-webkit-details-marker { display: none; }
-#upload-details summary:hover { color: var(--accent-dark); }
-#upload-details[open] summary { margin-bottom: 14px; }
-
-/* Drop zone */
+.client-card .disclosure[open] { display: flex; flex-direction: column; gap: 8px; }
+#glossary-text { font-family: var(--mono); font-size: 13px; }
+.glossary-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#glossary-status.ok { color: var(--ok); }
+#glossary-status.err { color: var(--bad); }
+.advanced-set .disclosure[open] .advanced-body { margin-top: 10px; display: flex; flex-direction: column; gap: 12px; }
+.advanced-body .check .hint { display: block; }
 #dropzone {
-  border: 2px dashed var(--line);
-  border-radius: 14px;
-  padding: 40px 20px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 14px;
   text-align: center;
-  cursor: pointer;
-  transition: border-color .15s, background .15s;
-}
-#dropzone.drag-over,
-#dropzone:focus-visible {
-  border-color: var(--accent);
-  background: var(--run-bg);
-  outline: none;
-}
-#dropzone p {
-  margin: 0 0 12px;
-  font-size: 17px;
   color: var(--muted);
-}
-#dropzone .big {
-  font-size: 19px;
-  color: var(--ink);
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-#file-input { display: none; }
-.btn {
-  display: inline-block;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  padding: 12px 22px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn:hover { background: var(--accent-dark); }
-.btn:disabled { background: var(--pending); cursor: not-allowed; }
-.btn.secondary {
-  background: transparent;
-  color: var(--accent);
-  border: 1.5px solid var(--accent);
-  padding: 8px 16px;
-  font-size: 14px;
-}
-.btn.secondary:hover { background: var(--run-bg); }
-
-/* Options form (shown after a file is picked) */
-#options-form { display: none; margin-top: 20px; }
-#options-form.visible { display: block; }
-#selected-file {
-  font-weight: 600;
-  margin-bottom: 18px;
-  font-size: 16px;
-}
-.field-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-.field label {
-  display: block;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .03em;
-  margin-bottom: 6px;
+  cursor: pointer;
 }
-select {
-  width: 100%;
-  padding: 12px 14px;
-  font-size: 16px;
-  border: 1.5px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--ink);
-}
-.checks {
-  display: flex;
-  gap: 28px;
-  margin-bottom: 22px;
-  flex-wrap: wrap;
-}
-.check {
+#dropzone b { color: var(--accent); font-weight: 600; }
+#dropzone.drag-over, #dropzone:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+#file-input { display: none; }
+.form-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.selected-source { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.setting { margin-top: -4px; }
+
+/* ---- Queue ---- */
+.queue-card { min-width: 0; }
+.queue-card .card-head { align-items: center; }
+.queue-health { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.queue-health::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.queue-health.bad { color: var(--bad); }
+.queue-health.bad::before { background: var(--bad); }
+.queue-tools { display: flex; gap: 8px; }
+.queue-confirm, .job-confirm {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
-}
-.check input {
-  width: 20px;
-  height: 20px;
-}
-.form-actions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-#submit-error {
-  color: var(--fail);
-  font-size: 14px;
-  margin-top: 10px;
-  display: none;
-}
-
-/* Queue */
-h2 {
-  font-size: 18px;
-  margin: 0 0 14px;
-}
-.queue-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
   flex-wrap: wrap;
-}
-.queue-health {
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
   font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 14px;
 }
-.queue-health::before {
-  content: "";
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.queue-health.bad { color: var(--fail); }
-.queue-health.bad::before { background: var(--fail); }
-#empty-queue {
-  color: var(--muted);
-  font-size: 15px;
-  padding: 8px 0;
-}
+.queue-confirm span, .job-confirm span { flex: 1 1 auto; }
+.empty-queue { color: var(--muted); padding: 18px 0 10px; }
+.start-here p { margin: 8px 0 12px; color: var(--ink-soft); max-width: 62ch; }
+.start-here-actions { display: flex; gap: 8px; }
+
+/* Job cards: a filmstrip row -- thumb on the left, everything else beside it. */
 .job {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px;
+  margin-bottom: 10px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
+  border-radius: var(--radius);
+  background: var(--bg);
 }
 .job:last-child { margin-bottom: 0; }
-.job-top {
+.job-thumb {
+  width: 128px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  object-fit: cover;
+  display: block;
+}
+.job-thumb.missing {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 11px;
 }
-.job-name {
-  font-weight: 600;
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-.badge {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  padding: 4px 10px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-.badge.pending { color: var(--pending); background: var(--pending-bg); }
-.badge.running { color: var(--run); background: var(--run-bg); }
-.badge.done { color: var(--ok); background: var(--ok-bg); }
-.badge.failed { color: var(--fail); background: var(--fail-bg); }
-
-.progress-track {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--pending-bg);
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--run);
-  border-radius: 999px;
-  transition: width .3s ease;
-}
-.job.done .progress-fill { background: var(--ok); }
-.job.failed .progress-fill { background: var(--fail); }
-/* While a job runs the bar may sit at one value for many minutes (a long
-   transcription reports nothing until it's done), so it carries a moving
-   stripe as a "still working" signal independent of the percentage. */
-.job.running .progress-fill {
-  min-width: 24px;
-  background-color: var(--run);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0) 0 10px,
-    rgba(255, 255, 255, .35) 10px 20px
-  );
-  background-size: 28px 28px;
-  animation: progress-stripes 1s linear infinite;
-}
-@keyframes progress-stripes {
-  from { background-position: 0 0; }
-  to { background-position: 28px 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .job.running .progress-fill { animation: none; }
-}
-
-.job-status-line {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.job-stage { color: var(--ink); }
+.job-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.job-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.job-name { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.job-meta { font-size: 12.5px; color: var(--muted); }
+.job-meta .client { color: var(--ink-soft); font-weight: 600; }
+.job-status-line { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 600; }
 .job.done .job-stage { color: var(--ok); }
-.job.failed .job-stage { color: var(--fail); }
+.job.failed .job-stage { color: var(--bad); }
 .job.pending .job-stage { color: var(--pending); }
-.job-elapsed {
-  color: var(--muted);
-  font-weight: 500;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.job-meta {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
+.job.running .job-stage { color: var(--run); }
+.job-elapsed { color: var(--muted); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .job-error {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: var(--fail-bg);
-  color: var(--fail);
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 13px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.job-actions {
-  margin-top: 10px;
-}
-a.btn { text-decoration: none; }
-/* Client glossary disclosure (clients.js) */
-.glossary { margin: -6px 0 18px; }
-.glossary summary {
-  cursor: pointer;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 600;
-  list-style: none;
-}
-.glossary summary::-webkit-details-marker { display: none; }
-.glossary summary:hover { color: var(--accent-dark); }
-.glossary[open] summary { margin-bottom: 6px; }
-.glossary .hint { margin: 0 0 8px; }
-.glossary code { font-size: 12px; background: var(--pending-bg); padding: 1px 5px; border-radius: 4px; }
-#glossary-text {
-  width: 100%;
-  padding: 10px 12px;
-  font: 14px/1.5 Consolas, "Cascadia Mono", monospace;
-  border: 1.5px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--ink);
-  resize: vertical;
-}
-#glossary-text:focus { outline: none; border-color: var(--accent); }
-#glossary-text:disabled { background: var(--pending-bg); }
-.glossary-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-#glossary-status { font-size: 13px; color: var(--muted); }
-#glossary-status.ok { color: var(--ok); }
-#glossary-status.err { color: var(--fail); }
-
-/* Page setting under the submit form (studio_hook.js) */
-.check.setting {
-  margin-top: 16px;
-  font-size: 13px;
-  color: var(--muted);
+.job-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.job-confirm { margin: 2px 0 0; }
+@media (max-width: 560px) {
+  .job { grid-template-columns: 1fr; }
+  .job-thumb { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .field-grid { grid-template-columns: 1fr; }
 }

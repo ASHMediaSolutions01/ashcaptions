@@ -4,63 +4,65 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<title>ASH Captions</title>
+<title>Queue - ASH Captions</title>
 <!-- __VERSION__ is stamped with the running version when the page is
      served (web/app.py) so a shipped update never pairs a cached app.js
      with a new page. -->
+<link rel="stylesheet" href="/static/theme.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/style.css?v=__VERSION__">
 </head>
 <body>
 
-<header>
-  <h1>ASH Captions</h1>
-  <p>Drop in a video, pick your options, and get captions back.</p>
-  <a class="style-editor-link" href="/style-editor">Design your own caption styles &rarr;</a>
-  <a class="style-editor-link" href="/guide">Help &amp; setup guide &rarr;</a>
-</header>
+<nav class="app-nav" aria-label="Main">
+  <a class="brand" href="/"><i aria-hidden="true"></i><span>ASH Captions</span></a>
+  <a class="nav-link" href="/">Queue</a>
+  <a class="nav-link" href="/studio/" data-nav="studio" aria-disabled="true">Studio</a>
+  <a class="nav-link" href="/style-editor">Styles</a>
+  <a class="nav-link" href="/guide">Help</a>
+  <span class="nav-spacer"></span>
+  <span class="nav-status" id="nav-status"></span>
+</nav>
 
-<main>
-  <div class="notice error" id="app-error" role="alert" hidden></div>
-  <div class="notice warning" id="connection-banner" role="status" hidden>
-    Lost contact with the app &mdash; is the terminal window still open?
+<main class="control">
+  <div class="notices">
+    <div class="notice error" id="app-error" role="alert" hidden></div>
+    <div class="notice warning" id="connection-banner" role="status" hidden>
+      Lost contact with the app. Is it still running? Check for its icon by the clock, or the terminal window.
+    </div>
+    <section class="card update-banner" id="update-banner" hidden>
+      <div class="update-banner-text">
+        <strong id="update-banner-title">An update is available</strong>
+        <p id="update-banner-detail"></p>
+        <p class="hint" id="update-banner-reason" hidden></p>
+      </div>
+      <div class="update-banner-actions">
+        <button type="button" class="btn primary" id="update-now-btn">Update now</button>
+        <p class="hint">This restarts the app.</p>
+      </div>
+    </section>
   </div>
 
-  <section class="card update-banner" id="update-banner" hidden>
-    <div class="update-banner-text">
-      <strong id="update-banner-title">An update is available</strong>
-      <p id="update-banner-detail"></p>
-      <p class="hint" id="update-banner-reason" hidden></p>
-    </div>
-    <div class="update-banner-actions">
-      <button type="button" class="btn" id="update-now-btn">Update now</button>
-      <p class="hint">This restarts the app.</p>
-    </div>
-  </section>
-
-  <section class="card">
-    <form id="submit-form" novalidate>
-      <div class="field">
-        <label for="path-input">Video file location</label>
-        <input type="text" id="path-input" placeholder="D:\Projects\client\clip.mp4" autocomplete="off">
-        <p class="hint">In File Explorer: Shift + right-click the file, choose "Copy as path", then paste it here and press Enter.</p>
+  <section class="submit-col">
+    <form class="card submit-card" id="submit-form" novalidate>
+      <div class="card-head">
+        <h2>New job</h2>
+        <span class="hint">Nothing leaves this PC.</span>
       </div>
 
-      <details id="upload-details">
-        <summary>Or upload a copy instead (slower for large files, 2 GB limit)</summary>
-        <div id="dropzone" tabindex="0" role="button" aria-label="Drop a video here, or press Enter to choose a file">
-          <div class="big">Drop a video here</div>
-          <p>or</p>
-          <button type="button" class="btn" id="choose-btn">Choose a file</button>
-          <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.mxf,.avi,.webm,.m4v">
+      <div class="field">
+        <label for="path-input">Video file</label>
+        <div class="with-button">
+          <input type="text" id="path-input" placeholder="Browse, or paste a path (Shift + right-click a file, Copy as path)" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn" id="browse-btn">Browse…</button>
         </div>
-      </details>
+        <p class="hint" id="source-hint">Reads the file where it is. Your original is never moved or changed.</p>
+      </div>
 
-      <div id="options-form">
-        <div id="selected-file"></div>
-
+      <fieldset class="options" id="options" disabled aria-describedby="source-hint">
+        <legend class="sr-only">Options</legend>
         <div class="field-grid">
           <div class="field">
-            <label for="language-select">Language</label>
+            <label for="language-select">Language spoken</label>
             <select id="language-select"></select>
           </div>
           <div class="field">
@@ -68,72 +70,98 @@
             <select id="dialect-select"></select>
           </div>
         </div>
-
-        <div class="field-grid">
-          <div class="field">
-            <label for="preset-select">Caption style</label>
-            <select id="preset-select"></select>
-          </div>
-          <div class="field">
-            <label for="client-input">Client</label>
-            <input type="text" id="client-input" list="client-list" placeholder="e.g. Acme" maxlength="60" autocomplete="off">
-            <datalist id="client-list"></datalist>
-            <p class="hint">Optional. Picks that client's glossary (their names and brands) on top of the shared one.</p>
-          </div>
+        <div class="field">
+          <label for="preset-select">Caption style</label>
+          <select id="preset-select"></select>
         </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="burn-in-check"> Burn captions into the video</label>
+          <label class="check"><input type="checkbox" id="translate-check"> Also translate to English</label>
+        </div>
+      </fieldset>
 
-        <details id="glossary-details" class="glossary">
+      <section class="client-card" aria-labelledby="client-heading">
+        <div class="field">
+          <label for="client-input" id="client-heading">Client</label>
+          <input type="text" id="client-input" list="client-list" placeholder="Optional, e.g. Acme" maxlength="60" autocomplete="off">
+          <datalist id="client-list"></datalist>
+          <p class="hint">Shown on the job, and picks that client's glossary of names and brands.</p>
+        </div>
+        <details class="disclosure" id="glossary-details">
           <summary>Glossary for this client</summary>
           <p class="hint" id="glossary-hint">One entry per line: <code>wrong spelling =&gt; Right Spelling</code>. A line with just a name forces that spelling. <code>#</code> starts a comment.</p>
-          <textarea id="glossary-text" rows="6" spellcheck="false" placeholder="Gazi => Ghazi&#10;Acme Corp"></textarea>
+          <textarea id="glossary-text" rows="5" spellcheck="false" placeholder="Gazi => Ghazi&#10;Acme Corp"></textarea>
           <div class="glossary-actions">
-            <button type="button" class="btn secondary" id="glossary-save-btn">Save glossary</button>
-            <span id="glossary-status" role="status"></span>
+            <button type="button" class="btn small" id="glossary-save-btn">Save glossary</button>
+            <span id="glossary-status" class="hint" role="status"></span>
           </div>
         </details>
+      </section>
 
-        <div class="checks">
-          <label class="check">
-            <input type="checkbox" id="burn-in-check">
-            Burn captions into the video
-          </label>
-          <label class="check">
-            <input type="checkbox" id="translate-check">
-            Also translate to English
-          </label>
-          <label class="check" title="The person is cut out automatically and laid back over the captions. Costs about the video's own length in extra time; meant for reels. Needs burn-in.">
-            <input type="checkbox" id="behind-check">
-            Captions behind the speaker (reels; slower)
-          </label>
-        </div>
+      <fieldset class="options advanced-set" id="advanced-options" disabled>
+        <legend class="sr-only">Advanced options</legend>
+        <details class="disclosure" id="advanced-details">
+          <summary>Advanced</summary>
+          <div class="advanced-body">
+            <label class="check" title="The person is cut out automatically and laid back over the captions. Costs about the video's own length in extra time; meant for reels. Needs burn-in.">
+              <input type="checkbox" id="behind-check">
+              <span>Captions behind the speaker <span class="hint">reels only; slower; needs burn-in</span></span>
+            </label>
+            <div class="field">
+              <span class="field-label">Upload a copy instead</span>
+              <div id="dropzone" tabindex="0" role="button" aria-label="Drop a video here, or press Enter to choose a file">
+                <span>Drop a video here or <b>choose a file</b>. Slower for large files; 2 GB limit.</span>
+                <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.mxf,.avi,.webm,.m4v">
+              </div>
+            </div>
+          </div>
+        </details>
+      </fieldset>
 
-        <div class="form-actions">
-          <button type="submit" class="btn" id="start-btn">Start captioning</button>
-          <button type="button" class="btn secondary" id="cancel-btn">Choose a different file</button>
-        </div>
-        <div id="submit-error" role="alert"></div>
+      <div class="form-actions">
+        <button type="submit" class="btn primary large" id="start-btn" disabled>Start captioning</button>
+        <button type="button" class="btn quiet" id="cancel-btn" hidden>Clear</button>
+        <span class="selected-source" id="selected-file" hidden></span>
       </div>
-      <label class="check setting" title="When a job started from this tab finishes, open it in Studio to pick a look">
+      <div class="notice error" id="submit-error" role="alert" hidden></div>
+      <label class="check small setting" title="When a job started from this tab finishes, open it in Studio to pick a look">
         <input type="checkbox" id="open-studio-check" checked>
         Open Studio when a job finishes
       </label>
     </form>
   </section>
 
-  <section class="card">
-    <div class="queue-head">
-      <h2>Queue</h2>
-      <div class="queue-health" id="queue-health" role="status">Worker: checking&hellip;</div>
+  <section class="queue-col">
+    <div class="card start-here" id="start-here" hidden>
+      <h2>Start here</h2>
+      <p>Choose a video with <b>Browse…</b>, pick a style, and click <b>Start captioning</b>. When it finishes, the Studio opens so you can try every look on the video before burning one in.</p>
+      <div class="start-here-actions">
+        <a class="btn" href="/guide">Read the guide</a>
+        <button type="button" class="btn quiet" id="start-here-dismiss">Got it</button>
+      </div>
     </div>
-    <div id="empty-queue">No jobs yet. Drop a video above to get started.</div>
-    <div id="job-list" aria-live="polite" aria-relevant="additions text"></div>
+    <div class="card queue-card">
+      <div class="card-head">
+        <h2>Queue</h2>
+        <div class="queue-health" id="queue-health" role="status">Worker: checking…</div>
+        <div class="queue-tools" id="queue-tools">
+          <button type="button" class="btn small" id="clear-finished-btn" hidden>Clear finished</button>
+        </div>
+      </div>
+      <div class="queue-confirm" id="clear-confirm" hidden></div>
+      <div class="empty-queue" id="empty-queue">No jobs yet. Choose a video on the left to get started.</div>
+      <div id="job-list" aria-live="polite" aria-relevant="additions text"></div>
+    </div>
   </section>
 </main>
 
 <script src="/static/api.js?v=__VERSION__"></script>
+<script src="/static/nav.js?v=__VERSION__"></script>
+<script src="/static/toast.js?v=__VERSION__"></script>
 <script src="/static/updates.js?v=__VERSION__"></script>
 <script src="/static/studio_hook.js?v=__VERSION__"></script>
 <script src="/static/clients.js?v=__VERSION__"></script>
+<script src="/static/queue.js?v=__VERSION__"></script>
 <script src="/static/app.js?v=__VERSION__"></script>
 </body>
 </html>
