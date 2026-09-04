@@ -107,6 +107,34 @@ def _build_menu(
     )
 
 
+def subscribe_job_notifications(icon, adapter) -> Callable[[object], None]:
+    """Show a tray balloon when a job finishes or fails.
+
+    ``adapter`` is the ``QueueAdapter``; it calls every entry in its
+    ``on_job_finished`` list with the finished web ``Job``. ``icon`` only
+    needs a pystray-shaped ``notify(message, title)``. Returns the
+    subscriber so a caller (or test) can remove it again.
+
+    Wiring, in ``__main__._run`` after ``build_tray_icon`` returns::
+
+        subscribe_job_notifications(icon, _adapter)
+    """
+
+    def on_finished(job) -> None:
+        if job.status == "done" or getattr(job.status, "value", None) == "done":
+            title, message = "Captions ready", f"{job.filename} is done. Open the queue to pick a look."
+        else:
+            reason = (getattr(job, "error", None) or "something went wrong").strip()
+            title, message = "Captioning failed", f"{job.filename}: {reason[:120]}"
+        try:
+            icon.notify(message, title)
+        except Exception:  # noqa: BLE001 - a balloon is a courtesy, never load-bearing
+            logger.warning("Could not show the tray notification for %s", job.filename, exc_info=True)
+
+    adapter.on_job_finished.append(on_finished)
+    return on_finished
+
+
 def build_tray_icon(
     *,
     url: str,

@@ -1,40 +1,43 @@
 /* Studio page: play a finished job with its captions drawn live, click
    through looks (each click re-renders the .ass server-side and reloads the
    track in place), then burn the chosen look. No text editing, no timeline
-   -- the team's ask is "pick a style we like", not "edit captions". */
+   -- the team's ask is "pick a style we like", not "edit captions". The
+   looks strip itself (cards, filter, keys, Compare) is studio_looks.js. */
 (function () {
   "use strict";
 
   const jobId = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
   const $ = (id) => document.getElementById(id);
   const els = {
+    thumb: $("job-thumb"),
     videoName: $("video-name"),
     styleName: $("style-name"),
     status: $("status-pill"),
     burnBtn: $("burn-btn"),
+    revealBtn: $("reveal-btn"),
+    copyBtn: $("copy-btn"),
     stage: $("stage"),
     frame: $("frame"),
     video: $("video"),
     message: $("stage-message"),
+    wait: $("stage-wait"),
     controls: $("controls"),
     transcript: $("transcript"),
-    looksList: $("looks-list"),
-    looksHint: $("looks-hint"),
-    toast: $("toast"),
   };
-  const POSITION_ORDER = ["top", "center", "bottom", "lower_third"];
-  const POSITION_LABEL = { top: "Top", center: "Centre", bottom: "Bottom", lower_third: "Lower third" };
-  const STATUS_LABEL = { pending: "waiting in the queue", running: "still being captioned", failed: "failed" };
+  const STAGE_LABEL = {
+    extract: "Extracting audio", transcribe: "Transcribing", translate: "Translating to English",
+    postprocess: "Cleaning up the text", write: "Writing captions", matte: "Finding the speaker", burn: "Burning captions in",
+  };
   const api = (suffix) => `/api/jobs/${encodeURIComponent(jobId)}${suffix}`;
   const assUrl = () => `${api("/ass")}?v=${Date.now()}`; // bust the browser cache per restyle
 
   let job = null;
-  let styles = [];
   let fonts = [];
   let player = null;
   let live = false; // live = original footage + JASSUB overlay; false = burned output
   let busy = false;
-  let toastTimer = null;
+  let looks = null;
+  let burnJobId = null; // the burn this page queued, watched until it finishes
 
   // ---- small UI helpers ----
 
@@ -43,23 +46,8 @@
     els.status.className = `status-pill${kind ? ` ${kind}` : ""}`;
   }
 
-  function showToast(message, options) {
-    const { href, linkText, ms } = options || {};
-    els.toast.textContent = message;
-    if (href) {
-      const a = document.createElement("a");
-      a.href = href;
-      a.textContent = linkText || "Open";
-      els.toast.appendChild(a);
-    }
-    els.toast.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      els.toast.hidden = true;
-    }, ms || 6000);
-  }
-
   function stageMessage(title, body, withQueueLink) {
+    els.wait.hidden = true;
     els.message.innerHTML = "";
     const strong = document.createElement("strong");
     strong.textContent = title;
@@ -99,7 +87,7 @@
     }
   }
 
-  // ---- title / fonts ----
+  // ---- title / fonts / folder actions ----
 
   function renderTitle() {
     els.videoName.textContent = job.filename;
@@ -108,9 +96,36 @@
     const b = document.createElement("b");
     b.textContent = job.options.preset;
     els.styleName.appendChild(b);
-    if (job.options.client) {
-      // Which glossary the captions were corrected with.
-      els.styleName.appendChild(document.createTextNode(` · Client: ${job.options.client}`));
+    if (job.options.client) els.styleName.appendChild(document.createTextNode(` · Client: ${job.options.client}`));
+    els.thumb.src = api("/thumb");
+    els.thumb.hidden = false;
+    els.thumb.addEventListener("error", () => { els.thumb.hidden = true; }, { once: true });
+    const hasFolder = Boolean(job.output_dir);
+    els.revealBtn.hidden = !hasFolder;
+    els.copyBtn.hidden = !hasFolder;
+  }
+
+  async function revealFolder() {
+    els.revealBtn.disabled = true;
+    try {
+      const res = await AshApi.request(api("/reveal"), { method: "POST" });
+      if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't open the folder"));
+    } catch (err) {
+      AshToast.show(err.message, { kind: "bad" });
+    } finally {
+      els.revealBtn.disabled = false;
+    }
+  }
+
+  async function copyPath() {
+    try {
+      await navigator.clipboard.writeText(job.output_dir);
+      const label = els.copyBtn.textContent;
+      els.copyBtn.textContent = "Copied";
+      els.copyBtn.classList.add("done-flash");
+      setTimeout(() => { els.copyBtn.textContent = label; els.copyBtn.classList.remove("done-flash"); }, 1400);
+    } catch (err) {
+      AshToast.show(`Couldn't copy. The folder is ${job.output_dir}`, { kind: "bad", ms: 12000 });
     }
   }
 
@@ -126,101 +141,12 @@
     document.head.appendChild(style);
   }
 
-  // ---- looks strip ----
-
-  function glyph(layout) {
-    const span = document.createElement("span");
-    const position = POSITION_ORDER.includes(layout.position) ? layout.position : "bottom";
-    const align = ["left", "center", "right"].includes(layout.align) ? layout.align : null;
-    span.className = `look-glyph ${position}${align ? ` align-${align}` : ""}`;
-    span.title = POSITION_LABEL[position] + (align ? `, ${align}` : "");
-    span.appendChild(document.createElement("i"));
-    return span;
-  }
-
-  function lookCard(style, enabled) {
-    const d = style.definition || {};
-    const colors = d.colors || {};
-    const active = d.active_word || {};
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "look";
-    card.dataset.name = style.name;
-    card.disabled = !enabled;
-    card.title = enabled ? `Preview "${style.name}"` : "Looks can't be previewed on the burned output";
-
-    const sample = document.createElement("div");
-    sample.className = "look-sample";
-    sample.style.fontFamily = `${JSON.stringify(d.font || "Inter")}, sans-serif`;
-    sample.style.fontSize = `${Math.round(Math.min(24, Math.max(15, (d.size || 72) / 3.8)))}px`;
-    sample.style.color = colors.text || "#fff";
-    sample.style.letterSpacing = `${(d.letter_spacing || 0) * 0.02}em`;
-    sample.style.textTransform = d.uppercase ? "uppercase" : "none";
-    sample.style.textShadow = `0 0 2px ${colors.outline || "#000"}, 0 2px 3px ${colors.shadow || "transparent"}`;
-    const words = ["Pick", "this", "look"];
-    words.forEach((word, i) => {
-      const w = document.createElement("span");
-      w.className = "w";
-      w.textContent = word;
-      if (i === 1) {
-        w.style.color = colors.active || colors.text || "#fff";
-        const boxed = active.box || active.effect === "box" || active.effect === "scale_box";
-        if (boxed && colors.box) w.style.background = colors.box;
-        if (active.effect === "glow") w.style.textShadow = `0 0 8px ${colors.active || "#fff"}`;
-      }
-      sample.appendChild(w);
-    });
-
-    const foot = document.createElement("div");
-    foot.className = "look-foot";
-    const name = document.createElement("span");
-    name.className = "look-name";
-    name.textContent = style.customized_locally ? `${style.name} (customized)` : style.name;
-    foot.appendChild(name);
-    foot.appendChild(glyph(d.layout || {}));
-
-    card.appendChild(sample);
-    card.appendChild(foot);
-    card.addEventListener("click", () => applyLook(style.name));
-    return card;
-  }
-
-  function renderLooks(enabled) {
-    els.looksList.innerHTML = "";
-    const groups = new Map(POSITION_ORDER.map((p) => [p, []]));
-    for (const style of styles) {
-      const position = ((style.definition || {}).layout || {}).position;
-      (groups.get(position) || groups.get("bottom")).push(style);
-    }
-    for (const [position, list] of groups) {
-      if (list.length === 0) continue;
-      const group = document.createElement("section");
-      group.className = "look-group";
-      const h3 = document.createElement("h3");
-      h3.textContent = `${POSITION_LABEL[position]} · ${list.length}`;
-      group.appendChild(h3);
-      for (const style of list) group.appendChild(lookCard(style, enabled));
-      els.looksList.appendChild(group);
-    }
-    if (!enabled) {
-      els.looksHint.textContent =
-        "The original footage is gone, so this is the burned result and looks can't be changed.";
-    }
-    highlightCurrent();
-  }
-
-  function highlightCurrent() {
-    for (const card of els.looksList.querySelectorAll(".look")) {
-      card.classList.toggle("current", Boolean(job) && card.dataset.name === job.options.preset);
-    }
-    const current = els.looksList.querySelector(".look.current");
-    if (current) current.scrollIntoView({ block: "nearest" });
-  }
+  // ---- applying a look ----
 
   async function applyLook(name) {
-    if (busy || !job || name === job.options.preset) return;
+    if (busy || !job) return false;
     busy = true;
-    els.looksList.classList.add("busy");
+    $("looks-list").classList.add("busy");
     setStatus("Applying…", "busy");
     try {
       const res = await AshApi.request(api("/restyle"), {
@@ -232,22 +158,43 @@
       job = await res.json();
       player.setTrack(assUrl()); // video keeps playing; only the captions change
       renderTitle();
-      highlightCurrent();
       setStatus("Ready", "ok");
+      return true;
     } catch (err) {
       setStatus("Error", "bad");
-      showToast(err.message, { ms: 8000 });
+      AshToast.show(err.message, { kind: "bad" });
+      return false;
     } finally {
       busy = false;
-      els.looksList.classList.remove("busy");
+      $("looks-list").classList.remove("busy");
     }
   }
 
   // ---- burn ----
 
+  function setBurnState(state) {
+    // idle | pending | running | done | blocked
+    els.burnBtn.innerHTML = "";
+    els.burnBtn.classList.remove("done-flash");
+    if (state === "pending" || state === "running") {
+      const spin = document.createElement("span");
+      spin.className = "spinner";
+      spin.setAttribute("aria-hidden", "true");
+      els.burnBtn.append(spin, document.createTextNode(state === "pending" ? " Queued…" : " Burning…"));
+      els.burnBtn.disabled = true;
+    } else if (state === "done") {
+      els.burnBtn.textContent = "✓ Burned";
+      els.burnBtn.classList.add("done-flash");
+      els.burnBtn.disabled = false;
+    } else {
+      els.burnBtn.textContent = "Burn this look";
+      els.burnBtn.disabled = state === "blocked" || !live;
+    }
+  }
+
   async function burn() {
     if (!job || els.burnBtn.disabled) return;
-    els.burnBtn.disabled = true;
+    setBurnState("pending");
     setStatus("Queueing burn…", "busy");
     try {
       const res = await AshApi.request(api("/burn"), {
@@ -256,18 +203,19 @@
         body: JSON.stringify({ preset: job.options.preset }),
       });
       if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't queue the burn"));
+      burnJobId = (await res.json()).id;
       setStatus("Burn queued", "ok");
-      showToast("Burning… you can watch it in the queue.", { href: "/", linkText: "Open the queue", ms: 12000 });
+      AshToast.show(`Burning ${job.options.preset} into ${job.filename}. Watch it in the queue.`, { actions: [{ label: "Open the queue", href: "/" }], ms: 10000 });
       await refreshBurnState();
     } catch (err) {
       setStatus("Error", "bad");
-      showToast(err.message, { ms: 8000 });
-      els.burnBtn.disabled = false;
+      AshToast.show(err.message, { kind: "bad" });
+      setBurnState("idle");
     }
   }
 
-  // Disabled while a burn of this same footage is already waiting or
-  // running -- queueing a second one would just waste the GPU.
+  // Polls the queue: a spinner while a burn of this footage is waiting or
+  // running, a tick once the one this page queued has finished.
   async function refreshBurnState() {
     if (!job || !live) return;
     let jobs;
@@ -277,13 +225,26 @@
       return;
     }
     const sameInput = (j) => (job.input_path ? j.input_path === job.input_path : j.filename === job.filename);
-    const inFlight = jobs.find(
-      (j) => j.id !== job.id && (j.status === "pending" || j.status === "running") && j.options && j.options.burn_in && sameInput(j)
-    );
-    els.burnBtn.disabled = Boolean(inFlight);
-    els.burnBtn.title = inFlight
-      ? `A burn of this video (${inFlight.options.preset}) is already ${inFlight.status === "running" ? "running" : "waiting"} in the queue.`
-      : "Queue a burn of this video in the current look";
+    const inFlight = jobs.find((j) => j.id !== job.id && (j.status === "pending" || j.status === "running") && j.options && j.options.burn_in && sameInput(j));
+    if (inFlight) {
+      setBurnState(inFlight.status);
+      els.burnBtn.title = `A burn of this video (${inFlight.options.preset}) is ${inFlight.status === "running" ? "running" : "waiting"} in the queue.`;
+      return;
+    }
+    const mine = burnJobId && jobs.find((j) => j.id === burnJobId);
+    if (mine && mine.status === "done") {
+      burnJobId = null;
+      setBurnState("done");
+      AshToast.show(`${job.filename} is burned in ${mine.options.preset}.`, { kind: "ok", ms: 15000, actions: [{ label: "Open folder", onClick: revealFolder, keep: true }] });
+      setTimeout(() => setBurnState("idle"), 4000);
+      return;
+    }
+    if (mine && mine.status === "failed") {
+      burnJobId = null;
+      AshToast.show(`The burn failed: ${mine.error || "something went wrong"}`, { kind: "bad", ms: 0 });
+    }
+    if (els.burnBtn.textContent !== "✓ Burned") setBurnState("idle");
+    els.burnBtn.title = "Queue a burn of this video in the current look";
   }
 
   // ---- transcript strip ----
@@ -337,9 +298,22 @@
       activeIdx = idx;
       if (idx >= 0) {
         chips[idx].classList.add("active");
-        chips[idx].scrollIntoView({ inline: "center", block: "nearest" });
+        keepChipVisible(chips[idx]);
       }
     });
+  }
+
+  // Horizontal auto-scroll of the strip only: scrollIntoView would also
+  // scroll the page/stage, so the strip's own scrollLeft is set instead.
+  function keepChipVisible(chip) {
+    const strip = els.transcript;
+    const left = chip.offsetLeft - strip.offsetLeft;
+    const right = left + chip.offsetWidth;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const target = left < strip.scrollLeft + 40 || right > strip.scrollLeft + strip.clientWidth - 40
+      ? Math.max(0, left - (strip.clientWidth - chip.offsetWidth) / 2)
+      : null;
+    if (target !== null) strip.scrollTo({ left: target, behavior: reduce ? "auto" : "smooth" });
   }
 
   // ---- page states ----
@@ -350,38 +324,43 @@
     els.videoName.textContent = "Unknown job";
   }
 
+  function renderWaiting() {
+    const running = job.status === "running";
+    const pct = Math.round((job.progress || 0) * 100);
+    $("wait-title").textContent = running ? "Still captioning" : "Waiting in the queue";
+    $("wait-stage").textContent = running ? `${STAGE_LABEL[job.stage] || job.stage || "Working"} · ${pct}%` : "Studio opens by itself once the captions are written.";
+    const since = Date.parse(job.started_at || job.created_at);
+    const secs = Math.max(0, Math.round((Date.now() - since) / 1000));
+    const took = secs < 60 ? `${secs} s` : `${Math.floor(secs / 60)} min`;
+    $("wait-elapsed").textContent = Number.isNaN(since) ? "" : `${running ? "Running" : "Waiting"} for ${took}`;
+    $("wait-fill").style.width = `${running ? Math.max(pct, 2) : 0}%`;
+    const thumb = $("wait-thumb");
+    if (!thumb.src) {
+      thumb.src = api("/thumb");
+      thumb.addEventListener("error", () => { thumb.hidden = true; }, { once: true });
+      thumb.hidden = false;
+    }
+    els.message.hidden = true;
+    els.wait.hidden = false;
+    setStatus(running ? "Captioning…" : "Waiting", "busy");
+  }
+
   function waitUntilDone() {
-    const say = () => {
-      stageMessage(
-        "Not finished yet",
-        `This job is ${STATUS_LABEL[job.status] || job.status}. Studio opens once the captions are written -- this page updates by itself.`,
-        true
-      );
-      setStatus(job.status === "failed" ? "Failed" : "Waiting for the job", job.status === "failed" ? "bad" : "busy");
-    };
-    say();
     if (job.status === "failed") {
       stageMessage("This job failed", job.error || "Something went wrong while captioning it.", true);
+      setStatus("Failed", "bad");
       return;
     }
+    renderWaiting();
     const timer = setInterval(async () => {
       let latest;
-      try {
-        latest = await fetchJob();
-      } catch (err) {
-        return;
-      }
+      try { latest = await fetchJob(); } catch (err) { return; }
       if (!latest) return;
       job = latest;
-      if (job.status === "done") {
-        clearInterval(timer);
-        location.reload();
-      } else if (job.status === "failed") {
-        clearInterval(timer);
-        say();
-        stageMessage("This job failed", job.error || "Something went wrong while captioning it.", true);
-      }
-    }, 3000);
+      if (job.status === "done") { clearInterval(timer); location.reload(); }
+      else if (job.status === "failed") { clearInterval(timer); waitUntilDone(); }
+      else renderWaiting();
+    }, 2000);
   }
 
   async function pickSource() {
@@ -397,44 +376,38 @@
       found = await fetchJob();
     } catch (err) {
       setStatus("Error", "bad");
-      stageMessage("Couldn't reach ASH Captions", `${err.message}. Is the terminal window still open?`, true);
+      stageMessage("Couldn't reach ASH Captions", `${err.message}. Is it still running?`, true);
       return;
     }
     if (!found) return notFound();
     job = found;
     renderTitle();
+    if (window.AshNav) AshNav.rememberStudioJob(job.id);
     if (job.status !== "done") return waitUntilDone();
 
+    let styles = [];
     try {
-      [styles, fonts] = await Promise.all([
-        loadJson("/api/styles", "the caption styles"),
-        loadJson("/api/fonts/files", "the bundled fonts"),
-      ]);
+      [styles, fonts] = await Promise.all([loadJson("/api/styles", "the caption styles"), loadJson("/api/fonts/files", "the bundled fonts")]);
     } catch (err) {
-      showToast(err.message, { ms: 8000 });
+      AshToast.show(err.message, { kind: "bad" });
     }
     installFontFaces(fonts);
+    looks = AshStudioLooks.createLooks(
+      { list: $("looks-list"), filter: $("looks-filter"), hint: $("looks-hint"), compareBtn: $("compare-btn") },
+      applyLook
+    );
 
     const source = await pickSource();
     if (!source) {
-      stageMessage(
-        "Video not available",
-        "The original footage has been moved or deleted and this job wasn't burned in, so there is nothing to play. The caption files are still in the job's output folder.",
-        true
-      );
+      stageMessage("Video not available", "The original footage has been moved or deleted and this job wasn't burned in, so there is nothing to play. The caption files are still in the job's output folder.", true);
       setStatus("No video", "bad");
-      renderLooks(false);
+      looks.setStyles(styles, false, job.options.preset);
       return;
     }
     live = source.live;
     player = AshStudioPlayer.createPlayer({
-      stage: els.stage,
-      frame: els.frame,
-      video: els.video,
-      playBtn: $("play-btn"),
-      muteBtn: $("mute-btn"),
-      seek: $("seek"),
-      timeLabel: $("time-label"),
+      stage: els.stage, frame: els.frame, video: els.video,
+      playBtn: $("play-btn"), muteBtn: $("mute-btn"), seek: $("seek"), timeLabel: $("time-label"),
     });
     els.controls.hidden = false;
     try {
@@ -446,29 +419,31 @@
     }
     if (live) {
       setStatus("Ready", "ok");
-      els.burnBtn.title = "Queue a burn of this video in the current look";
+      setBurnState("idle");
     } else {
       setStatus("Burned result", "ok");
       els.burnBtn.title = "The original footage is gone, so there is nothing to burn from.";
-      showToast("The original footage is gone, so this is the burned result. Looks can't be previewed here.", { ms: 12000 });
+      AshToast.show("The original footage is gone, so this is the burned result. Looks can't be previewed here.", { ms: 12000 });
     }
-    renderLooks(live);
+    looks.setStyles(styles, live, job.options.preset);
     loadTranscript();
     refreshBurnState();
-    setInterval(refreshBurnState, 5000);
+    setInterval(refreshBurnState, 3000);
   }
 
   els.burnBtn.addEventListener("click", burn);
+  els.revealBtn.addEventListener("click", revealFolder);
+  els.copyBtn.addEventListener("click", copyPath);
   document.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || !player) return;
     const target = e.target || document.body;
     const tag = target.tagName || "";
-    // Form fields, links and the transport buttons handle Space themselves
-    // (Space on the play button already toggles). Anywhere else -- the
-    // page, a look card, a transcript chip -- Space is play/pause.
     if (["INPUT", "SELECT", "TEXTAREA", "A"].includes(tag) || target.classList.contains("ctl")) return;
-    e.preventDefault();
-    player.toggle();
+    if (e.code === "Space" && player) { e.preventDefault(); player.toggle(); return; }
+    if (!looks || !live) return;
+    // Arrow keys and Enter walk the looks from anywhere on the page.
+    if (target.closest && target.closest(".looks-list")) return; // the list handles its own keys
+    if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey) { looks.compare(); return; }
+    if (looks.handleKey(e)) looks.focus();
   });
 
   boot();

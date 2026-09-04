@@ -8,19 +8,33 @@
 <!-- __VERSION__ is stamped with the running version when the page is
      served (web/app.py) so a shipped update never pairs a cached script
      with a new page. -->
-<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/theme.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/studio.css?v=__VERSION__">
 </head>
 <body class="studio">
 
+<nav class="app-nav" aria-label="Main">
+  <a class="brand" href="/"><i aria-hidden="true"></i><span>ASH Captions</span></a>
+  <a class="nav-link" href="/">Queue</a>
+  <a class="nav-link" href="/studio/" data-nav="studio">Studio</a>
+  <a class="nav-link" href="/style-editor">Styles</a>
+  <a class="nav-link" href="/guide">Help</a>
+  <span class="nav-spacer"></span>
+  <span class="nav-status" id="nav-status"></span>
+</nav>
+
 <header class="topbar">
-  <a class="back" href="/" aria-label="Back to the queue">&larr; Queue</a>
+  <img class="job-thumb" id="job-thumb" alt="" width="64" height="36" hidden>
   <div class="title">
-    <div class="video-name" id="video-name">Loading&hellip;</div>
+    <div class="video-name" id="video-name">Loading…</div>
     <div class="style-name" id="style-name"></div>
   </div>
-  <div class="status-pill" id="status-pill" role="status">Loading&hellip;</div>
-  <button type="button" class="btn primary" id="burn-btn" disabled>Burn this look</button>
+  <div class="status-pill" id="status-pill" role="status">Loading…</div>
+  <div class="topbar-actions">
+    <button type="button" class="btn small" id="reveal-btn" hidden>Open folder</button>
+    <button type="button" class="btn small" id="copy-btn" hidden>Copy path</button>
+    <button type="button" class="btn primary" id="burn-btn" disabled>Burn this look</button>
+  </div>
 </header>
 
 <main class="workspace">
@@ -30,6 +44,15 @@
         <video id="video" playsinline preload="auto"></video>
       </div>
       <div class="stage-message" id="stage-message" hidden></div>
+      <div class="stage-wait" id="stage-wait" hidden>
+        <img class="wait-thumb" id="wait-thumb" alt="" hidden>
+        <div class="wait-text">
+          <strong id="wait-title">Still captioning</strong>
+          <span id="wait-stage"></span>
+          <span class="hint" id="wait-elapsed"></span>
+          <div class="progress-track"><div class="progress-fill live" id="wait-fill"></div></div>
+        </div>
+      </div>
     </div>
     <div class="controls" id="controls" hidden>
       <button type="button" class="ctl" id="play-btn" aria-label="Play"></button>
@@ -41,17 +64,22 @@
   </section>
 
   <aside class="looks" id="looks">
-    <h2>Looks</h2>
-    <p class="looks-hint" id="looks-hint">Click a look to see it on the video. Burn when it's right.</p>
-    <div class="looks-list" id="looks-list"></div>
+    <div class="looks-head">
+      <h2>Looks</h2>
+      <button type="button" class="btn small" id="compare-btn" disabled title="Flip between the last two looks you picked (C)">Compare</button>
+    </div>
+    <input type="search" id="looks-filter" placeholder="Filter looks" aria-label="Filter looks" autocomplete="off">
+    <p class="looks-hint" id="looks-hint">Click a look, or use the arrow keys and Enter. Burn when it's right.</p>
+    <div class="looks-list" id="looks-list" role="listbox" aria-label="Looks" tabindex="0"></div>
   </aside>
 </main>
 
-<div class="toast" id="toast" role="status" hidden></div>
-
 <script src="/static/api.js?v=__VERSION__"></script>
+<script src="/static/nav.js?v=__VERSION__"></script>
+<script src="/static/toast.js?v=__VERSION__"></script>
 <script src="/static/vendor/jassub/jassub.umd.js?v=__VERSION__"></script>
 <script src="/static/studio_player.js?v=__VERSION__"></script>
+<script src="/static/studio_looks.js?v=__VERSION__"></script>
 <script src="/static/studio.js?v=__VERSION__"></script>
 </body>
 </html>

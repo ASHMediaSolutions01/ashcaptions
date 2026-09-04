@@ -199,6 +199,64 @@ def test_open_control_page_opens_the_url_in_the_browser(monkeypatch: pytest.Monk
     assert opened_urls == ["http://127.0.0.1:8756"]
 
 
+class TestJobNotifications:
+    """The balloon on job done/failed: `subscribe_job_notifications` hooks
+    the adapter's `on_job_finished` list and calls `icon.notify` -- driven
+    here with a fake icon and a real QueueAdapter over a real store."""
+
+    class FakeIcon:
+        def __init__(self, fail: bool = False) -> None:
+            self.notified: list[tuple[str, str]] = []
+            self.fail = fail
+
+        def notify(self, message: str, title: str | None = None) -> None:
+            if self.fail:
+                raise RuntimeError("no notification backend")
+            self.notified.append((title or "", message))
+
+    @staticmethod
+    def make_adapter(tmp_path):
+        from ash_captions.app.adapter import QueueAdapter
+        from ash_captions.pipeline.db import JobStore
+        from ash_captions.web.models import JobOptions
+
+        adapter = QueueAdapter(JobStore(tmp_path / "jobs.sqlite3"), out_dir=tmp_path / "out")
+        video = tmp_path / "reel.mp4"
+        video.write_bytes(b"x")
+        job = adapter.submit(video, JobOptions(language="en", preset="POP"))
+        return adapter, int(job.id)
+
+    def test_done_and_failed_each_get_a_balloon(self, tmp_path) -> None:
+        adapter, job_id = self.make_adapter(tmp_path)
+        icon = self.FakeIcon()
+        tray.subscribe_job_notifications(icon, adapter)
+
+        adapter.notifying_store.mark_running(job_id)
+        adapter.notifying_store.mark_done(job_id)
+        assert icon.notified == [("Captions ready", "reel.mp4 is done. Open the queue to pick a look.")]
+
+        adapter.notifying_store.requeue(job_id)
+        adapter.notifying_store.mark_running(job_id)
+        adapter.notifying_store.mark_failed(job_id, "ffmpeg exited with code 1")
+        assert icon.notified[-1] == ("Captioning failed", "reel.mp4: ffmpeg exited with code 1")
+
+    def test_a_broken_notifier_never_reaches_the_worker(self, tmp_path) -> None:
+        adapter, job_id = self.make_adapter(tmp_path)
+        tray.subscribe_job_notifications(self.FakeIcon(fail=True), adapter)
+        adapter.notifying_store.mark_running(job_id)
+        adapter.notifying_store.mark_done(job_id)  # must not raise
+        assert adapter.get_job(str(job_id)).status.value == "done"
+
+    def test_returns_the_subscriber_so_it_can_be_removed(self, tmp_path) -> None:
+        adapter, job_id = self.make_adapter(tmp_path)
+        icon = self.FakeIcon()
+        subscriber = tray.subscribe_job_notifications(icon, adapter)
+        assert subscriber in adapter.on_job_finished
+        adapter.on_job_finished.remove(subscriber)
+        adapter.notifying_store.mark_done(job_id)
+        assert icon.notified == []
+
+
 def test_quit_click_on_a_real_running_icon_makes_run_return(tmp_path) -> None:
     """The only test in this file that builds a real `pystray.Icon` (see
     module docstring for why that has to be deliberate and singular). It
