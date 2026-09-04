@@ -1,0 +1,20 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: FIX_SHAKE,Inter,72,&H0066D1FF,&H00FFFFFF,&H00000000,&H6F000000,0,0,0,0,100,100,0,0,1,4,2,2,80,80,120,1
+Style: FIX_SHAKE_BOX,Inter,72,&H0066D1FF,&H0066D1FF,&HFF000000,&HFF000000,0,0,0,0,100,100,0,0,3,20,0,2,80,80,120,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.30,FIX_SHAKE,,0,0,0,,{\move(700,1800,540,1800,0,160)}{\c&H66D1FF&\t(0,45,\frz-4)\t(45,90,\frz4)\t(90,135,\frz-2)\t(135,180,\frz0)}HELLO{\c&HFFFFFF&\frz0} {\c&HFFFFFF&}THERE {\c&HFFFFFF&}WORLD
+Dialogue: 0,0:00:00.30,0:00:00.60,FIX_SHAKE,,0,0,0,,{\c&HFFFFFF&}HELLO {\c&H66D1FF&\t(0,45,\frz-4)\t(45,90,\frz4)\t(90,135,\frz-2)\t(135,180,\frz0)}THERE{\c&HFFFFFF&\frz0} {\c&HFFFFFF&}WORLD
+Dialogue: 0,0:00:00.60,0:00:01.00,FIX_SHAKE,,0,0,0,,{\move(540,1800,380,1800,240,400)}{\c&HFFFFFF&}HELLO {\c&HFFFFFF&}THERE {\c&H66D1FF&\t(0,45,\frz-4)\t(45,90,\frz4)\t(90,135,\frz-2)\t(135,180,\frz0)}WORLD{\c&HFFFFFF&\frz0}
+Dialogue: 0,0:00:01.20,0:00:01.50,FIX_SHAKE,,0,0,0,,{\move(700,1800,540,1800,0,160)}{\c&H66D1FF&\t(0,45,\frz-4)\t(45,90,\frz4)\t(90,135,\frz-2)\t(135,180,\frz0)}ONE-WORD{\c&HFFFFFF&\frz0}
+Dialogue: 0,0:00:02.00,0:00:02.30,FIX_SHAKE,,0,0,0,,{\move(700,1800,540,1800,0,160)}{\c&H66D1FF&\t(0,45,\frz-4)\t(45,90,\frz4)\t(90,135,\frz-2)\t(135,180,\frz0)}USE{\c&HFFFFFF&\frz0} {\c&HFFFFFF&}｛NAME｝ {\c&HFFFFFF&}A＼B
+Dialogue: 0,0:00:02.30,0:00:02.60,FIX_SHAKE,,0,0,0,,{\c&HFFFFFF&}USE {\c&H66D1FF&\t(0,45,\frz-4)\t(45,90,\frz4)\t(90,135,\frz-2)\t(135,180,\frz0)}｛NAME｝{\c&HFFFFFF&\frz0} {\c&HFFFFFF&}A＼B
+Dialogue: 0,0:00:02.60,0:00:03.00,FIX_SHAKE,,0,0,0,,{\move(540,1800,380,1800,240,400)}{\c&HFFFFFF&}USE {\c&HFFFFFF&}｛NAME｝ {\c&H66D1FF&\t(0,45,\frz-4)\t(45,90,\frz4)\t(90,135,\frz-2)\t(135,180,\frz0)}A＼B{\c&HFFFFFF&\frz0}

@@ -1,0 +1,20 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: FIX_NONE,Inter,72,&H0066D1FF,&H00FFFFFF,&H00000000,&H6F000000,0,0,0,0,100,100,0,0,1,4,2,2,80,80,120,1
+Style: FIX_NONE_BOX,Inter,72,&H0066D1FF,&H0066D1FF,&HFF000000,&HFF000000,0,0,0,0,100,100,0,0,3,20,0,2,80,80,120,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.30,FIX_NONE,,0,0,0,,{\fad(300,0)}{\c&H66D1FF&}hello{\c&HFFFFFF&} {\c&HFFFFFF&}there {\c&HFFFFFF&}world
+Dialogue: 0,0:00:00.30,0:00:00.60,FIX_NONE,,0,0,0,,{\c&HFFFFFF&}hello {\c&H66D1FF&}there{\c&HFFFFFF&} {\c&HFFFFFF&}world
+Dialogue: 0,0:00:00.60,0:00:01.00,FIX_NONE,,0,0,0,,{\fad(0,300)}{\c&HFFFFFF&}hello {\c&HFFFFFF&}there {\c&H66D1FF&}world{\c&HFFFFFF&}
+Dialogue: 0,0:00:01.20,0:00:01.50,FIX_NONE,,0,0,0,,{\fad(150,150)}{\c&H66D1FF&}one-word{\c&HFFFFFF&}
+Dialogue: 0,0:00:02.00,0:00:02.30,FIX_NONE,,0,0,0,,{\fad(300,0)}{\c&H66D1FF&}use{\c&HFFFFFF&} {\c&HFFFFFF&}｛name｝ {\c&HFFFFFF&}a＼b
+Dialogue: 0,0:00:02.30,0:00:02.60,FIX_NONE,,0,0,0,,{\c&HFFFFFF&}use {\c&H66D1FF&}｛name｝{\c&HFFFFFF&} {\c&HFFFFFF&}a＼b
+Dialogue: 0,0:00:02.60,0:00:03.00,FIX_NONE,,0,0,0,,{\fad(0,300)}{\c&HFFFFFF&}use {\c&HFFFFFF&}｛name｝ {\c&H66D1FF&}a＼b{\c&HFFFFFF&}

@@ -1,0 +1,16 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: FIX_KARAOKE,Inter,72,&H0066D1FF,&H00FFFFFF,&H00000000,&H6F000000,0,0,0,0,100,100,0,0,1,4,2,2,80,80,120,1
+Style: FIX_KARAOKE_BOX,Inter,72,&H0066D1FF,&H0066D1FF,&HFF000000,&HFF000000,0,0,0,0,100,100,0,0,3,20,0,2,80,80,120,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.00,FIX_KARAOKE,,0,0,0,,{\fad(200,200)}{\kf30}hello {\kf30}there {\kf40}world
+Dialogue: 0,0:00:01.20,0:00:01.50,FIX_KARAOKE,,0,0,0,,{\fad(150,150)}{\kf30}one-word
+Dialogue: 0,0:00:02.00,0:00:03.00,FIX_KARAOKE,,0,0,0,,{\fad(200,200)}{\kf30}use {\kf30}｛name｝ {\kf40}a＼b

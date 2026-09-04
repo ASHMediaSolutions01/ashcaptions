@@ -1,0 +1,20 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: FIX_BOX,Inter,72,&H0066D1FF,&H00FFFFFF,&H00000000,&H6F000000,0,0,0,0,100,100,0,0,1,4,2,2,80,80,160,1
+Style: FIX_BOX_BOX,Inter,72,&H0066D1FF,&H0066D1FF,&HFF000000,&HFF000000,0,0,0,0,100,100,0,0,3,20,0,2,80,80,160,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.30,FIX_BOX_BOX,,0,0,0,,{\fad(120,0)}hello
+Dialogue: 0,0:00:00.30,0:00:00.60,FIX_BOX_BOX,,0,0,0,,there
+Dialogue: 0,0:00:00.60,0:00:01.00,FIX_BOX_BOX,,0,0,0,,world
+Dialogue: 0,0:00:01.20,0:00:01.50,FIX_BOX_BOX,,0,0,0,,{\fad(120,0)}one-word
+Dialogue: 0,0:00:02.00,0:00:02.30,FIX_BOX_BOX,,0,0,0,,{\fad(120,0)}use
+Dialogue: 0,0:00:02.30,0:00:02.60,FIX_BOX_BOX,,0,0,0,,｛name｝
+Dialogue: 0,0:00:02.60,0:00:03.00,FIX_BOX_BOX,,0,0,0,,a＼b
