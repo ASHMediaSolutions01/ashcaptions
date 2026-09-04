@@ -81,6 +81,9 @@ FFMPEG_LICENSE_FILENAME = "LICENSE.txt"
 # (which point at bin/LICENSE.txt and assets/fonts/licenses/).
 LICENSE_PATH = REPO_ROOT / "LICENSE"
 NOTICES_PATH = REPO_ROOT / "NOTICES.md"
+LICENSES_DIR = REPO_ROOT / "build" / "licenses"
+LICENSES_DEST = "licenses"
+LICENSES_INDEX = "THIRD_PARTY_LICENSES.txt"
 NOTICE_FILES: tuple[Path, ...] = (LICENSE_PATH, NOTICES_PATH)
 
 # --collect-all targets that are collected only when importable: PyAV is a
@@ -197,6 +200,18 @@ def validate_notice_files(paths: Sequence[Path] = NOTICE_FILES) -> None:
         raise BuildError(f"notice files missing (they must ship in the bundle): {missing}")
 
 
+def validate_licenses_dir(licenses_dir: Path) -> None:
+    """`scripts/collect_licenses.py` must have run: the bundle ships every
+    dependency's licence text under `licenses/`, because PyInstaller keeps
+    dist-info for only a handful of packages and NOTICES.md points here."""
+    licenses_dir = Path(licenses_dir)
+    if not (licenses_dir / LICENSES_INDEX).is_file():
+        raise BuildError(
+            f"{licenses_dir / LICENSES_INDEX} not found -- run scripts/collect_licenses.py first "
+            "(the bundle redistributes third-party code and must ship its licence texts)."
+        )
+
+
 def validate_model_cache(model_dir: Path) -> None:
     """`--model-dir` must be the HF cache root fetch_model.py produces --
     the only layout faster-whisper resolves offline. The flat layout an
@@ -276,6 +291,7 @@ def build_pyinstaller_args(
     ffmpeg_license: Path | None = None,
     model_dir: Path | None = None,
     notice_files: Sequence[Path] = NOTICE_FILES,
+    licenses_dir: Path | None = None,
     collect_all_optional: Sequence[str] = (),
     app_name: str = APP_NAME,
     console: bool = False,
@@ -324,6 +340,8 @@ def build_pyinstaller_args(
         args += ["--add-binary", f"{binary};bin"]
     if ffmpeg_license is not None:
         args += ["--add-data", f"{ffmpeg_license};bin"]
+    if licenses_dir is not None:
+        args += ["--add-data", f"{Path(licenses_dir).resolve()};{LICENSES_DEST}"]
     if model_dir is not None:
         # Absolute on purpose: PyInstaller resolves relative --add-data sources
         # against its own workpath (build/), so the documented
@@ -388,6 +406,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Directory containing ffmpeg.exe/ffprobe.exe/LICENSE.txt (see fetch_ffmpeg.py).",
     )
     parser.add_argument(
+        "--licenses-dir",
+        type=Path,
+        default=LICENSES_DIR,
+        help="Output of scripts/collect_licenses.py, bundled as licenses/ (required unless --dry-run).",
+    )
+    parser.add_argument(
         "--model-dir",
         type=Path,
         default=None,
@@ -427,6 +451,8 @@ def assemble_pyinstaller_args(args: argparse.Namespace) -> list[str]:
     validate_styles_assets(STYLES_DIR)
     validate_fonts_assets(FONTS_DIR)
     validate_notice_files(NOTICE_FILES)
+    if not args.dry_run:
+        validate_licenses_dir(args.licenses_dir)
 
     ffmpeg_binaries: list[Path] = []
     ffmpeg_license: Path | None = None
@@ -454,6 +480,7 @@ def assemble_pyinstaller_args(args: argparse.Namespace) -> list[str]:
         ffmpeg_binaries=ffmpeg_binaries,
         ffmpeg_license=ffmpeg_license,
         model_dir=args.model_dir,
+        licenses_dir=args.licenses_dir if (args.licenses_dir / LICENSES_INDEX).is_file() else None,
         collect_all_optional=available_optional_modules(),
         console=not args.windowed,
     )

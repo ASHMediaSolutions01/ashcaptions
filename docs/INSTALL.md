@@ -114,6 +114,19 @@ Puts the 15 MB Robust Video Matting ONNX file into the same `build\models\`
 root, so "captions behind the speaker" works offline on the installed
 bundle. A source checkout downloads it on first use instead.
 
+### 2c. Collect the licence texts (each build)
+
+```powershell
+.venv\Scripts\python.exe scripts\collect_licenses.py
+```
+
+Copies every dependency's licence file into `build\licenses\` with an
+index, plus the GPL-3.0 text for the matting weights. `build.py` refuses to
+build without it: PyInstaller keeps `*.dist-info` for only a handful of
+packages, so without this step most licence texts would not ship. PyAV is
+deliberately not bundled (its wheel links a GPL-built FFmpeg in-process);
+`NOTICES.md` explains.
+
 ### 3. Build the bundle
 
 ```powershell

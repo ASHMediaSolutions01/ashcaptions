@@ -71,8 +71,21 @@ plain MIT; the full notices are in that directory's `COPYRIGHT` and
 
 ## Other Python dependencies
 
-The remaining Python packages in the bundle (FastAPI, Starlette, uvicorn,
-pydantic, watchdog, pystray, Pillow, huggingface_hub, tokenizers, numpy,
-PyAV and their dependencies) are used under MIT, BSD, Apache 2.0 or
-HPND/PIL licences; their licence texts are included in the bundle's
-package metadata directories as PyInstaller collects them.
+The Python packages in the bundle (FastAPI, Starlette, uvicorn, pydantic,
+watchdog, pystray, Pillow, huggingface_hub, tokenizers, numpy, onnxruntime,
+certifi, tqdm and their dependencies) ship with their licence texts under
+`licenses/<package>/` in the bundle, collected at build time by
+`scripts/collect_licenses.py`; `licenses/THIRD_PARTY_LICENSES.txt` lists
+every package with its version and declared licence. Notable terms:
+
+- **pystray** is LGPL-3.0: used unmodified as a separate importable module,
+  which the LGPL permits; its text is in `licenses/pystray/`.
+- **certifi** is MPL-2.0 and **tqdm** is MPL-2.0 / MIT: both unmodified.
+- **PyAV is not bundled.** Its wheel carries an FFmpeg built with GPL
+  libx264/libx265 loaded in-process, which would have put the whole program
+  under the GPL. The app hands faster-whisper the audio as a numpy array
+  decoded by the separate `binfmpeg.exe` process, and a stub satisfies
+  faster-whisper's import (`scripts/pkgtools/av_stub`).
+
+The Robust Video Matting weights are GPL-3.0; the licence text ships in
+`licenses/robust-video-matting/COPYING`.
