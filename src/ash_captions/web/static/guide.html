@@ -5,18 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <title>ASH Captions — Editor's guide</title>
-<link rel="stylesheet" href="/static/style.css?v=__VERSION__">
+<link rel="stylesheet" href="/static/theme.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/guide.css?v=__VERSION__">
 </head>
 <body class="guide-body">
 
-<header>
+<nav class="app-nav" aria-label="Main">
+  <a class="brand" href="/"><i aria-hidden="true"></i><span>ASH Captions</span></a>
+  <a class="nav-link" href="/">Queue</a>
+  <a class="nav-link" href="/studio/" data-nav="studio">Studio</a>
+  <a class="nav-link" href="/style-editor">Styles</a>
+  <a class="nav-link" href="/guide">Help</a>
+  <span class="nav-spacer"></span>
+  <span class="nav-status"></span>
+</nav>
+
+<div class="guide-wrap">
+<header class="guide-header">
   <h1>Editor's guide</h1>
   <p>Setting the tool up, captioning a video, choosing a look, and what to do when something goes wrong.</p>
-  <nav class="editor-nav">
-    <a class="back-link" href="/">&larr; Back to captioning</a>
-    <a class="back-link" href="/style-editor">Style editor &rarr;</a>
-  </nav>
 </header>
 
 <div class="guide-layout">
@@ -36,7 +43,7 @@
   <div class="guide-progress">
     <strong id="progress-label">Setup: 0 of 6 steps done</strong>
     <div class="bar"><span id="progress-bar"></span></div>
-    <button type="button" id="progress-reset">Reset checklist</button>
+    <button type="button" class="btn small" id="progress-reset">Reset checklist</button>
   </div>
 </aside>
 
@@ -103,8 +110,8 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
     <div class="body">
       <p>ffmpeg does the video work (about 2 minutes, ~170 MB):</p>
       <div class="cmd"><pre>.venv\Scripts\python.exe scripts\fetch_ffmpeg.py</pre></div>
-      <p>The 24 caption fonts and their licences (about 1 minute). You should see <code>wrote 24 font file(s)</code>. A yellow <code>RuntimeWarning</code> about "unpredictable behaviour" is a Python quirk; ignore it.</p>
-      <div class="cmd"><pre>.venv\Scripts\python.exe -m ash_captions.styles.fonts download</pre></div>
+      <p>The 24 caption fonts and their licences (about 1 minute). You should see <code>wrote 24 font file(s)</code>.</p>
+      <div class="cmd"><pre>.venv\Scripts\python.exe scripts\fetch_fonts.py</pre></div>
       <p>The speech model (about 5 minutes, ~480 MB). Optional: if you skip it, the first job downloads it by itself.</p>
       <div class="cmd"><pre>.venv\Scripts\python.exe scripts\fetch_model.py --model-size small --dest models</pre></div>
     </div>
@@ -131,13 +138,12 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p class="lede">Every time: start the app with the command from Step 6, or the desktop shortcut if one was set up.</p>
 
   <h3>Give it your video</h3>
-  <figure><img src="/static/guide/control-idle.png" alt="The control page: a text field for the video path, and an empty queue below"><figcaption>The control page. Paste the path, press Enter.</figcaption></figure>
+  <figure><img src="/static/guide/control-idle.png" alt="The control page: the new-job form on the left with a Browse button, and the queue on the right"><figcaption>The control page. Browse to the file, pick the options, start.</figcaption></figure>
   <ol>
-    <li>In <strong>File Explorer</strong>, find your video. Hold <kbd>Shift</kbd>, right-click it, choose <strong>"Copy as path"</strong>.</li>
-    <li>Paste it into <strong>Video file location</strong> and press Enter. The quotes Windows adds are fine.</li>
-    <li>The options appear. Pick them and click <strong>Start captioning</strong>.</li>
+    <li>Click <strong>Browse…</strong> and choose the video, the same way you open a file in any Windows program. Pasting a path still works too: in File Explorer hold <kbd>Shift</kbd>, right-click the file, choose <strong>"Copy as path"</strong>, and paste it into <strong>Video file</strong>. The quotes Windows adds are fine.</li>
+    <li>The options switch on. Pick the language, the style and whether to burn the captions in, then click <strong>Start captioning</strong>.</li>
   </ol>
-  <p class="note">Why paste a path instead of uploading? Your video is already on this computer. Pasting the path means the tool reads it where it sits, and your original is never moved, changed or deleted. The "upload a copy" option exists for small files only (2 GB limit).</p>
+  <p class="note">Why not upload? Your video is already on this computer. The tool reads it where it sits, and your original is never moved, changed or deleted. "Upload a copy" (under Advanced) exists for small files only (2 GB limit).</p>
 
   <h3>Pick your options</h3>
   <table class="plain">
@@ -156,7 +162,8 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 
   <h3>Collect your files</h3>
   <div class="cmd"><pre>C:\AshCaptions\out\&lt;your video's name&gt;\</pre></div>
-  <p>If two videos share a name, the second gets its own folder: <code>name (2)</code>. <strong>Your original video is never touched.</strong></p>
+  <p>Or click <strong>Open folder</strong> on the finished job (or in the Studio) and Explorer opens with the burned video selected; <strong>Copy path</strong> puts the folder on the clipboard for Premiere's import dialog. If two videos share a name, the second gets its own folder: <code>name (2)</code>. <strong>Your original video is never touched.</strong></p>
+  <p>Finished jobs stay in the list until you <strong>Remove</strong> them, or <strong>Clear finished</strong> at the top of the queue. Removing a job from the list never deletes its files.</p>
 </section>
 
 <section id="long">
@@ -184,8 +191,8 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p class="lede">When a job finishes, the <strong>Studio</strong> opens: your video with the captions drawn live on it, and every look one click away.</p>
   <figure><img src="/static/guide/studio.png" alt="The Studio: the video playing with captions drawn on it, a strip of looks on the right, the transcript below"><figcaption>The Studio. Play the video, click a look on the right, the captions redraw in that style and position while it plays. Frame from "Entrevista Creative Commons" (CC BY).</figcaption></figure>
   <ol>
-    <li><strong>Open it</strong>: it opens by itself when a job you started finishes (untick "Open Studio when a job finishes" on the control page if you'd rather not), or click <strong>Open in Studio</strong> on any finished job.</li>
-    <li><strong>Click through the looks</strong> on the right. They are grouped by where the caption sits: top, centre, bottom, lower third, with left and right variants. The captions on the video change in about a second, and the playhead stays where it was.</li>
+    <li><strong>Open it</strong>: it opens by itself when a job you started finishes (untick "Open Studio when a job finishes" on the control page if you'd rather not), or click <strong>Open in Studio</strong> on any finished job, or <strong>Studio</strong> in the top bar for the last one.</li>
+    <li><strong>Click through the looks</strong> on the right, or walk them with the arrow keys and press Enter. They are grouped by where the caption sits: top, centre, bottom, lower third, with left and right variants. Type in the filter box to narrow them down; <strong>Compare</strong> (or <kbd>C</kbd>) flips between the last two you picked. The captions on the video change in about a second, and the playhead stays where it was.</li>
     <li><strong>Press Space</strong> to play and pause; click a line in the transcript strip to jump there.</li>
     <li><strong>Burn this look</strong> when it's right. A burn-only job goes into the queue and reuses the transcript, so it starts rendering immediately instead of listening to the video again. On a 5-minute 1080p file that is about two minutes.</li>
   </ol>
@@ -209,12 +216,12 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <figure><img src="/static/guide/burned-example.png" alt="Burned-in captions in the ASH BRAND style, the spoken word highlighted in the accent colour"><figcaption>ASH BRAND burned in: the word being spoken is highlighted in the Ash accent colour.</figcaption></figure>
 
   <h3>Making your own</h3>
-  <p>Click <strong>"Design your own caption styles"</strong> on the control page for the style editor.</p>
+  <p>Open <strong>Styles</strong> in the top bar for the style editor.</p>
   <figure><img src="/static/guide/style-editor.png" alt="The style editor: a list of looks on the left, settings in the middle, and a live preview"><figcaption>The style editor. Pick a look on the left, change anything, render a real 3-second clip of your own footage at the bottom.</figcaption></figure>
   <p>Change anything: font (24 to choose from), size, letter spacing, ALL CAPS, the four colours, how the active word behaves, how captions enter, and <strong>where they sit</strong> (top, centre, bottom; left, middle, right).</p>
 
   <h3>Always preview first</h3>
-  <p>At the bottom, paste a video path and a <strong>start time in seconds</strong> where someone is talking. Click <strong>Render preview</strong>; a few seconds later you get a real clip of your own footage in that style, at the video's real size. It saves you discovering the style was wrong after a 30-minute render.</p>
+  <p>On the right, pick one of your recent videos (or choose another file) and a <strong>start time in seconds</strong>; it defaults to the first moment someone speaks. Click <strong>Render preview</strong>; a few seconds later you get a real clip of your own footage in that style, at the video's real size. It saves you discovering the style was wrong after a 30-minute render.</p>
 
   <h3>Saving</h3>
   <ul>
@@ -297,7 +304,9 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 
 </main>
 </div>
+</div>
 
+<script src="/static/nav.js?v=__VERSION__"></script>
 <script>
 (function () {
   var KEY = "ashguide.done.v1";
@@ -326,7 +335,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   Array.prototype.forEach.call(document.querySelectorAll(".cmd"), function (block) {
     var pre = block.querySelector("pre");
     var btn = document.createElement("button");
-    btn.type = "button"; btn.textContent = "Copy";
+    btn.type = "button"; btn.className = "btn small"; btn.textContent = "Copy";
     btn.addEventListener("click", function () {
       var text = pre.textContent;
       var done = function () { btn.textContent = "Copied"; btn.classList.add("copied"); setTimeout(function () { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1500); };

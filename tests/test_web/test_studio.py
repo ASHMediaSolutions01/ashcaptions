@@ -264,8 +264,25 @@ class TestPage:
         assert 'id="open-studio-check" checked' in index
         assert f"/static/studio_hook.js?v={app.state.version}" in index
         app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-        for call in ("AshStudio.decorate(", "AshStudio.noteSubmitted(", "AshStudio.onJobs("):
+        for call in ("AshStudio.noteSubmitted(", "AshStudio.onJobs("):
             assert call in app_js, call
+        # Finished cards link to Studio, and a finished job this tab started
+        # is announced (toast + notification) before Studio opens.
+        queue_js = (STATIC_DIR / "queue.js").read_text(encoding="utf-8")
+        assert '"Open in Studio"' in queue_js and "/studio/" in queue_js
+        hook_js = (STATIC_DIR / "studio_hook.js").read_text(encoding="utf-8")
+        assert "AshQueue.jobFinished(job)" in hook_js
+
+    def test_every_page_loads_the_shared_theme_and_nav(self, client, app):
+        for url in ("/", "/style-editor", "/guide", "/studio/any-id"):
+            page = client.get(url).text
+            assert f"/static/theme.css?v={app.state.version}" in page, url
+            assert 'class="app-nav"' in page, url
+            for label in ("Queue", "Studio", "Styles", "Help"):
+                assert f">{label}</a>" in page, (url, label)
+            assets = set(re.findall(r'(?:src|href)="(/static/[^"?]+)', page))
+            for asset in assets:
+                assert client.get(asset).status_code == 200, (url, asset)
 
     def test_web_files_stay_under_500_lines(self):
         web = STATIC_DIR.parent
