@@ -1,22 +1,75 @@
 # ASH Captions — Status
 
-Last verified: **2026-09-03**. Everything under "verified" below was checked by
+Last verified: **2026-09-04**. Everything under "verified" below was checked by
 running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **1314 passing, 28 skipped** (the skips are the real-ffmpeg and
+- Tests: **1377 passing, 28 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Design decisions and their reasoning: `docs/superpowers/specs/2026-08-29-ash-captions-design.md`
 - Editor instructions: `docs/EDITOR-GUIDE.md`, and inside the app at `/guide`
 - Build/release instructions: `docs/INSTALL.md`
-- The independent audit that shaped this release: `docs/audits/2026-09-02-codex-audit.md`
+- The independent audit that shaped v0.2: `docs/audits/2026-09-02-codex-audit.md`
+- The release-readiness scan that shaped 0.4.1/0.4.2: `docs/audits/2026-09-04-readiness-scan.md`
 
 ---
 
 ## Where the project is
 
-**v0.4, "short-form effects and clients", is what master is now** (2026-09-03).
+**v0.4.2 is what master is now, and what is published** (2026-09-04). It is
+the v0.4 feature set below plus one UX pass and the fixes from a deep
+readiness scan, and it is the first build the editors should install:
+
+- **UX pass.** Dark theme across every page, a Browse... button that opens
+  the Windows file picker, thumbnails and durations on queue rows, Remove /
+  Clear finished / Open folder / Copy path actions, a tray balloon and a
+  page toast when a job finishes, Studio polish (filter looks, keyboard
+  navigation, transcript strip that follows the playhead).
+- **Phone footage.** A portrait reel shot on a phone carries a rotation tag
+  and decodes to 1080x1920 while ffprobe reports 1920x1080; captions came out
+  ~1.8x too big and "behind the speaker" failed outright. The probe now
+  honours the rotation. Verified through the installed exe on a rotated
+  copy of the client reel: output 1920x1080 (as decoded), `.ass` PlayRes to
+  match, behind-the-speaker burn done in 36 s.
+- **The windowed build, for real.** 0.4.0 shipped as a console exe by
+  mistake (black window at every logon, closing it killed the job). 0.4.1
+  was windowed, and its rehearsal passed, and it was still broken: launched
+  the way the logon task launches it (no stdout at all), uvicorn's default
+  logging probed `sys.stdout.isatty()` and the web server thread died --
+  a tray icon with no page behind it. The rehearsal had attached a stdout
+  file to the exe and never saw it. 0.4.2 configures uvicorn without that
+  probe, and startup now waits for the port and fails loudly (log, message
+  box, exit 1) if the page never binds. Verified with a `Start-Process`
+  launch of the installed exe: page up in 1 s.
+- **The in-app update, for real.** The first real update ever run (0.4.0 ->
+  0.4.1 through `/api/update/apply`) downloaded 662 MB, verified the hash,
+  extracted, handed off to the helper -- and nothing came back.
+  `powershell.exe` started with `DETACHED_PROCESS` exits immediately without
+  running the script. 0.4.2 spawns the helper with `CREATE_NO_WINDOW` and a
+  real regression test spawns the actual helper template from inside the
+  kill-on-close job object, lets the parent exit, and checks the mirror and
+  relaunch. Verified in the installed bundle against a local manifest
+  (`ASH_CAPTIONS_MANIFEST_URL`): apply, old process gone in 10 s, relaunched
+  page up 3 s later, `data\updates` swept clean on the relaunch. **0.4.0
+  installs cannot self-update** (their spawn is the broken one); they need
+  the installer run once more, which the rollout does anyway.
+- **Licences shipped.** `scripts/collect_licenses.py` gathers every
+  dependency's licence text into the bundle (PyInstaller keeps dist-info for
+  only a handful), the GPL-3.0 text for the matting weights included; PyAV
+  is no longer bundled (it linked a GPL ffmpeg in-process; faster-whisper
+  gets the audio as a numpy array instead); `NOTICES.md` corrected.
+- **Smaller fixes from the scan.** `tmp_dir` sweep only removes entries the
+  app created; matte and source frames aligned with `setpts` for sources
+  whose first timestamp is not 0; two Studio tabs restyling one job no
+  longer collide on a temp file; `.wmv` accepted by the page like the watch
+  folder; update leftovers removed on start; oversized modules split.
+  Still open from the scan: the port probe/bind race and the preview/update
+  job dicts (both minor, listed in the scan), Arabic karaoke looks (v2, the
+  guide says use `.srt` or a plain look), and whether the ruflo/claude
+  tooling files should stay in the public repo.
+
+**v0.4, "short-form effects and clients", is underneath it** (2026-09-03).
 On top of v0.3:
 
 - **Captions behind the speaker.** A person matte from Robust Video Matting
@@ -119,9 +172,16 @@ The Studio, saved transcripts, burn-only jobs, 36 looks with left/right
 alignment and the card-box effect. The style editor exposes `align` and
 `card_box` since v0.4.
 
-### v0.4 — short-form effects and clients (done, this release)
+### v0.4 — short-form effects and clients (done)
 Behind-the-speaker captions, clients with per-client glossaries, the style
-editor gaps, the release rehearsal. See "Where the project is".
+editor gaps, the release rehearsal.
+
+### v0.4.1 / v0.4.2 — the UX pass and the readiness scan (done, this release)
+Dark theme, Browse, thumbnails, job actions, notifications; phone rotation;
+the windowed build that actually serves its page; the update helper that
+actually relaunches; licence texts. See "Where the project is". v0.4.1 is
+published but superseded the same day (its page never came up when launched
+by the logon task); v0.4.2 is the one to install.
 
 ### v0.5 and later
 - Arabic and Urdu styled captions (right-to-left ASS; Noto Naskh is bundled).
@@ -154,13 +214,16 @@ editor gaps, the release rehearsal. See "Where the project is".
 
 ## Things Ghazi needs to do
 
-1. **Roll the installer out.** v0.4.0 is published at
+1. **Roll the installer out.** v0.4.2 is published at
    `github.com/ASHMediaSolutions01/ashcaptions-releases` (verified: the real
    installer downloaded it from the manifest, hash-checked it, installed it,
-   and the installed exe ran a job). Give each editor
+   the installed exe ran a behind-the-speaker client job and a rotated
+   phone reel, and an in-app update relaunched it). Give each editor
    `installer\Install-AshCaptions.bat` and `installer\install.ps1` from
-   this repo; the installer pulls the release itself. Source installs keep
-   working with `git pull`.
+   this repo; the installer pulls the release itself. Anyone who already
+   has 0.4.0 must run the installer again (0.4.0 cannot self-update); from
+   0.4.2 on, the tray's update item works. Source installs keep working
+   with `git pull`.
 2. **Run the first real hour-long client file** with the page open, and send
    the log if anything looks wrong. This is the one thing no synthetic test
    replaces.
@@ -179,9 +242,14 @@ broken in the real product: the styling system blocked at three layers, a
 package that installed but would not import, an encoder the shipped ffmpeg
 could not contain, a pipe deadlock, a progress stream that killed itself, a
 model cache in the wrong layout, fonts whose names did not match their files,
-and, on 2026-09-03, punch-in silently disabled by a keyword the new filter
-builder did not accept. None were catchable by the unit suite. All were found
-by running the thing: building the bundle and looking inside it, installing
+on 2026-09-03, punch-in silently disabled by a keyword the new filter
+builder did not accept, and on 2026-09-04 two more in a release that had
+passed its own rehearsal: a windowed exe whose web server died on
+`sys.stdout.isatty()` because the rehearsal had given it a stdout, and an
+update helper that never ran because `DETACHED_PROCESS` makes powershell.exe
+exit at once. None were catchable by the unit suite. All were found by
+running the thing: building the bundle and looking inside it, installing
 into a clean venv, putting a real file through, opening the real page in a
-real browser. Do that before each release, and once more on the weakest
-editor machine.
+real browser, launching the exe the way the logon task launches it (no
+console, no stdout), and running the update for real. Do that before each
+release, and once more on the weakest editor machine.
