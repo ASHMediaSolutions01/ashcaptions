@@ -33,6 +33,9 @@ from ash_captions.web.models import (
     StyleSummary,
 )
 
+# `FakeJobQueue.restyle(position=KEEP)`: the route sent no position keys.
+KEEP = object()
+
 
 class FakeJobQueue:
     """Implements the `JobQueue` protocol in memory.
@@ -64,6 +67,9 @@ class FakeJobQueue:
         self.no_saved_words: set[str] = set()
         self.restyled: list[tuple[str, str]] = []
         self.burns: list[Job] = []
+        # Every `position=` the restyle route forwarded, in order: a pair,
+        # or None for "clear". Nothing is appended when the keys were omitted.
+        self.positions: list[tuple[float, float] | None] = []
 
     def list_jobs(self) -> list[Job]:
         return sorted(self._jobs.values(), key=lambda j: (j.created_at, j.id), reverse=True)
@@ -142,7 +148,7 @@ class FakeJobQueue:
 
     # -- Studio (optional queue extras, see interfaces.JobQueue) --------
 
-    def restyle(self, job_id: str, preset: str) -> Job:
+    def restyle(self, job_id: str, preset: str, *, position: object = KEEP) -> Job:
         job = self._restylable(job_id, preset)
         if job.output_dir:
             # The real queue rewrites the job's .ass in place; the fake
@@ -153,9 +159,14 @@ class FakeJobQueue:
             (out / f"{Path(job.filename).stem}.ass").write_text(
                 f"[Script Info]\nTitle: restyled as {preset}\n", encoding="utf-8"
             )
+        changes: dict[str, Any] = {"preset": preset}
+        if position is not KEEP:
+            pair = position if position is None else (float(position[0]), float(position[1]))  # type: ignore[index]
+            self.positions.append(pair)
+            changes["caption_x"], changes["caption_y"] = (None, None) if pair is None else pair
         updated = job.model_copy(
             update={
-                "options": job.options.model_copy(update={"preset": preset}),
+                "options": job.options.model_copy(update=changes),
                 "updated_at": datetime.now(timezone.utc),
             }
         )
