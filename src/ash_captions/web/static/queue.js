@@ -155,15 +155,17 @@
       refs.meta.appendChild(document.createTextNode(" · "));
     }
     refs.meta.appendChild(document.createTextNode(metaFor(job)));
+    // A finished row shows its badge and "Finished in 2 min"; the bar and a
+    // second "Done" only repeated what the badge says.
+    const finished = job.status === "done" || job.status === "failed";
+    refs.track.hidden = finished;
     refs.track.setAttribute("aria-valuenow", String(pct));
     refs.fill.style.width = `${pct}%`;
-    refs.fill.className = `progress-fill${job.status === "running" ? " live" : job.status === "done" || job.status === "failed" ? ` ${job.status}` : ""}`;
+    refs.fill.className = `progress-fill${job.status === "running" ? " live" : ""}`;
 
     let stageText = "";
     if (job.status === "running") stageText = `${stageLabel(job)} · ${pct}%`;
     else if (job.status === "pending") stageText = "Waiting in the queue";
-    else if (job.status === "done") stageText = "Done";
-    else if (job.status === "failed") stageText = "Failed";
     refs.stage.textContent = stageText;
     const [label, since] = elapsedFor(job);
     refs.elapsed.textContent = label;
@@ -198,6 +200,8 @@
     }
   }
 
+  // One primary action per row -- Open in Studio on a finished job, Retry
+  // on a failed one -- and the housekeeping as subtle buttons after it.
   function actionsFor(job, card) {
     const out = [];
     if (job.status === "done") {
@@ -205,12 +209,12 @@
       studio.href = `/studio/${encodeURIComponent(job.id)}`;
       out.push(studio);
     }
+    if (job.status === "failed") out.push(button("Retry", "primary", (e) => retry(job, e.currentTarget)));
     if (job.status === "done" || job.status === "failed") {
       if (job.output_dir) {
-        out.push(button("Open folder", "", (e) => reveal(job, e.currentTarget)));
-        out.push(button("Copy path", "", (e) => copyPath(job, e.currentTarget)));
+        out.push(button("Open folder", "subtle", (e) => reveal(job, e.currentTarget)));
+        out.push(button("Copy path", "subtle", (e) => copyPath(job, e.currentTarget)));
       }
-      if (job.status === "failed") out.push(button("Retry", "", (e) => retry(job, e.currentTarget)));
       out.push(button("Remove", "quiet", () => askRemove(job, card)));
     }
     return out;

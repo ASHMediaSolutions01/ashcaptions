@@ -147,13 +147,24 @@ kbd { font-size: 12px; background: var(--raised); border: 1px solid var(--line-s
   cursor: pointer;
 }
 .btn:hover { background: #2b303c; border-color: #4a5162; }
-.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.6; cursor: not-allowed; }
+/* A disabled filled button keeps its shape and a readable label (muted on
+   raised is 5.8:1) instead of fading to a purple ghost. */
+.btn.primary:disabled, .btn.primary[aria-disabled="true"] {
+  opacity: 1;
+  background: var(--raised);
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
 .btn.primary { background: var(--accent-fill); border-color: transparent; color: #fff; }
 .btn.primary:hover:not(:disabled) { background: var(--accent-fill-hover); }
 .btn.large { min-height: 40px; padding: 8px 18px; font-size: 15px; }
 .btn.small { min-height: 28px; padding: 3px 10px; font-size: 13px; font-weight: 500; }
 .btn.quiet { background: transparent; border-color: transparent; color: var(--accent); }
 .btn.quiet:hover { background: var(--accent-soft); border-color: transparent; }
+/* Secondary actions on a queue row: outlined, quieter than the one primary. */
+.btn.subtle { background: transparent; border-color: var(--line); color: var(--ink-soft); font-weight: 500; }
+.btn.subtle:hover { background: var(--raised); border-color: var(--line-strong); color: var(--ink); }
 .btn.danger { color: var(--bad); }
 .btn.danger:hover { background: var(--bad-soft); border-color: var(--bad); }
 .btn .spinner { width: 14px; height: 14px; border-width: 2px; }
@@ -357,6 +368,116 @@ details.disclosure > summary:focus-visible { box-shadow: var(--focus); border-ra
 }
 .toast .toast-close:hover { background: var(--panel); color: var(--ink); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---- v0.5 Studio pieces ----
+   Markup comes from studio_drag.js (caption position) and studio_check.js
+   (caption check); the classes are styled here so every page shares one
+   system. See docs/superpowers/plans/2026-09-04-v0.5-E-polish-guide.md. */
+
+/* A dashed outline over the caption's box inside #frame; follows the
+   pointer while dragging, focusable for the arrow keys. */
+.caption-drag {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed var(--accent);
+  border-radius: 4px;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  z-index: 3;
+}
+.caption-drag:hover { background: rgba(143, 130, 255, 0.08); }
+.caption-drag:focus-visible { box-shadow: var(--focus); }
+.caption-drag.dragging { cursor: grabbing; background: var(--accent-soft); border-style: solid; }
+.caption-drag-label {
+  position: absolute;
+  left: 0;
+  top: -24px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.caption-drag:hover .caption-drag-label, .caption-drag:focus-visible .caption-drag-label, .caption-drag.dragging .caption-drag-label { opacity: 1; }
+
+/* Transcript panel: a two-line list (source, then English) under the
+   player, synced to the playhead. */
+.transcript-panel { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.transcript-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 0 2px; }
+.transcript-head .spacer { flex: 1; }
+.transcript-lines { max-height: 150px; overflow-y: auto; scrollbar-width: thin; padding: 0 2px 4px; }
+.transcript-panel .line {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.transcript-panel .line:hover { background: var(--raised); }
+.transcript-panel .line.active { background: var(--accent-soft); }
+.transcript-panel .t { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.transcript-panel .src { color: var(--ink); font-size: 14px; line-height: 1.45; }
+.transcript-panel .en { color: var(--muted); font-size: 13px; line-height: 1.4; margin-top: 2px; }
+.transcript-panel .word.current { color: var(--accent); font-weight: 600; }
+/* Confidence marks: colour plus a wavy underline, never colour alone. */
+.word.uncertain-amber { text-decoration: underline wavy var(--warn); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+.word.uncertain-red { text-decoration: underline wavy var(--bad); text-decoration-thickness: 2px; text-underline-offset: 3px; color: var(--bad); }
+
+/* "12 uncertain words": a clickable warning chip in the transcript head. */
+.chip-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid rgba(245, 184, 74, 0.45);
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.chip-warn::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip-warn:hover { border-color: var(--warn); }
+
+/* Switch-style toggle (Show English). */
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); cursor: pointer; user-select: none; }
+.toggle input {
+  appearance: none;
+  position: relative;
+  width: 34px;
+  height: 18px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background .15s;
+}
+.toggle input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .15s;
+}
+.toggle input:checked { background: var(--accent-fill); }
+.toggle input:checked::after { transform: translateX(16px); }
+.toggle input:focus-visible { box-shadow: var(--focus); }
+.toggle input:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Visually hidden, still read by screen readers. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -31,14 +31,18 @@
   <ol>
     <li><a href="#what">What this does</a></li>
     <li><a href="#setup">1 · Setup (once)</a></li>
-    <li><a href="#caption">2 · Caption a video</a></li>
-    <li><a href="#long">3 · Long videos</a></li>
-    <li><a href="#styles">4 · Choosing a look</a></li>
-    <li><a href="#behind">5 · Behind the speaker</a></li>
-    <li><a href="#clients">6 · Clients and glossaries</a></li>
-    <li><a href="#punch">7 · Punch-in</a></li>
-    <li><a href="#problems">8 · Problems and fixes</a></li>
-    <li><a href="#worth">9 · Worth knowing</a></li>
+    <li><a href="#starting">2 · Starting and stopping</a></li>
+    <li><a href="#caption">3 · Caption a video</a></li>
+    <li><a href="#long">4 · Long videos</a></li>
+    <li><a href="#styles">5 · Choosing a look</a></li>
+    <li><a href="#moving">6 · Moving a caption</a></li>
+    <li><a href="#check">7 · Checking captions</a></li>
+    <li><a href="#behind">8 · Behind the speaker</a></li>
+    <li><a href="#clients">9 · Clients and glossaries</a></li>
+    <li><a href="#punch">10 · Punch-in</a></li>
+    <li><a href="#problems">11 · Problems and fixes</a></li>
+    <li><a href="#uninstall">12 · Uninstalling</a></li>
+    <li><a href="#worth">13 · Worth knowing</a></li>
   </ol>
   <div class="guide-progress">
     <strong id="progress-label">Setup: 0 of 6 steps done</strong>
@@ -65,6 +69,7 @@
 <section id="setup">
   <h2>Part 1 · Setup (once per PC)</h2>
   <p class="lede">About 15 minutes, most of it downloading. Tick each step as you go; the checklist is remembered on this browser.</p>
+  <p class="note">Installed with <code>Install-AshCaptions.bat</code>? Then this part is already done: the app is in your system tray and starts at logon. Skip to <a href="#starting">Part 2</a>.</p>
 
   <div class="step" data-step="python">
     <div class="step-head"><input type="checkbox" id="step-python" aria-label="Done: install Python"><h3><label for="step-python">Step 1 · Install Python 3.12 or newer</label></h3><span class="eta">3 min</span></div>
@@ -133,9 +138,46 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p>The "Update now" banner inside the app is only for the installed (one-click) version. On a source install like this one it never appears.</p>
 </section>
 
+<section id="starting">
+  <h2>Part 2 · Starting and stopping</h2>
+  <p class="lede">On an installed PC the app starts by itself when you log in and lives in the system tray, by the clock. You rarely need to start or stop it yourself.</p>
+
+  <h3>Is it running?</h3>
+  <p>Look for the round blue <strong>ASH Captions</strong> icon next to the clock (click the <strong>^</strong> arrow if Windows has tucked it away). If it is there, the app is running and the watch folder is being watched, even with no browser window open.</p>
+
+  <h3>Opening the control page</h3>
+  <ul>
+    <li><strong>Double-click the tray icon</strong>, or right-click it and choose <strong>Open control page</strong>.</li>
+    <li>Or type <code>http://127.0.0.1:8756</code> into any browser on this PC.</li>
+    <li>The <strong>ASH Captions</strong> icon on the Desktop and in the Start Menu <em>starts</em> the app and opens the page. While the app is already running it only says "ASH Captions is already running": use the tray icon instead.</li>
+  </ul>
+
+  <h3>The tray menu</h3>
+  <table class="plain">
+    <tr><th>Item</th><th>What it does</th></tr>
+    <tr><td><strong>Open control page</strong></td><td>The queue, in your browser. Same as double-clicking the icon.</td></tr>
+    <tr><td><strong>Open output folder</strong></td><td>Opens <code>C:\AshCaptions\out</code> in Explorer.</td></tr>
+    <tr><td><strong>Open log file</strong></td><td>Opens <code>C:\AshCaptions\ash-captions.log</code>, the file to send Ghazi when something goes wrong.</td></tr>
+    <tr><td><strong>Quit</strong></td><td>Stops the app. A job that was running goes back to the front of the queue and picks up again next time; the transcript is kept, so only the unfinished stage is redone.</td></tr>
+  </table>
+  <p>An <strong>Update available</strong> line appears at the top of the menu when there is a new version. It opens the control page, where the <strong>Update now</strong> button is.</p>
+
+  <h3>Starting it again</h3>
+  <p>After <strong>Quit</strong>: open the Start Menu, type <strong>ASH Captions</strong>, press Enter. The icon returns to the tray and the control page opens. It also comes back by itself the next time you log in, through a scheduled task called <code>AshCaptionsTray</code>.</p>
+
+  <h3>If the tray icon is missing</h3>
+  <ol>
+    <li>Click the <strong>^</strong> arrow by the clock. Windows hides new tray icons there until you drag them out.</li>
+    <li>Not there either? Start it from the Start Menu as above.</li>
+    <li>If that says <strong>"ASH Captions is already running"</strong> but there is still no icon, the app is stuck. Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Esc</kbd> for Task Manager, find <strong>AshCaptions.exe</strong> on the Processes tab, click <strong>End task</strong>, then start it from the Start Menu again.</li>
+    <li>If nothing starts at logon on this PC, tell Ghazi: the <code>AshCaptionsTray</code> task was probably created for a different Windows user.</li>
+  </ol>
+  <p class="note">Running from source (Part 1) instead of the installer? The same tray icon appears, plus a black terminal window. Closing that window also stops the app.</p>
+</section>
+
 <section id="caption">
-  <h2>Part 2 · Captioning a video</h2>
-  <p class="lede">Every time: start the app with the command from Step 6, or the desktop shortcut if one was set up.</p>
+  <h2>Part 3 · Captioning a video</h2>
+  <p class="lede">The app is normally already running in the tray (Part 2). Open the control page from the tray icon, or type <code>http://127.0.0.1:8756</code> in your browser.</p>
 
   <h3>Give it your video</h3>
   <figure><img src="/static/guide/control-idle.png" alt="The control page: the new-job form on the left with a Browse button, and the queue on the right"><figcaption>The control page. Browse to the file, pick the options, start.</figcaption></figure>
@@ -150,7 +192,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
     <tr><th>Setting</th><th>What to choose</th></tr>
     <tr><td><strong>Language</strong></td><td>The language <em>spoken</em> in the video. English, Spanish, Portuguese and 51 others.</td></tr>
     <tr><td><strong>Dialect</strong></td><td>Affects spelling: English (US) gives "color", English (UK) gives "colour". For a US client, pick US.</td></tr>
-    <tr><td><strong>Caption style</strong></td><td>The look. <code>POP</code> for short-form, <code>CLEAN</code> for client-safe, <code>ASH BRAND</code> for our own content. See Part 4.</td></tr>
+    <tr><td><strong>Caption style</strong></td><td>The look. <code>POP</code> for short-form, <code>CLEAN</code> for client-safe, <code>ASH BRAND</code> for our own content. See Part 5.</td></tr>
     <tr><td><strong>Burn captions into the video</strong></td><td>Tick for a ready-to-post file. Leave off if you're taking the <code>.srt</code> into Premiere.</td></tr>
     <tr><td><strong>Also translate to English</strong></td><td>Tick for a non-English video where the client wants English subtitles.</td></tr>
   </table>
@@ -167,7 +209,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="long">
-  <h2>Part 3 · Hour-long videos</h2>
+  <h2>Part 4 · Hour-long videos</h2>
   <p class="lede">Long files work. They just take a while, and the rules below keep them from being interrupted.</p>
   <table class="plain">
     <tr><th>Length</th><th>Transcription (no GPU)</th><th>Burn-in at 1080p</th><th>Burn-in at 4K</th></tr>
@@ -187,7 +229,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="styles">
-  <h2>Part 4 · Choosing a look</h2>
+  <h2>Part 5 · Choosing a look</h2>
   <p class="lede">When a job finishes, the <strong>Studio</strong> opens: your video with the captions drawn live on it, and every look one click away.</p>
   <figure><img src="/static/guide/studio.png" alt="The Studio: the video playing with captions drawn on it, a strip of looks on the right, the transcript below"><figcaption>The Studio. Play the video, click a look on the right, the captions redraw in that style and position while it plays. Frame from "Entrevista Creative Commons" (CC BY).</figcaption></figure>
   <ol>
@@ -230,8 +272,36 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p class="note warn">If you save a style under a built-in name like <code>POP</code>, every future job using <code>POP</code> on this PC gets <em>your</em> version. To make your own look, use <strong>Save as…</strong> with a new name. The editor marks a changed built-in as "customized locally".</p>
 </section>
 
+<section id="moving">
+  <h2>Part 6 · Moving a caption</h2>
+  <p class="lede">Every look puts the caption at a fixed spot: bottom, centre, top or lower third. When that spot covers a face, a logo or a lower-third graphic, drag the caption somewhere else. The position belongs to the job, so it survives changing the look and is what gets burned.</p>
+  <ol>
+    <li>In the Studio, point at the caption on the video. A dashed outline appears around it.</li>
+    <li>Drag the outline where you want the caption and let go. The captions redraw there in about a second; the playhead stays where it was.</li>
+    <li>For small adjustments, click the caption once, then nudge it with the arrow keys: 1% of the frame per press, 5% with <kbd>Shift</kbd> held.</li>
+    <li><strong>Reset position</strong> in the top bar (or <kbd>Esc</kbd> with the caption selected) puts it back where the look wants it.</li>
+  </ol>
+  <ul>
+    <li>Picking another look keeps your position. A left-aligned look stays left-aligned around the new spot.</li>
+    <li><strong>Burn this look</strong> uses the position you see. So does the <code>.ass</code> in the output folder.</li>
+    <li>The position is saved as a fraction of the frame, so it lands in the same place at any video size.</li>
+  </ul>
+</section>
+
+<section id="check">
+  <h2>Part 7 · Checking captions in a language you don't speak</h2>
+  <p class="lede">A Spanish interview for a client, and nobody on the desk speaks Spanish. The transcript panel under the video tells you <em>where to look</em>: which words the speech model was unsure of, and what each line says in English.</p>
+  <ul>
+    <li><strong>Uncertain words</strong> are underlined: amber when the model was unsure, red when it was guessing. The chip above the panel says how many there are; click it to jump to the next one, and the video seeks there so you can listen.</li>
+    <li><strong>Show English.</strong> When the job was translated ("Also translate to English" was ticked), switch it on to see the English line under each source line, in time with the video.</li>
+    <li><strong>Translate to check.</strong> When the job was not translated, this button takes the toggle's place. It runs only the translation, from the transcript the job already has, so it takes seconds rather than a re-listen, and it writes the <code>.en.srt</code> into the output folder.</li>
+  </ul>
+  <p>The panel does not edit captions. When a name or a brand is wrong, add it to the client's <strong>Glossary</strong> (Part 9) and run the job again; for anything else, ask a speaker of the language to check the moments the chip points at.</p>
+  <p class="note">Underlines mark doubt, not errors. A rare name, a mumbled word or two people talking at once all lower the model's confidence, and most amber words are right. Red ones are worth a listen.</p>
+</section>
+
 <section id="behind">
-  <h2>Part 5 · Captions behind the speaker</h2>
+  <h2>Part 8 · Captions behind the speaker</h2>
   <p class="lede">For reels: tick <strong>Captions behind the speaker</strong> when you submit, and the captions are drawn behind the person, so their head and hands pass in front of the words.</p>
   <p>The tool works out where the person is in every frame by itself (a small matting model that runs on the CPU), then burns the captions and lays the person back on top. The queue shows a <strong>Finding the speaker</strong> stage before the burn.</p>
   <ul>
@@ -243,7 +313,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="clients">
-  <h2>Part 6 · Clients and glossaries</h2>
+  <h2>Part 9 · Clients and glossaries</h2>
   <p class="lede">Every job can carry a <strong>Client</strong>. Type the name in the Client box on the control page; it remembers the last one and suggests the ones it has seen.</p>
   <ul>
     <li>The job card and the Studio show the client, so you can tell whose job is whose.</li>
@@ -253,7 +323,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="punch">
-  <h2>Part 7 · Punch-in (zooming the footage)</h2>
+  <h2>Part 10 · Punch-in (zooming the footage)</h2>
   <p>A punch-in is the picture pushing in slightly on a word. On a talking-head video where the camera never moves, it's most of the difference between a captioned video and an edited one. It's <strong>off by default</strong>, because it changes how a client's video is framed.</p>
   <p>To turn it on, ask Ghazi to set it in <code>C:\AshCaptions\settings.json</code>:</p>
   <div class="cmd"><pre>{
@@ -273,7 +343,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="problems">
-  <h2>Part 8 · Problems and fixes</h2>
+  <h2>Part 11 · Problems and fixes</h2>
   <details class="fix"><summary>'python' is not recognised</summary><p>Python isn't on PATH. Re-run the installer, choose Modify, tick "Add python.exe to PATH".</p></details>
   <details class="fix"><summary>The browser page won't load, or an amber "Lost contact" banner appears</summary><p>The terminal window was closed or the app crashed. Start it again with the Step 6 command. A job that was running restarts from the beginning.</p></details>
   <details class="fix"><summary>"ASH Captions is already running"</summary><p>It's already open. Look for the icon near the clock, or another terminal window.</p></details>
@@ -291,8 +361,15 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <div class="cmd"><pre>C:\AshCaptions\ash-captions.log</pre></div>
 </section>
 
+<section id="uninstall">
+  <h2>Part 12 · Uninstalling</h2>
+  <p>Double-click <code>Uninstall-AshCaptions.bat</code>. It sits beside <code>Install-AshCaptions.bat</code>, wherever Ghazi gave you that; if you no longer have it, ask for it again. Windows may show the same blue "protected your PC" box as at install time: <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+  <p>It quits the app, removes the logon task and the Desktop and Start Menu icons, and deletes the program folder. <strong>Your captions stay:</strong> <code>C:\AshCaptions</code> (the <code>in</code>, <code>out</code> and <code>glossaries</code> folders, the settings and the log) is kept, and the script says so when it finishes. Delete that folder yourself if you want it gone.</p>
+  <p>Reinstalling later with <code>Install-AshCaptions.bat</code> picks the kept folder straight back up.</p>
+</section>
+
 <section id="worth">
-  <h2>Part 9 · Worth knowing</h2>
+  <h2>Part 13 · Worth knowing</h2>
   <ul>
     <li><strong>Accuracy.</strong> English, Spanish and Portuguese are excellent; most European languages very good. <strong>Arabic</strong>: the <code>.srt</code> and transcript are fine; for a styled look use CLEAN or POP, not the karaoke looks (the sweep runs the wrong way for right-to-left text). <strong>Always skim the result before delivering.</strong> Names, brands and technical words are where mistakes hide.</li>
     <li><strong>Apostrophes, commas and accents in file names are fine.</strong> So are network drives, as long as they stay connected for the whole job.</li>
@@ -307,55 +384,6 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </div>
 
 <script src="/static/nav.js?v=__VERSION__"></script>
-<script>
-(function () {
-  var KEY = "ashguide.done.v1";
-  var boxes = Array.prototype.slice.call(document.querySelectorAll('.step input[type="checkbox"]'));
-  var label = document.getElementById("progress-label");
-  var bar = document.getElementById("progress-bar");
-  function load() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
-  function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
-  function render() {
-    var done = 0;
-    boxes.forEach(function (b) { b.closest(".step").classList.toggle("done", b.checked); if (b.checked) done++; });
-    label.textContent = "Setup: " + done + " of " + boxes.length + " steps done";
-    bar.style.width = (100 * done / boxes.length) + "%";
-  }
-  var state = load();
-  boxes.forEach(function (b) {
-    b.checked = !!state[b.id];
-    b.addEventListener("change", function () { state[b.id] = b.checked; save(state); render(); });
-  });
-  document.getElementById("progress-reset").addEventListener("click", function () {
-    state = {}; save(state); boxes.forEach(function (b) { b.checked = false; }); render();
-  });
-  render();
-
-  // Copy buttons on every command block.
-  Array.prototype.forEach.call(document.querySelectorAll(".cmd"), function (block) {
-    var pre = block.querySelector("pre");
-    var btn = document.createElement("button");
-    btn.type = "button"; btn.className = "btn small"; btn.textContent = "Copy";
-    btn.addEventListener("click", function () {
-      var text = pre.textContent;
-      var done = function () { btn.textContent = "Copied"; btn.classList.add("copied"); setTimeout(function () { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1500); };
-      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, done); }
-      else { var r = document.createRange(); r.selectNodeContents(pre); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); try { document.execCommand("copy"); } catch (e) {} s.removeAllRanges(); done(); }
-    });
-    block.appendChild(btn);
-  });
-
-  // Highlight the section in view in the side nav.
-  var links = Array.prototype.slice.call(document.querySelectorAll(".guide-nav a"));
-  var sections = links.map(function (a) { return document.querySelector(a.getAttribute("href")); });
-  function highlight() {
-    var y = window.scrollY + 80, current = 0;
-    sections.forEach(function (s, i) { if (s && s.offsetTop <= y) current = i; });
-    links.forEach(function (a, i) { a.classList.toggle("active", i === current); });
-  }
-  window.addEventListener("scroll", highlight, { passive: true });
-  highlight();
-})();
-</script>
+<script src="/static/guide.js?v=__VERSION__"></script>
 </body>
 </html>
