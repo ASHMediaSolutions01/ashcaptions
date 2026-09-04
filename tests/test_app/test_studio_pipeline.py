@@ -347,3 +347,21 @@ def test_submit_burn_carries_the_position_into_the_burn_only_job(tmp_path: Path,
     assert row.options.mode == "burn_only" and row.options.preset == "NEON GLOW"
     assert row.options.caption_position == (0.5, 0.25)
     assert (created.options.caption_x, created.options.caption_y) == (0.5, 0.25)
+
+
+def test_burn_only_job_renders_the_stored_caption_position(tmp_path: Path, store: JobStore):
+    """The burn path renders the .ass again from the transcript (runner, not
+    the adapter), so it must apply the position the Studio stored."""
+    settings = _settings(tmp_path)
+    video = _video(tmp_path)
+    out = tmp_path / "out" / "clip"
+    first_job = _job(store, video, out)
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=CountingTranscriber())(first_job, _Reporter())
+    store.mark_done(first_job.id)
+
+    burn_job = _job(store, video, out, burn=True, mode="burn_only", caption_x=0.5, caption_y=0.25)
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=CountingTranscriber())(burn_job, _Reporter())
+
+    events = _ass_events(out)
+    assert events and all("540,480" in line for line in events), events[:3]
+    assert (out / "clip.captioned.mp4").is_file()

@@ -37,6 +37,7 @@ from ash_captions import engine, languages, styles
 from ash_captions.config import Settings, app_root, find_binary
 from ash_captions.pipeline.db import Job
 from ash_captions.pipeline.queue import AfterDone, JobCancelled
+from ash_captions.styles.render import anchor_pixels
 
 from .catalogue import dialect_preset_id
 from .runner_transcript import _reusable_transcript, _save_transcript
@@ -269,6 +270,11 @@ def build_run_job(
             )
             atomic_write(lambda p: engine.write_srt(cards, p), output_dir / f"{stem}.srt")
             ass_optional = {"play_res": (info.width, info.height)} if info is not None else {}
+            # The Studio's caption position (fractions of the frame, v0.5)
+            # becomes the anchor in PlayRes pixels. Track A's only edit here.
+            anchor = anchor_pixels(job.options.caption_position, ass_optional.get("play_res"))
+            if anchor is not None:
+                ass_optional["anchor"] = anchor
             atomic_write(
                 lambda p: _call_with_optionals(engine.write_ass, cards, p, style, optional=ass_optional),
                 output_dir / f"{stem}.ass",
