@@ -82,6 +82,20 @@ class TestSubmit:
         assert fetched.options.burn_in is True
         assert fetched.options.translate_to_english is True
 
+    def test_submit_maps_the_caption_position_both_ways(self, adapter: QueueAdapter, store: JobStore, tmp_path: Path) -> None:
+        video = tmp_path / "clip.mp4"
+        video.write_bytes(b"fake")
+
+        job = adapter.submit(video, make_options(caption_x=0.5, caption_y=0.25))
+
+        raw = store.get_job(int(job.id))
+        assert raw is not None
+        assert raw.options.caption_position == (0.5, 0.25)
+        fetched = adapter.get_job(job.id)
+        assert fetched is not None
+        assert (fetched.options.caption_x, fetched.options.caption_y) == (0.5, 0.25)
+        assert adapter.get_job(adapter.submit(tmp_path / "other.mp4", make_options()).id).options.caption_x is None
+
 
 class TestGetJobAndList:
     def test_get_job_returns_none_for_unknown_numeric_id(self, adapter: QueueAdapter) -> None:
