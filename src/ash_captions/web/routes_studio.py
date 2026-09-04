@@ -3,8 +3,10 @@ review page served at /studio/{job_id} from static/studio.html).
 
 * `GET /api/jobs/{id}` -- one job. The list route is capped at the newest
   100, which an older job can fall off; the page needs exactly one anyway.
-* `POST /api/jobs/{id}/restyle {"preset"}` -- regenerate the job's `.ass`
-  in another look from its saved word timings (no transcription, < 1 s).
+* `POST /api/jobs/{id}/restyle {"preset", "caption_x"?, "caption_y"?}` --
+  regenerate the job's `.ass` in another look from its saved word timings
+  (no transcription, < 1 s), optionally at a dragged caption position
+  (fractions of the frame, both or neither; omitted keeps, nulls clear).
   The page then reloads the track in the browser renderer, keeping the
   playhead. Real work, so it runs in the threadpool like everything else.
 * `POST /api/jobs/{id}/burn {"preset"}` -- enqueue a burn-only job for the
@@ -60,7 +62,10 @@ def build_studio_router(
 
     @router.post("/api/jobs/{job_id}/restyle", response_model=Job)
     async def restyle_job(job_id: str, body: PresetRequest, queue: JobQueue = Depends(get_queue)) -> Job:
-        return await _call_optional(queue, "restyle", job_id, body.preset, missing=CANNOT_RESTYLE_DETAIL)
+        # Keys omitted: keep the job's position (no keyword at all, so an
+        # older queue's restyle(job_id, preset) still works); both null: clear.
+        extra = {"position": body.caption_position} if body.position_sent else {}
+        return await _call_optional(queue, "restyle", job_id, body.preset, missing=CANNOT_RESTYLE_DETAIL, **extra)
 
     @router.post("/api/jobs/{job_id}/burn", response_model=Job, status_code=201)
     async def burn_job(job_id: str, body: PresetRequest, queue: JobQueue = Depends(get_queue)) -> Job:
@@ -107,12 +112,14 @@ def build_studio_router(
     return router
 
 
-async def _call_optional(queue: JobQueue, method_name: str, job_id: str, preset: str, *, missing: str) -> Any:
+async def _call_optional(
+    queue: JobQueue, method_name: str, job_id: str, preset: str, *, missing: str, **extra: Any
+) -> Any:
     method = getattr(queue, method_name, None)
     if not callable(method):
         raise HTTPException(status_code=501, detail=missing)
     try:
-        return await run_in_threadpool(method, job_id, preset)
+        return await run_in_threadpool(method, job_id, preset, **extra)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
     except ValueError as exc:

@@ -331,3 +331,74 @@ def test_atomic_write_gives_up_and_raises(tmp_path: Path, monkeypatch: pytest.Mo
 
     with pytest.raises(PermissionError):
         runner_util.atomic_write(lambda p: p.write_text("x", encoding="utf-8"), tmp_path / "clip.ass")
+
+# -- caption position (v0.5) ---------------------------------------------------
+
+
+def _ass_events(out: Path) -> list[str]:
+    text = (out / "clip.ass").read_text(encoding="utf-8")
+    return [line for line in text.splitlines() if line.startswith("Dialogue:")]
+
+
+def test_restyle_with_a_position_pins_every_event_and_stores_it(tmp_path: Path, store: JobStore):
+    job, out = _done_job_with_transcript(tmp_path, store)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+
+    updated = adapter.restyle(str(job.id), "COMIC", position=(0.5, 0.25))
+
+    assert (updated.options.caption_x, updated.options.caption_y) == (0.5, 0.25)
+    assert store.get_job(job.id).options.caption_position == (0.5, 0.25)
+    events = _ass_events(out)
+    # No ffprobe in tests, so the transcript has no play_res and the .ass
+    # uses the 1080x1920 default: (0.5, 0.25) -> (540, 480).
+    assert events and all("540,480" in line for line in events), events[:3]
+
+
+def test_restyle_without_a_position_keeps_it_and_none_clears_it(tmp_path: Path, store: JobStore):
+    job, out = _done_job_with_transcript(tmp_path, store)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+    adapter.restyle(str(job.id), "COMIC", position=(0.5, 0.25))
+
+    kept = adapter.restyle(str(job.id), "POP")  # picking another look keeps the position
+    assert kept.options.preset == "POP"
+    assert (kept.options.caption_x, kept.options.caption_y) == (0.5, 0.25)
+    assert all("540,480" in line for line in _ass_events(out))
+
+    cleared = adapter.restyle(str(job.id), "POP", position=None)
+    assert cleared.options.caption_x is None and cleared.options.caption_y is None
+    assert store.get_job(job.id).options.caption_position is None
+    assert not any("\\pos(" in line for line in _ass_events(out))
+
+
+def test_submit_burn_carries_the_position_into_the_burn_only_job(tmp_path: Path, store: JobStore):
+    job, out = _done_job_with_transcript(tmp_path, store)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+    adapter.restyle(str(job.id), "COMIC", position=(0.5, 0.25))
+
+    created = adapter.submit_burn(str(job.id), "NEON GLOW")
+
+    row = store.get_job(int(created.id))
+    assert row.options.mode == "burn_only" and row.options.preset == "NEON GLOW"
+    assert row.options.caption_position == (0.5, 0.25)
+    assert (created.options.caption_x, created.options.caption_y) == (0.5, 0.25)
+
+
+def test_burn_only_job_renders_the_stored_caption_position(tmp_path: Path, store: JobStore):
+    """The burn path renders the .ass again from the transcript (runner, not
+    the adapter), so it must apply the position the Studio stored."""
+    settings = _settings(tmp_path)
+    video = _video(tmp_path)
+    out = tmp_path / "out" / "clip"
+    first_job = _job(store, video, out)
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=CountingTranscriber())(first_job, _Reporter())
+    store.mark_done(first_job.id)
+
+    burn_job = _job(store, video, out, burn=True, mode="burn_only", caption_x=0.5, caption_y=0.25)
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=CountingTranscriber())(burn_job, _Reporter())
+
+    events = _ass_events(out)
+    assert events and all("540,480" in line for line in events), events[:3]
+    assert (out / "clip.captioned.mp4").is_file()

@@ -65,3 +65,25 @@ def test_custom_asspreset_still_works_unmodified():
     cards = [card([word("hi", 0.0, 0.5)])]
     out = render_ass(cards, custom)
     assert "Style: CUSTOM,Comic Sans MS,40," in out
+
+
+def test_style_path_forwards_the_anchor():
+    style = Style.from_dict({"name": "NEWSTYLE", "entrance": {"effect": "none"}}, check_font=False)
+    out = render_ass([card([word("hi", 0.0, 0.5)])], style, play_res=(1080, 1920), anchor=(540, 480))
+    assert "\\pos(540,480)" in out
+
+
+def test_write_ass_forwards_the_anchor(tmp_path):
+    style = Style.from_dict({"name": "NEWSTYLE", "entrance": {"effect": "none"}}, check_font=False)
+    path = write_ass([card([word("hi", 0.0, 0.5)])], tmp_path / "a.ass", style, play_res=(1080, 1920), anchor=(540, 480))
+    assert "\\pos(540,480)" in path.read_text(encoding="utf-8")
+
+
+def test_legacy_preset_refuses_an_anchor(tmp_path):
+    import pytest
+
+    cards = [card([word("hi", 0.0, 0.5)])]
+    with pytest.raises(TypeError):
+        render_ass(cards, CLEAN, anchor=(1, 1))
+    with pytest.raises(TypeError):
+        write_ass(cards, tmp_path / "b.ass", POP, anchor=(1, 1))

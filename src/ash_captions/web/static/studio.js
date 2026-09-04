@@ -158,6 +158,7 @@
       job = await res.json();
       player.setTrack(assUrl()); // video keeps playing; only the captions change
       renderTitle();
+      (window.AshStudio && AshStudio.onRestyled || []).forEach((fn) => fn(job));
       setStatus("Ready", "ok");
       return true;
     } catch (err) {
@@ -426,6 +427,7 @@
       els.burnBtn.title = "The original footage is gone, so there is nothing to burn from.";
       AshToast.show("The original footage is gone, so this is the burned result. Looks can't be previewed here.", { ms: 12000 });
     }
+    (window.AshStudio && AshStudio.onReady || []).forEach((fn) => fn({ player, live, api, assUrl, getJob: () => job, setJob: (next) => { job = next; renderTitle(); } }));
     looks.setStyles(styles, live, job.options.preset);
     if (window.AshStudioCheck) AshStudioCheck.mount({ jobId, job, player, live }); else loadTranscript();
     refreshBurnState();

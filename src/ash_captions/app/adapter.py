@@ -35,7 +35,6 @@ import dataclasses
 import logging
 import re
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
 
@@ -46,12 +45,20 @@ from ash_captions.pipeline.db import Job as PipelineJob
 from ash_captions.pipeline.db import JobOptions as PipelineJobOptions
 from ash_captions.pipeline.db import JobStatus as PipelineJobStatus
 from ash_captions.pipeline.db import JobStore
+from ash_captions.styles.render import anchor_pixels
 from ash_captions.web.interfaces import JobNotFoundError, JobNotRemovableError, JobNotRetryableError
 from ash_captions.web.models import Job as WebJob
 from ash_captions.web.models import JobOptions as WebJobOptions
-from ash_captions.web.models import JobStatus as WebJobStatus
 
 from .adapter_store import NotifyingStore
+from .adapter_convert import (  # noqa: F401 - _to_web_job is imported from here by tests and the tray
+    _clamp01,
+    _iso_or_none,
+    _parse_job_id,
+    _to_pipeline_options,
+    _to_web_job,
+    _to_web_options,
+)
 from .runner_util import atomic_write, client_for_watch_path
 from .transcript import TranscriptError, TranscriptRecord, load_transcript, transcript_path
 
@@ -62,9 +69,9 @@ logger = logging.getLogger("ash_captions.app.adapter")
 DEFAULT_LIST_LIMIT = 200
 DEFAULT_NOTIFY_INTERVAL_SECONDS = 1.0
 
-# Extra web Job fields, set only when the model declares them (pydantic
-# would silently drop unknown kwargs and hide a wiring gap).
-_OPTIONAL_WEB_FIELDS = ("stage", "stage_started_at", "started_at", "input_path", "output_dir")
+# `restyle(position=KEEP_POSITION)`: leave the job's stored caption position
+# alone. Distinct from None, which clears it.
+KEEP_POSITION = object()
 
 _SUFFIX_RE = re.compile(r"^(.*) \((\d+)\)$")
 
@@ -189,17 +196,28 @@ class QueueAdapter:
 
     # -- Studio (v0.3): re-style and burn from the saved transcript ---------
 
-    def restyle(self, job_id: str, preset: str) -> WebJob:
+    def restyle(
+        self,
+        job_id: str,
+        preset: str,
+        *,
+        position: tuple[float, float] | None | object = KEEP_POSITION,
+    ) -> WebJob:
         """Re-render the job's ``.ass`` in ``preset`` from its saved transcript,
         in place, and record the new preset on the row. Seconds, not
-        minutes: nothing is transcribed. Raises ``JobNotFoundError`` for an
-        unknown job and ``ValueError`` when there is no usable transcript or
-        the preset is not a known style."""
+        minutes: nothing is transcribed. ``position`` is the caption anchor
+        as fractions of the frame (``(caption_x, caption_y)``, v0.5), ``None``
+        to clear it, or ``KEEP_POSITION`` to keep whatever the job has --
+        picking another look keeps the position. Raises ``JobNotFoundError``
+        for an unknown job and ``ValueError`` when there is no usable
+        transcript, the preset is not a known style, or the position is
+        outside the frame."""
         job = self._require_job(job_id)
         record = self._transcript_for(job)
         if not preset in styles.list_styles():
             raise ValueError(f"Unknown caption style {preset!r}")
         style = styles.resolve_style(preset)
+        options = job.options if position is KEEP_POSITION else _with_position(job.options, position)
         stem = Path(job.input_path).stem
         max_words = style.layout.max_words
         cards = engine.build_cards(
@@ -208,12 +226,13 @@ class QueueAdapter:
             min_words=min(3, max_words),
             silence_gap=self._silence_gap_seconds(),
         )
-        optional = {"play_res": record.play_res} if record.play_res else {}
+        play_res = record.play_res or styles.DEFAULT_PLAY_RES
+        anchor = anchor_pixels(options.caption_position, play_res)
         atomic_write(
-            lambda p: engine.write_ass(cards, p, style, **optional),
+            lambda p: engine.write_ass(cards, p, style, play_res=play_res, anchor=anchor),
             Path(job.output_dir) / f"{stem}.ass",
         )
-        new_options = dataclasses.replace(job.options, preset=style.name)
+        new_options = dataclasses.replace(options, preset=style.name)
         self._store.update_options(job.id, new_options)
         updated = self._store.get_job(job.id)
         assert updated is not None
@@ -396,70 +415,12 @@ class QueueAdapter:
             subscriber.put_nowait(snapshot)
 
 
-# -- conversions -------------------------------------------------------------
-
-
-def _parse_job_id(job_id: str) -> int | None:
-    try:
-        return int(job_id)
-    except (TypeError, ValueError):
-        return None
-
-
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
-def _iso_or_none(timestamp: float | None) -> str | None:
-    if timestamp is None:
-        return None
-    return datetime.fromtimestamp(timestamp).astimezone().isoformat(timespec="seconds")
-
-
-def _to_web_options(options: PipelineJobOptions) -> WebJobOptions:
-    return WebJobOptions(
-        language=options.language,
-        dialect=options.dialect,
-        preset=options.preset,
-        burn_in=options.burn,
-        translate_to_english=options.translate,
-        client=getattr(options, "client", None),
-        behind_speaker=bool(getattr(options, "behind_speaker", False)),
-    )
-
-
-def _to_pipeline_options(options: WebJobOptions) -> PipelineJobOptions:
-    return PipelineJobOptions(
-        language=options.language,
-        dialect=options.dialect,
-        preset=options.preset,
-        burn=options.burn_in,
-        translate=options.translate_to_english,
-        client=getattr(options, "client", None),
-        behind_speaker=bool(getattr(options, "behind_speaker", False)),
-    )
-
-
-def _to_web_job(job: PipelineJob) -> WebJob:
-    # pipeline.Job has no "last touched" stamp; the newest of these is the closest.
-    updated_raw = job.finished_at or job.stage_started_at or job.started_at or job.created_at
-    extras = {
-        "stage": job.stage,
-        "stage_started_at": job.stage_started_at,
-        "started_at": job.started_at,
-        "input_path": job.input_path,
-        "output_dir": job.output_dir,
-    }
-    declared = getattr(WebJob, "model_fields", {})
-    optional = {name: extras[name] for name in _OPTIONAL_WEB_FIELDS if name in declared}
-    return WebJob(
-        id=str(job.id),
-        filename=Path(job.input_path).name,
-        status=WebJobStatus(job.status.value),
-        progress=_clamp01(job.progress / 100.0),
-        options=_to_web_options(job.options),
-        error=job.error,
-        created_at=datetime.fromisoformat(job.created_at),
-        updated_at=datetime.fromisoformat(updated_raw),
-        **optional,
-    )
+def _with_position(options: PipelineJobOptions, position: object) -> PipelineJobOptions:
+    """``options`` with the caption position replaced: ``None`` clears it;
+    a pair is checked (ValueError outside [0, 1]) before anything is
+    written."""
+    if position is None:
+        return dataclasses.replace(options, caption_x=None, caption_y=None)
+    anchor_pixels(position, None)  # raises ValueError for a bad pair
+    x, y = position  # type: ignore[misc]
+    return dataclasses.replace(options, caption_x=float(x), caption_y=float(y))

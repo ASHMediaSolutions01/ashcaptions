@@ -12,8 +12,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from pydantic import ValidationError
+
 from ash_captions.web.app import STATIC_DIR
-from ash_captions.web.models import JobOptions, JobStatus
+from ash_captions.web.models import JobOptions, JobStatus, PresetRequest
 
 from .conftest import LOCAL_BASE_URL
 from .fakes import FakeJobQueue, FakeStyleProvider
@@ -232,6 +234,19 @@ class TestPage:
         for asset in assets:
             assert client.get(asset).status_code == 200, asset
 
+    def test_studio_page_carries_the_caption_drag_layer(self, client, app):
+        page = client.get("/studio/any-id").text
+        for needle in ('id="caption-drag"', 'id="caption-handle"', 'aria-label="Caption position"', 'id="reset-position-btn"'):
+            assert needle in page, needle
+        assert f"/static/studio_drag.js?v={app.state.version}" in page
+        assert f"/static/studio_drag.css?v={app.state.version}" in page
+        assert page.index("/static/studio.js?v=") < page.index("/static/studio_drag.js?v=")
+        studio_js = (STATIC_DIR / "studio.js").read_text(encoding="utf-8")
+        assert "AshStudio.onReady" in studio_js and "AshStudio.onRestyled" in studio_js
+        drag_js = (STATIC_DIR / "studio_drag.js").read_text(encoding="utf-8")
+        for needle in ("hooks.onReady.push(", "hooks.onRestyled.push(", "caption_x", "setPointerCapture", "ArrowUp", "Escape", "AshApi.request("):
+            assert needle in drag_js, needle
+
     def test_player_script_references_only_vendored_files_that_exist(self, client):
         script = (STATIC_DIR / "studio_player.js").read_text(encoding="utf-8")
         assert 'VENDOR = "/static/vendor/jassub/"' in script
@@ -301,3 +316,103 @@ def test_transcript_strip_prefers_the_source_language_srt(tmp_path):
     (tmp_path / "clip.srt").unlink()
     assert _transcript_srt(tmp_path).name == "clip.en.srt"
     assert _transcript_srt(tmp_path / "missing") is None
+
+
+class TestPresetRequestBody:
+    """Omitted keys mean "keep the job's position"; explicit nulls mean
+    "clear it"; half a pair or a value outside the frame is a 422."""
+
+    def test_omitted_position_is_not_sent(self):
+        body = PresetRequest.model_validate({"preset": "POP"})
+        assert body.position_sent is False
+        assert body.caption_position is None
+
+    def test_nulls_are_sent_and_mean_clear(self):
+        body = PresetRequest.model_validate({"preset": "POP", "caption_x": None, "caption_y": None})
+        assert body.position_sent is True
+        assert body.caption_position is None
+
+    def test_a_pair_comes_back_as_a_tuple(self):
+        body = PresetRequest.model_validate({"preset": "POP", "caption_x": 0.5, "caption_y": 0.25})
+        assert body.position_sent is True
+        assert body.caption_position == (0.5, 0.25)
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"caption_x": 0.5},
+            {"caption_y": 0.5},
+            {"caption_x": 0.5, "caption_y": None},
+            {"caption_x": None, "caption_y": 0.5},
+            {"caption_x": 1.5, "caption_y": 0.5},
+            {"caption_x": 0.5, "caption_y": -0.1},
+            {"caption_x": "middle", "caption_y": 0.5},
+        ],
+    )
+    def test_half_a_pair_or_outside_the_frame_is_rejected(self, extra):
+        with pytest.raises(ValidationError):
+            PresetRequest.model_validate({"preset": "POP", **extra})
+
+    def test_job_options_carry_the_position_with_the_same_rules(self):
+        opts = JobOptions(language="en", preset="POP", caption_x=0.5, caption_y=0.25)
+        assert (opts.caption_x, opts.caption_y) == (0.5, 0.25)
+        assert JobOptions(language="en", preset="POP").caption_x is None
+        with pytest.raises(ValidationError):
+            JobOptions(language="en", preset="POP", caption_x=0.5)
+        with pytest.raises(ValidationError):
+            JobOptions(language="en", preset="POP", caption_x=2.0, caption_y=0.5)
+
+
+class TestRestylePosition:
+    def _restyle(self, client, job, body):
+        return client.post(f"/api/jobs/{job.id}/restyle", json=body)
+
+    def test_stores_a_position_and_returns_it(self, client, finished_job, fake_queue):
+        res = self._restyle(client, finished_job, {"preset": "CLEAN", "caption_x": 0.5, "caption_y": 0.25})
+        assert res.status_code == 200
+        options = res.json()["options"]
+        assert (options["caption_x"], options["caption_y"]) == (0.5, 0.25)
+        assert fake_queue.positions == [(0.5, 0.25)]
+        assert client.get(f"/api/jobs/{finished_job.id}").json()["options"]["caption_x"] == 0.5
+
+    def test_omitting_both_keeps_the_stored_position(self, client, finished_job, fake_queue):
+        self._restyle(client, finished_job, {"preset": "CLEAN", "caption_x": 0.5, "caption_y": 0.25})
+        res = self._restyle(client, finished_job, {"preset": "POP"})
+        assert res.status_code == 200
+        assert res.json()["options"]["preset"] == "POP"
+        assert res.json()["options"]["caption_x"] == 0.5
+        assert fake_queue.positions == [(0.5, 0.25)]  # the second call sent no position at all
+
+    def test_null_for_both_clears_it(self, client, finished_job, fake_queue):
+        self._restyle(client, finished_job, {"preset": "CLEAN", "caption_x": 0.5, "caption_y": 0.25})
+        res = self._restyle(client, finished_job, {"preset": "CLEAN", "caption_x": None, "caption_y": None})
+        assert res.status_code == 200
+        assert res.json()["options"]["caption_x"] is None and res.json()["options"]["caption_y"] is None
+        assert fake_queue.positions == [(0.5, 0.25), None]
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"preset": "CLEAN", "caption_x": 0.5},
+            {"preset": "CLEAN", "caption_y": 0.5},
+            {"preset": "CLEAN", "caption_x": 0.5, "caption_y": None},
+            {"preset": "CLEAN", "caption_x": 1.5, "caption_y": 0.5},
+            {"preset": "CLEAN", "caption_x": 0.5, "caption_y": -0.1},
+            {"preset": "CLEAN", "caption_x": "middle", "caption_y": 0.5},
+        ],
+    )
+    def test_half_a_pair_or_outside_the_frame_is_422(self, client, finished_job, fake_queue, body):
+        assert self._restyle(client, finished_job, body).status_code == 422
+        assert fake_queue.restyled == [] and fake_queue.positions == []
+
+    def test_burn_carries_the_stored_position(self, client, finished_job):
+        self._restyle(client, finished_job, {"preset": "CLEAN", "caption_x": 0.5, "caption_y": 0.25})
+        res = client.post(f"/api/jobs/{finished_job.id}/burn", json={"preset": "CLEAN"})
+        assert res.status_code == 201
+        assert (res.json()["options"]["caption_x"], res.json()["options"]["caption_y"]) == (0.5, 0.25)
+
+    def test_position_needs_the_client_header_too(self, app, finished_job, fake_queue):
+        foreign = TestClient(app, base_url=LOCAL_BASE_URL)
+        body = {"preset": "CLEAN", "caption_x": 0.5, "caption_y": 0.25}
+        assert foreign.post(f"/api/jobs/{finished_job.id}/restyle", json=body).status_code == 403
+        assert fake_queue.positions == []

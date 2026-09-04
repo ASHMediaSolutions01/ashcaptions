@@ -157,7 +157,10 @@ class TestStageSurfacing:
             input_path: str | None = None
             output_dir: str | None = None
 
-        monkeypatch.setattr("ash_captions.app.adapter.WebJob", RicherWebJob)
+        # _to_web_job resolves WebJob in adapter_convert's namespace (v0.5:
+        # the conversions moved out of adapter.py to keep it under 500
+        # lines), so that is what must be patched for this to take effect.
+        monkeypatch.setattr("ash_captions.app.adapter_convert.WebJob", RicherWebJob)
         richer = _to_web_job(job)
         assert richer.stage == "transcribe"
         assert richer.stage_started_at == job.stage_started_at

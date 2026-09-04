@@ -75,6 +75,19 @@ class JobOptions:
     # Off by default: it costs about the video's length in extra time and
     # is meant for reels.
     behind_speaker: bool = False
+    # Where the editor dragged the caption in the Studio (v0.5): fractions
+    # of the frame width/height in [0, 1], both set or both None. Fractions,
+    # not pixels, so one value is right at 1080x1920 and 1920x1080 and
+    # survives a restyle that changes PlayRes.
+    caption_x: float | None = None
+    caption_y: float | None = None
+
+    @property
+    def caption_position(self) -> tuple[float, float] | None:
+        """``(caption_x, caption_y)`` when the editor set one, else None."""
+        if self.caption_x is None or self.caption_y is None:
+            return None
+        return (self.caption_x, self.caption_y)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -90,6 +103,10 @@ class JobOptions:
         # in); a hand-edited or foreign value that isn't text reads as none.
         if not isinstance(merged["client"], str) or not merged["client"].strip():
             merged["client"] = None
+        # Anything but two numbers in [0, 1] (a hand-edited row, one
+        # coordinate, text) reads as "no position" rather than failing the row.
+        if not (_is_fraction(merged["caption_x"]) and _is_fraction(merged["caption_y"])):
+            merged["caption_x"] = merged["caption_y"] = None
         return JobOptions(**merged)
 
 
@@ -102,7 +119,14 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     "mode": "full",
     "client": None,
     "behind_speaker": False,
+    "caption_x": None,
+    "caption_y": None,
 }
+
+
+def _is_fraction(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and 0.0 <= value <= 1.0
+
 
 # How many recent rows `known_clients` scans for distinct client names.
 KNOWN_CLIENTS_SCAN_LIMIT = 500

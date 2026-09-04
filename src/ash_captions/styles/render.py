@@ -38,7 +38,11 @@ Effect -> tag mapping (spec 7A.1):
                                  ``render_glow``) under a layer-1 line that
                                  is exactly the ``pop`` rendering
   * letter spacing, all-caps -- ``\\fsp``, ``str.upper()``
-  * position variants        -- ``\\an`` + margins
+  * position variants        -- ``\\an`` + margins; with an explicit
+                                 ``anchor`` (the Studio's drag, v0.5) every
+                                 event is pinned there by ``\\pos`` or a
+                                 ``\\move`` that starts/ends there, the
+                                 ``\\an`` code unchanged
 
 Play resolution: ``PlayResX``/``PlayResY`` must match the video the
 captions are burned into, or libass scales every size and margin by the
@@ -62,6 +66,7 @@ it touches an f-string.
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 from ..engine.rules import Card
@@ -96,21 +101,28 @@ def render_ass(
     style: Style,
     *,
     play_res: tuple[int, int] | None = None,
+    anchor: tuple[float, float] | None = None,
 ) -> str:
     """Render animated, word-by-word ASS captions for ``style``.
 
     ``play_res`` is the ``(width, height)`` of the video the captions
     will be burned into (see the module docstring); ``None`` means
-    ``DEFAULT_PLAY_RES``.
+    ``DEFAULT_PLAY_RES``. ``anchor`` is an absolute ``(x, y)`` in those
+    PlayRes pixels: when set, every Dialogue event is pinned to it with
+    ``\\pos`` (static) or a ``\\move`` that ends there (rise/slide
+    entrance) or starts there (exit), instead of relying on the Style
+    line's margins; the Style line itself is untouched. ``None`` leaves
+    the output exactly as it was without the feature.
     """
     width, height = _resolve_play_res(play_res)
+    pinned = _resolve_anchor(anchor)
     base_name = safe_style_name(style.name)
     box_name = base_name + "_BOX"
     header = ass_header(style, base_name, box_name, width, height)
 
     events: list[str] = []
     for card in cards:
-        events.extend(_card_events(card, style, base_name, box_name, width, height))
+        events.extend(_card_events(card, style, base_name, box_name, width, height, pinned))
     return header + "\n".join(events) + ("\n" if events else "")
 
 
@@ -120,15 +132,37 @@ def write_ass(
     style: Style,
     *,
     play_res: tuple[int, int] | None = None,
+    anchor: tuple[float, float] | None = None,
 ):
-    """``render_ass`` to a file. ``play_res`` as for ``render_ass``."""
+    """``render_ass`` to a file. ``play_res``/``anchor`` as for ``render_ass``."""
     from pathlib import Path
 
-    content = render_ass(cards, style, play_res=play_res)
+    content = render_ass(cards, style, play_res=play_res, anchor=anchor)
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content, encoding="utf-8")
     return out
+
+
+def anchor_pixels(
+    position: tuple[float, float] | None, play_res: tuple[int, int] | None
+) -> tuple[float, float] | None:
+    """The one place a stored caption position (fractions of the frame,
+    ``(caption_x, caption_y)`` in [0, 1]) becomes the absolute anchor in
+    PlayRes pixels that ``render_ass`` takes. ``None`` passes through;
+    ``play_res`` ``None`` means ``DEFAULT_PLAY_RES``, the same default
+    ``render_ass`` uses, so the two always agree."""
+    if position is None:
+        return None
+    width, height = _resolve_play_res(play_res)
+    try:
+        fx, fy = position
+        fx, fy = float(fx), float(fy)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"position must be a (caption_x, caption_y) pair, got {position!r}") from exc
+    if not (0.0 <= fx <= 1.0 and 0.0 <= fy <= 1.0):
+        raise ValueError(f"position fractions must be within [0, 1], got {position!r}")
+    return fx * width, fy * height
 
 
 def _resolve_play_res(play_res: tuple[int, int] | None) -> tuple[int, int]:
@@ -140,26 +174,47 @@ def _resolve_play_res(play_res: tuple[int, int] | None) -> tuple[int, int]:
     return int(width), int(height)
 
 
+def _resolve_anchor(anchor: tuple[float, float] | None) -> tuple[float, float] | None:
+    if anchor is None:
+        return None
+    try:
+        x, y = anchor
+        x, y = float(x), float(y)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"anchor must be an (x, y) pair in PlayRes pixels, got {anchor!r}") from exc
+    if not (math.isfinite(x) and math.isfinite(y)):
+        raise ValueError(f"anchor must be finite, got {anchor!r}")
+    return x, y
+
+
 # ---------------------------------------------------------------------------
 # per-card dispatch -- branches on style.active_word.effect, never on name
 # ---------------------------------------------------------------------------
 
 
 def _card_events(
-    card: Card, style: Style, base_name: str, box_name: str, width: int, height: int
+    card: Card,
+    style: Style,
+    base_name: str,
+    box_name: str,
+    width: int,
+    height: int,
+    anchor: tuple[float, float] | None = None,
 ) -> list[str]:
     effect = style.active_word.effect
     if effect == "karaoke":
-        return _karaoke_events(card, style, base_name, width, height)
+        return _karaoke_events(card, style, base_name, width, height, anchor)
     if effect in ("box", "scale_box"):
-        return _box_events(card, style, box_name, width, height)
-    return _standard_events(card, style, base_name, width, height)
+        return _box_events(card, style, box_name, width, height, anchor)
+    return _standard_events(card, style, base_name, width, height, anchor)
 
 
-def _standard_events(card: Card, style: Style, style_name: str, width: int, height: int) -> list[str]:
+def _standard_events(
+    card: Card, style: Style, style_name: str, width: int, height: int, anchor: tuple[float, float] | None = None
+) -> list[str]:
     words = card.words
     count = len(words)
-    x, y = _anchor_xy(style, width, height)
+    x, y = _anchor_xy(style, width, height, anchor)
     glow = style.active_word.effect == "glow"
     lines: list[str] = []
     for i, word in enumerate(words):
@@ -170,7 +225,7 @@ def _standard_events(card: Card, style: Style, style_name: str, width: int, heig
         event_ms = max(1, round((end - start) * 1000))
         text = _line_text(words, active_index=i, style=style)
         leading = _leading_override(
-            style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms
+            style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms, pinned=anchor is not None
         )
         prefix = f"{{{leading}}}" if leading else ""
         if glow:
@@ -185,11 +240,13 @@ def _standard_events(card: Card, style: Style, style_name: str, width: int, heig
     return lines
 
 
-def _box_events(card: Card, style: Style, style_name: str, width: int, height: int) -> list[str]:
+def _box_events(
+    card: Card, style: Style, style_name: str, width: int, height: int, anchor: tuple[float, float] | None = None
+) -> list[str]:
     """One word at a time, boxed -- see the module docstring for why."""
     words = card.words
     count = len(words)
-    x, y = _anchor_xy(style, width, height)
+    x, y = _anchor_xy(style, width, height, anchor)
     lines: list[str] = []
     for i, word in enumerate(words):
         start = word.start
@@ -200,7 +257,7 @@ def _box_events(card: Card, style: Style, style_name: str, width: int, height: i
         text = _prepare_word_text(word.text, style)
         scale_tags = _pop_scale_tags(style, event_ms) if style.active_word.effect == "scale_box" else ""
         leading = _leading_override(
-            style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms
+            style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms, pinned=anchor is not None
         )
         body = f"{scale_tags}{text}"
         dialogue_text = f"{{{leading}}}{body}" if leading else body
@@ -208,12 +265,14 @@ def _box_events(card: Card, style: Style, style_name: str, width: int, height: i
     return lines
 
 
-def _karaoke_events(card: Card, style: Style, style_name: str, width: int, height: int) -> list[str]:
+def _karaoke_events(
+    card: Card, style: Style, style_name: str, width: int, height: int, anchor: tuple[float, float] | None = None
+) -> list[str]:
     """One Dialogue event for the whole card: ``\\kf`` needs a single run
     of text so libass can sweep the fill across it (spec 7A.1)."""
     words = card.words
     count = len(words)
-    x, y = _anchor_xy(style, width, height)
+    x, y = _anchor_xy(style, width, height, anchor)
     event_ms = max(1, round((card.end - card.start) * 1000))
     parts = []
     for i, word in enumerate(words):
@@ -226,7 +285,7 @@ def _karaoke_events(card: Card, style: Style, style_name: str, width: int, heigh
         duration_cs = max(1, round((run_end - word.start) * 100))
         parts.append(f"{{\\kf{duration_cs}}}{_prepare_word_text(word.text, style)}")
     body = " ".join(parts)
-    leading = _leading_override(style, x, y, is_first=True, is_last=True, event_ms=event_ms)
+    leading = _leading_override(style, x, y, is_first=True, is_last=True, event_ms=event_ms, pinned=anchor is not None)
     dialogue_text = f"{{{leading}}}{body}" if leading else body
     return [_dialogue_line(card.start, card.end, style_name, dialogue_text)]
 
@@ -313,7 +372,14 @@ def _pop_scale_tags(style: Style, event_ms: int) -> str:
 
 
 def _leading_override(
-    style: Style, x: float, y: float, *, is_first: bool, is_last: bool, event_ms: int
+    style: Style,
+    x: float,
+    y: float,
+    *,
+    is_first: bool,
+    is_last: bool,
+    event_ms: int,
+    pinned: bool = False,
 ) -> str:
     tags: list[str] = []
     if style.letter_spacing:
@@ -346,6 +412,11 @@ def _leading_override(
             tags.append(entrance_tag)
         if exit_tag:
             tags.append(exit_tag)
+    if pinned and not any(t.startswith("\\move(") for t in tags):
+        # No motion on this event, so nothing else places it: pin it. A
+        # \move already starts or ends at (x, y); \pos and \move on one
+        # line don't compose in libass, so never emit both.
+        tags.append(f"\\pos({_num(x)},{_num(y)})")
     return "".join(t for t in tags if t)
 
 
@@ -386,14 +457,19 @@ def _exit_tag(style: Style, x: float, y: float, event_ms: int) -> str:
     return ""
 
 
-def _anchor_xy(style: Style, width: int, height: int) -> tuple[float, float]:
+def _anchor_xy(style: Style, width: int, height: int, override: tuple[float, float] | None = None) -> tuple[float, float]:
     """Where libass would place the caption's anchor for this style's
-    ``\an`` and margins -- the point ``\move``/``\pos`` animations start
+    ``\\an`` and margins -- the point ``\\move``/``\\pos`` animations start
     from and return to. It must agree with the Style line's alignment for
     all nine numpad positions, or an animated caption lands somewhere
     other than a static one would (a TOP RIGHT style once rendered its
-    sliding captions dead centre because only ``\an2`` and ``\an8`` were
-    handled here)."""
+    sliding captions dead centre because only ``\\an2`` and ``\\an8`` were
+    handled here). ``override`` (PlayRes pixels, from ``anchor_pixels``)
+    replaces the computed point outright: the Studio's dragged position,
+    with the same ``\\an`` so a left-aligned look stays left-aligned
+    around it."""
+    if override is not None:
+        return float(override[0]), float(override[1])
     an = ass_alignment(style.layout.position, getattr(style.layout, "align", "center"))
     row, column = (an - 1) // 3, (an - 1) % 3  # numpad: rows bottom/middle/top, columns left/centre/right
     if row == 0:

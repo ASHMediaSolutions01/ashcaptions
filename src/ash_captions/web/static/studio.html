@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/static/theme.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/studio.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/studio_check.css?v=__VERSION__">
+<link rel="stylesheet" href="/static/studio_drag.css?v=__VERSION__">
 </head>
 <body class="studio">
 
@@ -34,6 +35,7 @@
   <div class="topbar-actions">
     <button type="button" class="btn small" id="reveal-btn" hidden>Open folder</button>
     <button type="button" class="btn small" id="copy-btn" hidden>Copy path</button>
+    <button type="button" class="btn small" id="reset-position-btn" hidden title="Put the caption back where the look places it (Escape)">Reset position</button>
     <button type="button" class="btn primary" id="burn-btn" disabled>Burn this look</button>
   </div>
 </header>
@@ -43,6 +45,9 @@
     <div class="stage" id="stage">
       <div class="frame" id="frame" hidden>
         <video id="video" playsinline preload="auto"></video>
+        <div class="caption-drag" id="caption-drag" hidden>
+          <button type="button" class="caption-handle" id="caption-handle" aria-label="Caption position" title="Drag to move the caption. Arrow keys nudge by 1%, Shift+arrow by 5%, Escape resets."></button>
+        </div>
       </div>
       <div class="stage-message" id="stage-message" hidden></div>
       <div class="stage-wait" id="stage-wait" hidden>
@@ -84,5 +89,6 @@
 <script src="/static/studio_looks.js?v=__VERSION__"></script>
 <script src="/static/studio_check.js?v=__VERSION__"></script>
 <script src="/static/studio.js?v=__VERSION__"></script>
+<script src="/static/studio_drag.js?v=__VERSION__"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Extensions accepted at the API boundary. This is a coarse, fast check --
 # the real "is this actually a readable video" check happens in the engine
@@ -53,6 +53,21 @@ class JobOptions(BaseModel):
             "of the shared one. Sanitized by `validation.validate_client_name`; None = no client."
         ),
     )
+    # Where the editor dragged the caption in the Studio (v0.5): fractions of
+    # the frame width/height, both or neither. Set through
+    # POST /api/jobs/{id}/restyle, read back by GET /api/jobs/{id}.
+    caption_x: float | None = Field(None, ge=0.0, le=1.0)
+    caption_y: float | None = Field(None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _position_is_a_pair(self) -> "JobOptions":
+        _check_pair(self.caption_x, self.caption_y)
+        return self
+
+
+def _check_pair(caption_x: float | None, caption_y: float | None) -> None:
+    if (caption_x is None) != (caption_y is None):
+        raise ValueError("caption_x and caption_y must both be numbers or both be null")
 
 
 class JobPathRequest(BaseModel):
@@ -249,9 +264,36 @@ class UpdateApplyJob(BaseModel):
 
 class PresetRequest(BaseModel):
     """Body of POST /api/jobs/{id}/restyle and POST /api/jobs/{id}/burn: the
-    name of the look to apply, exactly as listed by GET /api/styles."""
+    name of the look to apply, exactly as listed by GET /api/styles.
+
+    Restyle also takes the caption position (v0.5): ``caption_x`` and
+    ``caption_y`` as fractions of the frame, both or neither, each in
+    [0, 1]. Keys left out mean "keep the job's current position"; both
+    sent as ``null`` clear it. Burn ignores them and reads the stored
+    position."""
 
     preset: str = Field(..., min_length=1)
+    caption_x: float | None = Field(None, ge=0.0, le=1.0)
+    caption_y: float | None = Field(None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _position_is_a_pair(self) -> "PresetRequest":
+        sent = {"caption_x", "caption_y"} & self.model_fields_set
+        if len(sent) == 1:
+            raise ValueError("caption_x and caption_y must be sent together (or neither)")
+        _check_pair(self.caption_x, self.caption_y)
+        return self
+
+    @property
+    def position_sent(self) -> bool:
+        """True when the request carried the position keys, even as nulls."""
+        return "caption_x" in self.model_fields_set
+
+    @property
+    def caption_position(self) -> tuple[float, float] | None:
+        if self.caption_x is None or self.caption_y is None:
+            return None
+        return (self.caption_x, self.caption_y)
 
 
 class ClientGlossary(BaseModel):

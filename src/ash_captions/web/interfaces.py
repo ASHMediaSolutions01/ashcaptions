@@ -82,12 +82,16 @@ class JobQueue(Protocol):
     #   or those two as plain attributes on the queue itself -- surfaced
     #   as GET /api/health and the ``health`` SSE event
     #   (``routes_events.read_health``).
-    # * ``restyle(job_id: str, preset: str) -> Job`` -- regenerates the
-    #   job's ``.ass`` from its persisted word timings in another look
-    #   (fast, no transcription) and returns the updated job with
-    #   ``options.preset`` changed; ``output_dir`` stays the same. Raises
-    #   ``JobNotFoundError``, or ``ValueError`` when the job has no saved
-    #   words (run by an older build) or the preset is unknown.
+    # * ``restyle(job_id: str, preset: str, *, position=...) -> Job`` --
+    #   regenerates the job's ``.ass`` from its persisted word timings in
+    #   another look (fast, no transcription) and returns the updated job
+    #   with ``options.preset`` changed; ``output_dir`` stays the same.
+    #   ``position`` (v0.5) is ``(caption_x, caption_y)`` fractions of the
+    #   frame or ``None`` to clear it; the route omits the keyword entirely
+    #   when the request body carried no position keys, so it keeps
+    #   whatever the job already has. Raises ``JobNotFoundError``, or
+    #   ``ValueError`` when the job has no saved words (run by an older
+    #   build), the preset is unknown, or the position is outside the frame.
     # * ``submit_burn(job_id: str, preset: str) -> Job`` -- enqueues a
     #   burn-only job for the same footage using the saved transcript in
     #   that look; returns the new ``pending`` job. Same errors.
