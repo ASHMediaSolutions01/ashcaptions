@@ -378,6 +378,31 @@ C:\AshCaptions\ash-captions.log
 
 ---
 
+## Part 9 — Uninstalling
+
+**If Ghazi installed the app for you** (you have an ASH Captions icon on the
+Desktop and it starts by itself when you log in): get
+`Uninstall-AshCaptions.bat` and `uninstall.ps1` from the same place as the
+installer, put them in one folder, and double-click the `.bat`. It quits the
+app, removes the start-at-logon entry, the Desktop and Start Menu icons, and
+the app itself.
+
+**Your captions are kept.** `C:\AshCaptions` (`in`, `out`, `glossaries`, your
+settings and the log) is left alone, and the window says so. Delete that
+folder yourself when you no longer want it, or run
+`Uninstall-AshCaptions.bat -RemoveData` to delete everything in one go —
+that cannot be undone.
+
+**If you set the app up from Part 1** (a terminal window and `git clone`):
+close the terminal window (that stops the app), then delete the
+`ASH Captions` folder on your Desktop. `C:\AshCaptions` is yours to keep or
+delete, as above.
+
+Reinstalling later is the same three steps as the first time; the app finds
+your old captions and glossaries in `C:\AshCaptions` again.
+
+---
+
 ## Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
