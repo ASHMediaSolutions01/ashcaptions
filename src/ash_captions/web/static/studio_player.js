@@ -69,6 +69,25 @@
       });
     }
 
+    // Draw the current moment again on a paused video. The track arrives
+    // asynchronously (JASSUB fetches and parses it in its worker), so ask
+    // a few times over the next second rather than once, immediately.
+    const REDRAW_DELAYS_MS = [60, 200, 500, 900];
+
+    function redrawWhilePaused() {
+      for (const delay of REDRAW_DELAYS_MS) {
+        setTimeout(() => {
+          if (!renderer || !video.paused) return;
+          try {
+            renderer.setCurrentTime(true, video.currentTime);
+          } catch (err) {
+            // An older renderer without that call: the captions still
+            // appear as soon as the video plays. Never break the swap.
+          }
+        }, delay);
+      }
+    }
+
     // Resolves once the video's dimensions are known and (when asked)
     // the caption renderer is attached. `assUrl` null = no overlay (the
     // burned output already has its captions in the picture).
@@ -165,8 +184,15 @@
         timeListeners.push(listener);
       },
       // Swap the caption track without touching the video or playhead.
+      // A paused video produces no frames, and the renderer only draws on
+      // one, so the old captions would sit there until the editor pressed
+      // play -- picking a look while paused looked like nothing happened.
+      // Asking the renderer for this exact timestamp draws the new track
+      // straight away.
       setTrack(assUrl) {
-        if (renderer) renderer.setTrackByUrl(assUrl);
+        if (!renderer) return;
+        renderer.setTrackByUrl(assUrl);
+        if (video.paused) redrawWhilePaused();
       },
       get currentTime() {
         return video.currentTime;
