@@ -55,7 +55,12 @@ param(
     [string]$TaskName = 'AshCaptionsTray',
     [string]$DesktopDir,
     [string]$StartMenuProgramsDir,
-    [string]$StartupDir
+    [string]$StartupDir,
+
+    # Free space the install drive must have, in GB. Only the test suite
+    # changes this (to force the "not enough space" stop on a full drive
+    # without filling one).
+    [double]$MinFreeGB = 4
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,6 +87,94 @@ function Write-Done { param([string]$Message) Write-Host "    $Message" -Foregro
 function Write-Info { param([string]$Message) Write-Host "    $Message" }
 function Write-Warn { param([string]$Message) Write-Host "    WARNING: $Message" -ForegroundColor Yellow }
 
+# --- preflight ---------------------------------------------------------------
+#
+# Everything an editor's PC can be wrong about *before* we download 1 GB:
+# checked up front, reported in plain words, and either a warning or a stop.
+# Nothing in Test-Preflight downloads or writes; the caller decides.
+
+# Windows 10 version 1809 / Server 2019. Older builds are untested and get a
+# warning, not a stop -- the bundle may still run.
+$MinWindowsBuild = 17763
+
+function New-Check {
+    param([string]$Name, [string]$Status, [string]$Detail)
+    return [ordered]@{ name = $Name; status = $Status; detail = $Detail }
+}
+
+function Test-Preflight {
+    <# Returns an array of @{ name; status = 'ok' | 'warn' | 'fail'; detail }. #>
+    param([string]$InstallDir, [double]$MinFreeGB)
+    $checks = @()
+
+    # 1. 64-bit Windows, or stop: the bundle is a 64-bit build and there is no other.
+    if ([Environment]::Is64BitOperatingSystem) {
+        $checks += New-Check 'windows_64bit' 'ok' '64-bit Windows'
+    } else {
+        $checks += New-Check 'windows_64bit' 'fail' 'ASH Captions needs 64-bit Windows. This PC runs 32-bit Windows, so it cannot run ASH Captions.'
+    }
+
+    # 2. Windows build, or warn. The registry is reliable where
+    #    [Environment]::OSVersion can be capped by compatibility shims.
+    $build = 0
+    try {
+        $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop).CurrentBuildNumber
+    } catch { }
+    if ($build -ge $MinWindowsBuild) {
+        $checks += New-Check 'windows_build' 'ok' "Windows build $build"
+    } else {
+        $checks += New-Check 'windows_build' 'warn' "Windows build $build is older than $MinWindowsBuild (Windows 10 version 1809). ASH Captions has not been tested on it; if anything fails, ask Ghazi."
+    }
+
+    # 3. Free space on the install drive, or stop with the number.
+    try {
+        $root = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($InstallDir))
+        $drive = New-Object System.IO.DriveInfo($root)
+        $freeGB = [math]::Round($drive.AvailableFreeSpace / 1GB, 1)
+        if ($freeGB -ge $MinFreeGB) {
+            $checks += New-Check 'free_space' 'ok' "$freeGB GB free on $root"
+        } else {
+            $checks += New-Check 'free_space' 'fail' "Not enough free space on $root for ASH Captions: $freeGB GB free, $MinFreeGB GB needed. Free up some space and run the installer again."
+        }
+    } catch {
+        $checks += New-Check 'free_space' 'fail' "Could not check the free space on the drive for $InstallDir ($($_.Exception.Message))."
+    }
+
+    # 4. TLS 1.2 for the download. Enabling it for this process is the check;
+    #    older PowerShell defaults would make GitHub refuse the connection.
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $checks += New-Check 'tls12' 'ok' 'TLS 1.2 enabled for the download'
+    } catch {
+        $checks += New-Check 'tls12' 'warn' "Could not enable TLS 1.2, which the download needs ($($_.Exception.Message)). An offline install with -Source still works."
+    }
+
+    # 5. Long paths: off by default on Windows; a very long video path can
+    #    then fail. Only a warning -- changing it needs admin.
+    $longPaths = 0
+    try {
+        $longPaths = [int](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -ErrorAction Stop).LongPathsEnabled
+    } catch { }
+    if ($longPaths -eq 1) {
+        $checks += New-Check 'long_paths' 'ok' 'Long file paths are enabled'
+    } else {
+        $checks += New-Check 'long_paths' 'warn' 'Long file paths are off on this PC (LongPathsEnabled). Videos in deeply nested folders with very long names may fail; keep them under a short path like C:\AshCaptions\in. Turning it on needs an administrator, so ask Ghazi if it becomes a problem.'
+    }
+
+    return ,$checks
+}
+
+function Write-PreflightReport {
+    param($Checks)
+    foreach ($check in $Checks) {
+        switch ($check.status) {
+            'ok'   { Write-Done $check.detail }
+            'warn' { Write-Warn $check.detail }
+            'fail' { Write-Host "    STOP: $($check.detail)" -ForegroundColor Red }
+        }
+    }
+}
+
 function Test-NvidiaGpu {
     <# Returns a hashtable describing what nvidia-smi reports, or Present=$false
        if it is missing or reports nothing. Detection only -- never used here
@@ -100,6 +193,19 @@ function Test-NvidiaGpu {
         return [ordered]@{ Present = $false }
     }
     return [ordered]@{ Present = $true; Name = $name.Trim() }
+}
+
+function Get-Download {
+    <# Invoke-WebRequest with the failure explained in words an editor can
+       act on. The raw .NET message is kept in brackets for Ghazi. #>
+    param([string]$Url, [string]$OutFile, [string]$What)
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+    } catch {
+        throw ("Could not download $What from $Url. " +
+               "Check the internet connection; if this PC uses a proxy, ask Ghazi. " +
+               "(Windows said: $($_.Exception.Message))")
+    }
 }
 
 function Resolve-BundleSource {
@@ -123,12 +229,12 @@ function Resolve-BundleSource {
 
     Write-Step "Downloading the latest release manifest"
     $manifestPath = Join-Path $env:TEMP "ash-captions-manifest.json"
-    Invoke-WebRequest -Uri $ManifestUrl -OutFile $manifestPath -UseBasicParsing
+    Get-Download -Url $ManifestUrl -OutFile $manifestPath -What 'the release list'
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 
     Write-Step "Downloading AshCaptions $($manifest.version)"
     $zipPath = Join-Path $env:TEMP $manifest.artifact.filename
-    Invoke-WebRequest -Uri $manifest.artifact.url -OutFile $zipPath -UseBasicParsing
+    Get-Download -Url $manifest.artifact.url -OutFile $zipPath -What "AshCaptions $($manifest.version)"
 
     $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $expectedHash = $manifest.artifact.sha256.ToLowerInvariant()
@@ -282,10 +388,13 @@ function Register-StartupFolderFallback {
 # --- main ------------------------------------------------------------------
 
 $gpu = Test-NvidiaGpu
+$preflight = Test-Preflight -InstallDir $InstallDir -MinFreeGB $MinFreeGB
+$preflightFailed = @($preflight | Where-Object { $_.status -eq 'fail' })
 
 if ($CheckOnly) {
     $plan = [ordered]@{
         gpu             = $gpu
+        preflight       = [ordered]@{ ok = ($preflightFailed.Count -eq 0); checks = $preflight }
         install_dir     = $InstallDir
         data_root       = $DataRoot
         in_dir          = $InDir
@@ -304,6 +413,15 @@ Write-Host ""
 Write-Host "ASH Captions -- installing for $env:USERNAME" -ForegroundColor White
 Write-Host ""
 
+Write-Step "Checking this PC"
+Write-PreflightReport -Checks $preflight
+if ($preflightFailed.Count -gt 0) {
+    Write-Host ""
+    Write-Host "ASH Captions was not installed. Fix the STOP line(s) above and run the installer again." -ForegroundColor Red
+    Write-Host ""
+    exit 2
+}
+
 if ($gpu.Present) {
     Write-Step "NVIDIA GPU detected: $($gpu.Name)"
     Write-Info "Installing the standard (CPU) version now -- this is deliberate,"
@@ -315,7 +433,19 @@ if ($gpu.Present) {
 }
 
 Write-Step "Getting the app"
-$extractedRoot = Resolve-BundleSource -Source $Source -ManifestUrl $ManifestUrl
+try {
+    $extractedRoot = Resolve-BundleSource -Source $Source -ManifestUrl $ManifestUrl
+} catch {
+    # Caught and re-printed with Write-Host, not left to PowerShell's default
+    # uncaught-exception formatting: that wraps long lines mid-word and adds
+    # a stack trace an editor cannot act on (see Get-Download's docstring).
+    Write-Host ""
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host ""
+    Write-Host "ASH Captions was not installed." -ForegroundColor Red
+    Write-Host ""
+    exit 1
+}
 Write-Done "Ready to install"
 
 Write-Step "Installing to $InstallDir"

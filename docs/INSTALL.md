@@ -15,8 +15,10 @@ clicking.
    first time. That's expected -- this is our own internal tool, not
    something from the Windows Store, so it isn't signed by Microsoft. Click
    **More info**, then **Run anyway**.
-3. Wait for the black window to say **"You're all set!"**, then press any
-   key to close it.
+3. The black window first checks your PC (64-bit Windows, enough free space,
+   and so on). If something is wrong it says so in one line starting with
+   **STOP:** and installs nothing; fix that and double-click again. Otherwise
+   wait for **"You're all set!"**, then press any key to close it.
 
 That's it. You now have:
 
@@ -41,6 +43,23 @@ it has the detail a screenshot doesn't.
 You will see the SmartScreen warning again if a fresh update install
 happens to trip it. That's normal too; there's nothing wrong with your
 computer.
+
+**No internet?** If the window says *"Could not download ... Check the
+internet connection; if this PC uses a proxy, ask Ghazi"*, that is the whole
+diagnosis: the PC could not reach GitHub. Ghazi can give you the app as a
+zip on a USB stick instead (`Install-AshCaptions.bat -Source <the zip>`).
+
+### Uninstalling
+
+Get `Uninstall-AshCaptions.bat` and `uninstall.ps1` from the same place as
+the installer and double-click the `.bat`. It quits the app, removes the
+start-at-logon entry, the Desktop and Start Menu icons, and the app folder.
+
+**Your captions are kept.** `C:\AshCaptions` (the `in`, `out` and
+`glossaries` folders, your settings and the log) is left exactly as it was,
+and the window tells you so. Delete that folder yourself when you no longer
+want it, or run the uninstaller as `Uninstall-AshCaptions.bat -RemoveData`
+to delete everything in one go. That cannot be undone.
 
 ---
 
@@ -210,6 +229,47 @@ wheels beside the exe; that variant does not exist yet. As a safety net, the
 engine falls back to CPU (with a logged warning) if a `cuda` model fails to
 load.
 
+### 6. What the installer checks first (preflight)
+
+`install.ps1` runs these before downloading anything. `stop` means the script
+exits with code 2 and installs nothing; `warn` prints a WARNING line and
+carries on.
+
+| Check | Result | Wording |
+|---|---|---|
+| 64-bit Windows (`[Environment]::Is64BitOperatingSystem`) | stop | "ASH Captions needs 64-bit Windows." |
+| Windows build (`CurrentBuildNumber` in the registry) >= 17763 (10 version 1809) | warn | "Windows build N is older than 17763 ..." |
+| Free space on the install drive >= 4 GB | stop, with the number | "Not enough free space on C:\ for ASH Captions: 2.3 GB free, 4 GB needed." |
+| TLS 1.2 (enabled for the process, so GitHub accepts the connection) | warn if it cannot be enabled | "Could not enable TLS 1.2 ..." |
+| `LongPathsEnabled` (HKLM `FileSystem`) | warn | "Long file paths are off on this PC ... needs an administrator" |
+
+Download failures (manifest or zip) are rethrown as *"Could not download
+<what> from <url>. Check the internet connection; if this PC uses a proxy,
+ask Ghazi. (Windows said: <the .NET message>)"*.
+
+`-CheckOnly` runs the preflight too and reports it under `preflight` in its
+JSON (`ok` plus a `checks` list of `{name, status, detail}`), still without
+writing anything and still exiting 0: it is a report, not a gate.
+`-MinFreeGB <n>` is a test-only override that forces the free-space stop;
+`tests/test_packaging/test_installer_scripts.py` uses it.
+
+### 7. Uninstalling (`uninstall.ps1`)
+
+`installer\uninstall.ps1` (double-clicked via `Uninstall-AshCaptions.bat`)
+reverses `install.ps1` for the current user: quits `AshCaptions.exe` (only
+one running from the install folder), unregisters the `AshCaptionsTray`
+task or removes the Startup-folder shortcut the installer fell back to,
+deletes the Desktop and Start Menu shortcuts, and deletes
+`%LOCALAPPDATA%\AshCaptions`. `C:\AshCaptions` is kept unless `-RemoveData`
+is passed, and the script says so.
+
+It takes the same test-only location overrides as the installer
+(`-InstallDir`, `-DataRoot`, `-TaskName`, `-DesktopDir`,
+`-StartMenuProgramsDir`, `-StartupDir`), so a scratch install made with
+those flags is removed with the same flags and the real install is never
+touched. `-CheckOnly` prints what a run would remove, as JSON. Running it
+twice is fine: anything already gone is reported, not an error.
+
 ### Troubleshooting
 
 | Symptom | Likely cause |
@@ -219,6 +279,8 @@ load.
 | Six "Windows protected your PC" messages on rollout day | Expected -- the exe is unsigned (spec section 11.4/15). Brief the team ahead of time; code signing is only worth it if this becomes a real recurring complaint, not pre-emptively. |
 | `gh` publish fails with an auth error | `gh auth login` on the build machine, not a token in a file -- this repo's scripts never read or write one. |
 | Install works but nothing starts at logon | Check `Get-ScheduledTask -TaskName AshCaptionsTray` -- if `install.ps1` was run under a different Windows user than the one who logs in day-to-day, the (per-user) task is registered for the wrong account. |
+| Installer stops with `STOP: Not enough free space on C:\ ...` | The install drive has under 4 GB free (the number is in the message). Free space, or install to another drive with `-InstallDir D:\AshCaptions` -- the Desktop shortcut and logon task follow it. |
+| Installer says `Could not download ... if this PC uses a proxy, ask Ghazi` | The PC cannot reach GitHub. Check the connection; behind a corporate proxy, install offline with `-Source <zip>` from a USB stick. The raw .NET message is in the brackets. |
 
 ---
 
@@ -366,6 +428,8 @@ LICENSE                  # all rights reserved -- published, not open source
 NOTICES.md               # third-party licences shipped in the bundle (ffmpeg, fonts, ...)
 
 installer/
-  install.ps1            # the actual installer -- CPU-only, idempotent, per-user
+  install.ps1            # the actual installer -- preflight, CPU-only, idempotent, per-user
   Install-AshCaptions.bat # double-click wrapper an editor actually clicks
+  uninstall.ps1          # the reverse: quits the app, removes task/shortcuts/app folder; keeps C:\AshCaptions unless -RemoveData
+  Uninstall-AshCaptions.bat # double-click wrapper for uninstall.ps1
 ```
