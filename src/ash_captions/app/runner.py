@@ -50,6 +50,7 @@ from .transcript import (
 )
 from .lifecycle import write_job_marker
 from .runner_util import (  # noqa: F401 - re-exported for tests and callers
+    _CANCEL_EXCEPTIONS,
     DiskSpaceError,
     _ffprobe_beside,
     _is_within,
@@ -73,15 +74,6 @@ RunJob = Callable[[Job, Callable[[int], None]], "AfterDone | None"]
 # asking for 1- or 2-word cards (e.g. HYPE) must not have that request
 # undone by a `min_words` floor higher than the style's own max.
 _DEFAULT_MIN_WORDS_PER_CARD = 3
-
-# The engine's cancellation exceptions, when this tree's engine has them.
-_CANCEL_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
-    exc for exc in (
-        getattr(engine, "TranscriptionCancelled", None),
-        getattr(engine, "BurnCancelled", None),
-        getattr(engine, "MatteCancelled", None),
-    ) if isinstance(exc, type)
-)
 
 _TRANSCRIBER_OPTIONALS = ("cpu_threads", "condition_on_previous_text", "hallucination_silence_threshold")
 

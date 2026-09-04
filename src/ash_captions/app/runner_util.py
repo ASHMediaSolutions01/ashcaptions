@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from ash_captions import languages
+from ash_captions import engine, languages
 
 log = logging.getLogger(__name__)
 
@@ -36,18 +36,36 @@ _BASE_WEIGHTS = {
 
 GB = 1024 ** 3
 
+# The engine's cancellation exceptions, when this tree's engine has them.
+# Both the full runner (runner.py) and the translate-only runner
+# (runner_translate.py) map these to ``pipeline.queue.JobCancelled``.
+# runner.py re-exports the name; test_runner_inputs.py monkeypatches it there.
+_CANCEL_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
+    exc for exc in (
+        getattr(engine, "TranscriptionCancelled", None),
+        getattr(engine, "BurnCancelled", None),
+        getattr(engine, "MatteCancelled", None),
+    ) if isinstance(exc, type)
+)
+
 
 class DiskSpaceError(RuntimeError):
     """Refused before starting a burn-in that could not finish."""
 
 
-def _progress_budget(*, translate: bool, burn: bool) -> dict[str, tuple[int, int]]:
+def _progress_budget(*, translate: bool, burn: bool, transcribe: bool = True) -> dict[str, tuple[int, int]]:
     """Allocate ``_BASE_WEIGHTS`` proportionally over the stages that
     actually run for this job, returning ``{stage: (start_pct, end_pct)}``.
     The last active stage always ends exactly at 100, regardless of
     rounding drift in the stages before it.
+
+    ``transcribe=False`` is the translate-only job (v0.5 caption check):
+    the saved transcript is reused, so only extract, translate,
+    postprocess and write run.
     """
-    active = {"extract", "transcribe", "postprocess", "cards_and_write"}
+    active = {"extract", "postprocess", "cards_and_write"}
+    if transcribe:
+        active.add("transcribe")
     if translate:
         active.add("translate")
     if burn:
