@@ -210,6 +210,34 @@ def test_restyle_rewrites_the_ass_and_records_the_preset(tmp_path: Path, store: 
     assert store.get_job(job.id).options.preset == "COMIC"
 
 
+def test_two_tabs_restyling_the_same_job_at_once_both_succeed(tmp_path: Path, store: JobStore):
+    """Two Studio tabs on one job: each restyle writes its own temp file, so
+    neither hits the other's half-written .part (PermissionError on rename)."""
+    import threading
+
+    job, out = _done_job_with_transcript(tmp_path, store)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+    errors: list[BaseException] = []
+
+    def go(preset: str) -> None:
+        try:
+            for _ in range(15):
+                adapter.restyle(str(job.id), preset)
+        except BaseException as exc:  # noqa: BLE001 - collected for the assertion
+            errors.append(exc)
+
+    threads = [threading.Thread(target=go, args=(p,)) for p in ("COMIC", "POP", "CLEAN")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert "[Script Info]" in (out / "clip.ass").read_text(encoding="utf-8")
+    assert not list(out.glob("*.part"))
+
+
 def test_restyle_refuses_unknown_style_and_unknown_job(tmp_path: Path, store: JobStore):
     job, _ = _done_job_with_transcript(tmp_path, store)
     adapter = QueueAdapter(store, out_dir=tmp_path / "out")

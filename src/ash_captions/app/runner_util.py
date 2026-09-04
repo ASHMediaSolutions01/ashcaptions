@@ -11,6 +11,7 @@ import logging
 import inspect
 import os
 import shutil
+import uuid
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -198,9 +199,12 @@ def _ffprobe_beside(ffmpeg_path: Path) -> Path:
 def atomic_write(writer: Callable[[Path], Any], final_path: Path) -> Path:
     """Run ``writer`` against a ``.part`` sibling, then rename over
     ``final_path`` -- a crash mid-write leaves no truncated deliverable
-    under the real name."""
+    under the real name. The sibling's name is unique per call: two Studio
+    tabs restyling the same job at once each write their own temp file and
+    the last rename wins, instead of one tab's rename hitting the other's
+    open handle (PermissionError on Windows)."""
     final_path = Path(final_path)
-    partial = final_path.with_name(final_path.name + ".part")
+    partial = final_path.with_name(f"{final_path.name}.{uuid.uuid4().hex[:8]}.part")
     writer(partial)
     os.replace(partial, final_path)
     return final_path

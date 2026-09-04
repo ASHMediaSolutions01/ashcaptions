@@ -26,6 +26,7 @@ ALLOWED_VIDEO_EXTENSIONS = (
     ".avi",
     ".webm",
     ".m4v",
+    ".wmv",
 )
 
 
