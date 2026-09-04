@@ -317,13 +317,20 @@ $deadline = (Get-Date).AddSeconds({_HELPER_WAIT_DEADLINE_SECONDS})
 while ((Get-Process -Id $ParentProcessId -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {{
     Start-Sleep -Milliseconds 250
 }}
-Get-Process -Name 'AshCaptions' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($ExeName)) -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 robocopy $SourceDir $InstallDir /MIR /NFL /NDL /NJH /NJS /NC /NS | Out-Null
 if ($LASTEXITCODE -lt 8) {{
     Start-Process -FilePath (Join-Path $InstallDir $ExeName)
 }}
 """
+
+# subprocess has no constant for this one. A hidden console, as opposed to
+# DETACHED_PROCESS (no console at all): powershell.exe started with
+# DETACHED_PROCESS exits immediately with code 0 without running the
+# script, so the first real update (0.4.0 -> 0.4.1, 2026-09-04) downloaded,
+# extracted, handed off -- and nothing came back.
+CREATE_NO_WINDOW = 0x08000000
 
 SpawnHelper = Callable[[list[str]], None]
 HasRunningJob = Callable[[], bool]
@@ -333,18 +340,20 @@ SOURCE_CHECKOUT_MESSAGE = "This is a source checkout; update it with git, not th
 
 
 def _default_spawn_helper(argv: list[str]) -> None:
-    # Detached: this process is about to exit as part of the update: the
-    # helper must keep running after that, not be a child tied to it.
+    # This process is about to exit as part of the update: the helper must
+    # keep running after that, not be a child tied to it. A hidden console
+    # (CREATE_NO_WINDOW), never DETACHED_PROCESS -- see the constant above.
     # CREATE_BREAKAWAY_FROM_JOB matters just as much: the app sits in a
     # kill-on-close Job Object (app/jobobject.py) so ffmpeg dies with it,
     # and without breaking away the helper would die with it too -- the
     # app would exit and never come back. Retried without the flag only
     # if the OS refuses it (an outer job that forbids breakaway), with a
     # warning, since a helper that can't outlive us can't relaunch us.
-    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    flags = CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    quiet = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     try:
         subprocess.Popen(  # noqa: S603 - argv is built entirely from our own paths, no shell
-            argv, creationflags=flags | CREATE_BREAKAWAY_FROM_JOB, close_fds=True
+            argv, creationflags=flags | CREATE_BREAKAWAY_FROM_JOB, close_fds=True, **quiet
         )
     except OSError as exc:
         logger.warning(
@@ -352,7 +361,7 @@ def _default_spawn_helper(argv: list[str]) -> None:
             "killed when this process exits, in which case relaunch AshCaptions by hand.",
             exc,
         )
-        subprocess.Popen(argv, creationflags=flags, close_fds=True)  # noqa: S603
+        subprocess.Popen(argv, creationflags=flags, close_fds=True, **quiet)  # noqa: S603
 
 
 def clean_update_leftovers(updates_dir: Path | str) -> int:
@@ -471,6 +480,7 @@ def apply_update(
     argv = [
         "powershell.exe",
         "-NoProfile",
+        "-NonInteractive",
         "-ExecutionPolicy", "Bypass",
         "-File", str(helper_script),
         "-ParentProcessId", str(os.getpid()),

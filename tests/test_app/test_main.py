@@ -159,7 +159,7 @@ class TestUpdateCheckGate:
         import ash_captions.app.__main__ as main_module
 
         started: list[object] = []
-        monkeypatch.setattr(main_module, "check_for_update_in_background", lambda version, state: started.append(state))
+        monkeypatch.setattr(main_module, "check_for_update_in_background", lambda version, state, **kw: started.append(state))
         monkeypatch.setattr(main_module, "updates_supported", lambda: False)
         main_module._start_update_check(main_module.UpdateState())
         assert started == []
@@ -172,7 +172,7 @@ class TestUpdateCheckGate:
         import ash_captions.app.__main__ as main_module
 
         started: list[object] = []
-        monkeypatch.setattr(main_module, "check_for_update_in_background", lambda version, state: started.append(state))
+        monkeypatch.setattr(main_module, "check_for_update_in_background", lambda version, state, **kw: started.append(state))
         monkeypatch.setattr(main_module, "updates_supported", None)
         main_module._start_update_check(main_module.UpdateState())
         assert len(started) == 1

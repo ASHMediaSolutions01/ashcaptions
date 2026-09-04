@@ -22,6 +22,7 @@ import os
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from typing import IO
@@ -52,7 +53,7 @@ from .update_flow import (  # noqa: F401 - re-exported: tests and older callers 
     apply_update_when_idle,
     shutdown_with_watchdog as _shutdown_with_watchdog,
 )
-from .updater import UpdateState, check_for_update_in_background
+from .updater import MANIFEST_URL, UpdateState, check_for_update_in_background
 
 logger = logging.getLogger("ash_captions.app")
 
@@ -77,6 +78,35 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "(used by the desktop shortcut / Start Menu entry, not the logon task).",
     )
     return parser.parse_args(argv)
+
+
+SERVER_START_TIMEOUT_SECONDS = 30.0
+
+
+def _serve(app, port: int) -> None:
+    """The web server thread's target: any failure is logged, because a
+    daemon thread's traceback otherwise goes to sys.stderr, which the
+    windowed build does not have."""
+    try:
+        run_server(app, port=port)
+    except BaseException:
+        logger.exception("The web server thread died; the control page is not available")
+        raise
+
+
+def _wait_for_port(port: int, *, timeout: float, thread: threading.Thread) -> bool:
+    """True once something accepts connections on ``port``; False if
+    ``thread`` dies first or ``timeout`` passes."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not thread.is_alive():
+            return False
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return True
+        except OSError:
+            time.sleep(0.1)
+    return False
 
 
 def _find_open_port(preferred: int, *, max_probes: int) -> int:
@@ -249,7 +279,19 @@ def _start_update_check(update_state: UpdateState) -> None:
     if updates_supported is not None and not updates_supported():
         logger.info("Update checks disabled: not a frozen install (source checkout or dev run).")
         return
-    check_for_update_in_background(_current_version(), update_state)
+    check_for_update_in_background(_current_version(), update_state, manifest_url=_manifest_url())
+
+
+MANIFEST_URL_ENV = "ASH_CAPTIONS_MANIFEST_URL"
+
+
+def _manifest_url() -> str:
+    """The published manifest, unless ``ASH_CAPTIONS_MANIFEST_URL`` points
+    at a test one (any URL urllib can open, a ``file://`` path included).
+    That is how the update -> helper -> relaunch path is exercised against
+    a real installed bundle without publishing a throwaway release."""
+    override = os.environ.get(MANIFEST_URL_ENV, "").strip()
+    return override or MANIFEST_URL
 
 
 def build_application(settings: Settings, *, lock: IO[str] | None = None):
@@ -380,10 +422,20 @@ def _run(args: argparse.Namespace, settings: Settings) -> None:
     watcher.start()
     sweeper.start()
 
-    server_thread = threading.Thread(
-        target=lambda: run_server(app, port=port), name="ash-captions-web", daemon=True
-    )
+    server_thread = threading.Thread(target=lambda: _serve(app, port), name="ash-captions-web", daemon=True)
     server_thread.start()
+    if not _wait_for_port(port, timeout=SERVER_START_TIMEOUT_SECONDS, thread=server_thread):
+        # Without this check a dead server thread left a tray icon with no
+        # page behind it (0.4.1, 2026-09-04). Fail the way every other
+        # startup error fails: log, message box, exit code 1.
+        watcher.stop()
+        worker.stop()
+        sweeper.stop()
+        lock.close()
+        raise RuntimeError(
+            f"The control page did not start on port {port} within "
+            f"{SERVER_START_TIMEOUT_SECONDS:.0f} s; the web server error is in the log above."
+        )
     logger.info("Control page at %s; health: %s", url, _adapter.health())
 
     # Bare invocation (the logon task) is tray-only -- no browser tab on

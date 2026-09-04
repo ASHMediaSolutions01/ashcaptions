@@ -266,4 +266,19 @@ def run_server(app: FastAPI, host: str = "127.0.0.1", port: int = DEFAULT_PORT) 
         )
     import uvicorn
 
-    uvicorn.run(app, host=host, port=port, access_log=False)
+    uvicorn.Server(server_config(app, host=host, port=port)).run()
+
+
+def server_config(app: FastAPI, *, host: str = "127.0.0.1", port: int = DEFAULT_PORT):
+    """uvicorn's settings, in one place so a test can build them under the
+    conditions of the windowed build. ``log_config=None`` is load-bearing:
+    uvicorn's default logging config constructs a formatter that calls
+    ``sys.stdout.isatty()``, and in the windowed PyInstaller build
+    ``sys.stdout`` is None. That raised AttributeError inside the server
+    thread before it ever bound the port -- a tray icon with no control
+    page behind it, found on the first logon-task-style launch of 0.4.1
+    (2026-09-04). Without a config of its own, uvicorn's loggers propagate
+    to the root logger, i.e. into the app's log file."""
+    import uvicorn
+
+    return uvicorn.Config(app, host=host, port=port, access_log=False, log_config=None, use_colors=False)

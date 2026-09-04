@@ -79,7 +79,10 @@ def test_default_spawn_helper_breaks_away_from_the_job(monkeypatch: pytest.Monke
 
     assert len(calls) == 1
     assert calls[0]["creationflags"] & CREATE_BREAKAWAY_FROM_JOB
-    assert calls[0]["creationflags"] & subprocess.DETACHED_PROCESS
+    assert calls[0]["creationflags"] & updater.CREATE_NO_WINDOW
+    # DETACHED_PROCESS made powershell.exe exit at once without running the script.
+    assert not calls[0]["creationflags"] & subprocess.DETACHED_PROCESS
+    assert calls[0]["stdin"] is subprocess.DEVNULL and calls[0]["stdout"] is subprocess.DEVNULL
 
 
 def test_default_spawn_helper_retries_without_breakaway_if_refused(
