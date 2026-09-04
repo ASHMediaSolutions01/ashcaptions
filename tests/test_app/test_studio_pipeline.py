@@ -293,3 +293,57 @@ def test_translate_pass_gets_no_source_dialect_prompt(tmp_path: Path, store: Job
     build_run_job(settings, watch_dir=settings.in_dir, transcriber=rec)(job, _Reporter())
     assert rec.prompts["transcribe"], "the source pass keeps its dialect priming"
     assert rec.prompts["translate"] is None
+
+
+# -- caption position (v0.5) ---------------------------------------------------
+
+
+def _ass_events(out: Path) -> list[str]:
+    text = (out / "clip.ass").read_text(encoding="utf-8")
+    return [line for line in text.splitlines() if line.startswith("Dialogue:")]
+
+
+def test_restyle_with_a_position_pins_every_event_and_stores_it(tmp_path: Path, store: JobStore):
+    job, out = _done_job_with_transcript(tmp_path, store)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+
+    updated = adapter.restyle(str(job.id), "COMIC", position=(0.5, 0.25))
+
+    assert (updated.options.caption_x, updated.options.caption_y) == (0.5, 0.25)
+    assert store.get_job(job.id).options.caption_position == (0.5, 0.25)
+    events = _ass_events(out)
+    # No ffprobe in tests, so the transcript has no play_res and the .ass
+    # uses the 1080x1920 default: (0.5, 0.25) -> (540, 480).
+    assert events and all("540,480" in line for line in events), events[:3]
+
+
+def test_restyle_without_a_position_keeps_it_and_none_clears_it(tmp_path: Path, store: JobStore):
+    job, out = _done_job_with_transcript(tmp_path, store)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+    adapter.restyle(str(job.id), "COMIC", position=(0.5, 0.25))
+
+    kept = adapter.restyle(str(job.id), "POP")  # picking another look keeps the position
+    assert kept.options.preset == "POP"
+    assert (kept.options.caption_x, kept.options.caption_y) == (0.5, 0.25)
+    assert all("540,480" in line for line in _ass_events(out))
+
+    cleared = adapter.restyle(str(job.id), "POP", position=None)
+    assert cleared.options.caption_x is None and cleared.options.caption_y is None
+    assert store.get_job(job.id).options.caption_position is None
+    assert not any("\\pos(" in line for line in _ass_events(out))
+
+
+def test_submit_burn_carries_the_position_into_the_burn_only_job(tmp_path: Path, store: JobStore):
+    job, out = _done_job_with_transcript(tmp_path, store)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+    adapter.restyle(str(job.id), "COMIC", position=(0.5, 0.25))
+
+    created = adapter.submit_burn(str(job.id), "NEON GLOW")
+
+    row = store.get_job(int(created.id))
+    assert row.options.mode == "burn_only" and row.options.preset == "NEON GLOW"
+    assert row.options.caption_position == (0.5, 0.25)
+    assert (created.options.caption_x, created.options.caption_y) == (0.5, 0.25)

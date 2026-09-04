@@ -45,6 +45,7 @@ from ash_captions.pipeline.db import Job as PipelineJob
 from ash_captions.pipeline.db import JobOptions as PipelineJobOptions
 from ash_captions.pipeline.db import JobStatus as PipelineJobStatus
 from ash_captions.pipeline.db import JobStore
+from ash_captions.styles.render import anchor_pixels
 from ash_captions.web.interfaces import JobNotFoundError, JobNotRemovableError, JobNotRetryableError
 from ash_captions.web.models import Job as WebJob
 from ash_captions.web.models import JobOptions as WebJobOptions
@@ -66,6 +67,10 @@ logger = logging.getLogger("ash_captions.app.adapter")
 # what an editor is looking at.
 DEFAULT_LIST_LIMIT = 200
 DEFAULT_NOTIFY_INTERVAL_SECONDS = 1.0
+
+# `restyle(position=KEEP_POSITION)`: leave the job's stored caption position
+# alone. Distinct from None, which clears it.
+KEEP_POSITION = object()
 
 _SUFFIX_RE = re.compile(r"^(.*) \((\d+)\)$")
 
@@ -190,17 +195,28 @@ class QueueAdapter:
 
     # -- Studio (v0.3): re-style and burn from the saved transcript ---------
 
-    def restyle(self, job_id: str, preset: str) -> WebJob:
+    def restyle(
+        self,
+        job_id: str,
+        preset: str,
+        *,
+        position: tuple[float, float] | None | object = KEEP_POSITION,
+    ) -> WebJob:
         """Re-render the job's ``.ass`` in ``preset`` from its saved transcript,
         in place, and record the new preset on the row. Seconds, not
-        minutes: nothing is transcribed. Raises ``JobNotFoundError`` for an
-        unknown job and ``ValueError`` when there is no usable transcript or
-        the preset is not a known style."""
+        minutes: nothing is transcribed. ``position`` is the caption anchor
+        as fractions of the frame (``(caption_x, caption_y)``, v0.5), ``None``
+        to clear it, or ``KEEP_POSITION`` to keep whatever the job has --
+        picking another look keeps the position. Raises ``JobNotFoundError``
+        for an unknown job and ``ValueError`` when there is no usable
+        transcript, the preset is not a known style, or the position is
+        outside the frame."""
         job = self._require_job(job_id)
         record = self._transcript_for(job)
         if not preset in styles.list_styles():
             raise ValueError(f"Unknown caption style {preset!r}")
         style = styles.resolve_style(preset)
+        options = job.options if position is KEEP_POSITION else _with_position(job.options, position)
         stem = Path(job.input_path).stem
         max_words = style.layout.max_words
         cards = engine.build_cards(
@@ -209,12 +225,13 @@ class QueueAdapter:
             min_words=min(3, max_words),
             silence_gap=self._silence_gap_seconds(),
         )
-        optional = {"play_res": record.play_res} if record.play_res else {}
+        play_res = record.play_res or styles.DEFAULT_PLAY_RES
+        anchor = anchor_pixels(options.caption_position, play_res)
         atomic_write(
-            lambda p: engine.write_ass(cards, p, style, **optional),
+            lambda p: engine.write_ass(cards, p, style, play_res=play_res, anchor=anchor),
             Path(job.output_dir) / f"{stem}.ass",
         )
-        new_options = dataclasses.replace(job.options, preset=style.name)
+        new_options = dataclasses.replace(options, preset=style.name)
         self._store.update_options(job.id, new_options)
         updated = self._store.get_job(job.id)
         assert updated is not None
@@ -373,6 +390,17 @@ class QueueAdapter:
         snapshot = self.list_jobs()
         for subscriber in list(self._subscribers):
             subscriber.put_nowait(snapshot)
+
+
+def _with_position(options: PipelineJobOptions, position: object) -> PipelineJobOptions:
+    """``options`` with the caption position replaced: ``None`` clears it;
+    a pair is checked (ValueError outside [0, 1]) before anything is
+    written."""
+    if position is None:
+        return dataclasses.replace(options, caption_x=None, caption_y=None)
+    anchor_pixels(position, None)  # raises ValueError for a bad pair
+    x, y = position  # type: ignore[misc]
+    return dataclasses.replace(options, caption_x=float(x), caption_y=float(y))
 
 
 class _NotifyingStore:
