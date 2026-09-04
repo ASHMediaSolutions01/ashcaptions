@@ -107,10 +107,306 @@
     try { localStorage.setItem(SHOW_ENGLISH_KEY, on ? "1" : "0"); } catch (err) { /* private mode */ }
   }
 
-  // ---- the panel (Task 6 fills this in) ----
+  // ---- the panel ----
 
+  function buildSkeleton(root) {
+    root.innerHTML = "";
+    const head = document.createElement("div");
+    head.className = "check-head";
+    const h2 = document.createElement("h2");
+    h2.textContent = "Transcript";
+    const lang = document.createElement("span");
+    lang.className = "check-lang";
+    lang.hidden = true;
+    const uncertain = document.createElement("button");
+    uncertain.type = "button";
+    uncertain.className = "check-chip";
+    uncertain.id = "check-uncertain";
+    const spacer = document.createElement("span");
+    spacer.className = "check-spacer";
+    const toggle = document.createElement("label");
+    toggle.className = "check-toggle";
+    toggle.hidden = true;
+    const showEn = document.createElement("input");
+    showEn.type = "checkbox";
+    showEn.id = "check-show-en";
+    toggle.append(showEn, document.createTextNode(" Show English"));
+    const translate = document.createElement("button");
+    translate.type = "button";
+    translate.className = "btn small";
+    translate.id = "check-translate";
+    translate.textContent = "Translate to check";
+    translate.hidden = true;
+    head.append(h2, lang, uncertain, spacer, toggle, translate);
+    const list = document.createElement("div");
+    list.className = "check-list";
+    list.id = "check-list";
+    list.setAttribute("aria-label", "Transcript lines");
+    root.append(head, list);
+    return { lang, uncertain, toggle, showEn, translate, list };
+  }
+
+  // refs: { jobId, job, player, live } -- handed over by studio.js once the
+  // player exists. `live` false means the burned output is playing (the
+  // original footage is gone), so nothing can be translated.
   function mount(refs) {
-    void refs;
+    const { jobId, job, player, live } = refs;
+    const root = document.getElementById("check");
+    if (!root || !player) return;
+    const api = (suffix) => `/api/jobs/${encodeURIComponent(jobId)}${suffix}`;
+    const els = buildSkeleton(root);
+    const state = {
+      words: [], en: null, cues: [], rows: [], enRows: null,
+      rowEls: [], enEls: [], spanFor: new Map(),
+      activeRow: -1, activeWord: -1, showEn: readShowEnglish(), watching: null,
+    };
+
+    async function fetchTranscript() {
+      const res = await AshApi.request(api("/transcript"));
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't load the transcript"));
+      return res.json();
+    }
+
+    async function fetchCues() {
+      try {
+        const res = await AshApi.request(api("/srt"));
+        return res.ok ? parseSrt(await res.text()) : [];
+      } catch (err) {
+        return [];
+      }
+    }
+
+    function setTranscript(transcript, cues) {
+      state.words = transcript.words || [];
+      state.en = Array.isArray(transcript.en_words) ? transcript.en_words : null;
+      state.cues = cues.length ? cues : cuesFromWords(state.words, FALLBACK_WORDS_PER_ROW);
+      state.rows = assignToCues(state.words, state.cues);
+      state.enRows = state.en ? assignToCues(state.en, state.cues) : null;
+      els.lang.textContent = (transcript.language || "").toUpperCase();
+      els.lang.hidden = !transcript.language;
+      renderHeader();
+      renderRows();
+    }
+
+    function renderHeader() {
+      const n = countUncertain(state.words);
+      els.uncertain.textContent = n === 0 ? "No uncertain words" : `${n} uncertain word${n === 1 ? "" : "s"}`;
+      els.uncertain.disabled = n === 0;
+      els.uncertain.title = n === 0 ? "" : "Jump to the next uncertain word";
+      const hasEnglish = state.en !== null;
+      els.toggle.hidden = !hasEnglish;
+      els.showEn.checked = state.showEn;
+      els.translate.hidden = hasEnglish || !live;
+      els.translate.title = "Run only the English pass on the saved transcript, then show it under every line";
+    }
+
+    function renderRows() {
+      els.list.innerHTML = "";
+      state.spanFor = new Map();
+      state.enEls = [];
+      state.rowEls = state.rows.map((rowWords, i) => {
+        const row = document.createElement("div");
+        row.className = "check-row";
+        row.addEventListener("click", () => player.seek(state.cues[i].start));
+        const src = document.createElement("div");
+        src.className = "check-src";
+        rowWords.forEach((w, k) => {
+          const span = document.createElement("span");
+          const kind = classify(w.p);
+          span.className = kind ? `w ${kind}` : "w";
+          span.textContent = w.w;
+          if (kind) span.title = `${Math.round(w.p * 100)}% sure`;
+          span.addEventListener("click", (e) => { e.stopPropagation(); player.seek(w.s); });
+          if (k > 0) src.appendChild(document.createTextNode(" "));
+          src.appendChild(span);
+          state.spanFor.set(w, span);
+        });
+        const en = document.createElement("div");
+        en.className = "check-en";
+        en.textContent = state.enRows ? state.enRows[i].map((w) => w.w).join(" ") : "";
+        row.append(src, en);
+        state.enEls.push(en);
+        els.list.appendChild(row);
+        return row;
+      });
+      if (state.rowEls.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "check-empty";
+        empty.textContent = "No words in the transcript.";
+        els.list.appendChild(empty);
+      }
+      applyEnglishVisibility();
+      state.activeRow = -1;
+      state.activeWord = -1;
+      sync(player.currentTime);
+    }
+
+    function applyEnglishVisibility() {
+      const show = state.showEn && state.enRows !== null;
+      for (const el of state.enEls) el.hidden = !show;
+    }
+
+    function markWord(i, on) {
+      const el = state.spanFor.get(state.words[i]);
+      if (el) el.classList.toggle("now", on);
+    }
+
+    // Vertical auto-scroll of the list only: scrollIntoView would also
+    // scroll the page and the stage.
+    function keepRowVisible(row) {
+      const list = els.list;
+      const top = row.offsetTop;
+      const bottom = top + row.offsetHeight;
+      if (top >= list.scrollTop && bottom <= list.scrollTop + list.clientHeight) return;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      list.scrollTo({ top: Math.max(0, top - (list.clientHeight - row.offsetHeight) / 2), behavior: reduce ? "auto" : "smooth" });
+    }
+
+    function sync(t) {
+      let rowIdx = -1;
+      if (state.cues.length) {
+        const idx = cueIndexFor(t, state.cues);
+        const cue = state.cues[idx];
+        rowIdx = t >= cue.start - 0.25 && t < cue.end + 0.25 ? idx : -1;
+      }
+      if (rowIdx !== state.activeRow) {
+        if (state.activeRow >= 0) state.rowEls[state.activeRow].classList.remove("active");
+        state.activeRow = rowIdx;
+        if (rowIdx >= 0) {
+          state.rowEls[rowIdx].classList.add("active");
+          keepRowVisible(state.rowEls[rowIdx]);
+        }
+      }
+      const wordIdx = wordIndexAt(state.words, t);
+      if (wordIdx !== state.activeWord) {
+        if (state.activeWord >= 0) markWord(state.activeWord, false);
+        state.activeWord = wordIdx;
+        if (wordIdx >= 0) markWord(wordIdx, true);
+      }
+    }
+
+    function jumpToUncertain() {
+      const idx = nextUncertain(state.words, player.currentTime);
+      if (idx < 0) return;
+      const w = state.words[idx];
+      player.seek(w.s);
+      sync(w.s);
+      const el = state.spanFor.get(w);
+      if (!el) return;
+      el.classList.add("flash");
+      setTimeout(() => el.classList.remove("flash"), 1200);
+    }
+
+    function setTranslateState(status, pct) {
+      const btn = els.translate;
+      btn.innerHTML = "";
+      if (status === "pending" || status === "running") {
+        const spin = document.createElement("span");
+        spin.className = "spinner";
+        spin.setAttribute("aria-hidden", "true");
+        btn.append(spin, document.createTextNode(status === "pending" ? " Queued…" : ` Translating… ${pct}%`));
+        btn.disabled = true;
+      } else {
+        btn.textContent = "Translate to check";
+        btn.disabled = false;
+      }
+    }
+
+    async function translate() {
+      if (els.translate.disabled) return;
+      setTranslateState("pending", 0);
+      try {
+        const res = await AshApi.request(api("/translate"), { method: "POST" });
+        if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't start the translation"));
+        const created = await res.json();
+        AshToast.show("Translating to English from the saved transcript. Watch it in the queue.", { ms: 8000 });
+        watchTranslation(created.id);
+      } catch (err) {
+        AshToast.show(err.message, { kind: "bad" });
+        setTranslateState("idle", 0);
+      }
+    }
+
+    // Polls the translate job (the same way studio.js watches a burn)
+    // until it finishes, then reloads the transcript with its English.
+    function watchTranslation(id) {
+      if (state.watching) clearInterval(state.watching);
+      setTranslateState("pending", 0);
+      const poll = async () => {
+        let latest;
+        try {
+          const res = await AshApi.request(`/api/jobs/${encodeURIComponent(id)}`);
+          if (!res.ok) return;
+          latest = await res.json();
+        } catch (err) {
+          return;
+        }
+        if (latest.status === "pending" || latest.status === "running") {
+          setTranslateState(latest.status, Math.round((latest.progress || 0) * 100));
+          return;
+        }
+        clearInterval(state.watching);
+        state.watching = null;
+        if (latest.status === "done") {
+          let transcript = null;
+          try { transcript = await fetchTranscript(); } catch (err) { transcript = null; }
+          if (transcript && Array.isArray(transcript.en_words)) {
+            state.showEn = true;
+            writeShowEnglish(true);
+            setTranscript(transcript, state.cues);
+            AshToast.show("English is under every line now.", { kind: "ok" });
+            return;
+          }
+          AshToast.show("The translation finished but no English words were saved.", { kind: "bad" });
+        } else {
+          AshToast.show(`The translation failed: ${latest.error || "something went wrong"}`, { kind: "bad", ms: 0 });
+        }
+        setTranslateState("idle", 0);
+      };
+      poll();
+      state.watching = setInterval(poll, 2000);
+    }
+
+    // A translation of this footage already waiting or running (another
+    // tab, or this page before a reload) is watched, not queued twice.
+    async function watchExistingTranslation() {
+      if (state.en !== null || !live) return;
+      let jobs;
+      try {
+        const res = await AshApi.request("/api/jobs");
+        if (!res.ok) return;
+        jobs = await res.json();
+      } catch (err) {
+        return;
+      }
+      const sameInput = (j) => (job.input_path ? j.input_path === job.input_path : j.filename === job.filename);
+      const inFlight = jobs.find((j) => j.id !== job.id && (j.status === "pending" || j.status === "running") && j.options && j.options.translate_to_english && sameInput(j));
+      if (inFlight) watchTranslation(inFlight.id);
+    }
+
+    els.uncertain.addEventListener("click", jumpToUncertain);
+    els.showEn.addEventListener("change", () => {
+      state.showEn = els.showEn.checked;
+      writeShowEnglish(state.showEn);
+      applyEnglishVisibility();
+    });
+    els.translate.addEventListener("click", translate);
+
+    (async () => {
+      let transcript;
+      try {
+        transcript = await fetchTranscript();
+      } catch (err) {
+        AshToast.show(err.message, { kind: "bad" });
+        return;
+      }
+      if (!transcript || !transcript.words || transcript.words.length === 0) return; // an older job: no panel
+      setTranscript(transcript, await fetchCues());
+      root.hidden = false;
+      player.onTime(sync);
+      watchExistingTranslation();
+    })();
   }
 
   const exported = {

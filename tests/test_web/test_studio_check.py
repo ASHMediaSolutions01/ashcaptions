@@ -96,3 +96,28 @@ class TestHelpers:
         # `require` under node has no `document`; if the script reached for
         # it at load time this would throw instead of answering.
         assert run_js("typeof c.mount") == "function"
+
+
+class TestWiring:
+    def test_studio_page_loads_the_check_panel_before_studio_js(self, client, app):
+        page = client.get("/studio/any-id").text
+        assert '<section class="check" id="check" aria-label="Caption check" hidden></section>' in page
+        assert f"/static/studio_check.css?v={app.state.version}" in page
+        assert f"/static/studio_check.js?v={app.state.version}" in page
+        assert page.index("studio_check.js?v=") < page.index("/static/studio.js?v=")
+        assert client.get("/static/studio_check.js").status_code == 200
+        assert client.get("/static/studio_check.css").status_code == 200
+
+    def test_studio_js_exposes_the_player_and_mounts_the_panel(self):
+        js = (STATIC_DIR / "studio.js").read_text(encoding="utf-8")
+        assert "window.AshStudio = Object.assign(window.AshStudio || {}, { player });" in js
+        assert "if (window.AshStudioCheck) AshStudioCheck.mount({ jobId, job, player, live }); else loadTranscript();" in js
+
+    def test_panel_builds_the_header_the_spec_names(self):
+        js = SCRIPT.read_text(encoding="utf-8")
+        for needle in ('id="check-uncertain"', "uncertain word", "Show English", "Translate to check", 'api("/translate")', 'api("/transcript")'):
+            assert needle.replace('id="', "") in js.replace('id = "', "").replace("id=\"", ""), needle
+
+    def test_check_files_stay_under_500_lines(self):
+        for name in ("studio_check.js", "studio_check.css"):
+            assert len((STATIC_DIR / name).read_text(encoding="utf-8").splitlines()) < 500, name
