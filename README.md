@@ -38,7 +38,7 @@ including the speech model and troubleshooting, is in the editor guide.
 src/ash_captions/
   engine/     audio extraction, transcription, caption timing rules,
               SRT/ASS/TXT writers, burn-in, punch-in
-  styles/     9 caption looks as JSON data, 24 bundled fonts, ASS renderer
+  styles/     36 caption looks as JSON data, 24 bundled fonts, ASS renderer
   languages/  54 languages, 22 dialect presets, spelling, glossaries
   pipeline/   SQLite job queue, crash recovery, watch folder
   web/        the local control page and style editor

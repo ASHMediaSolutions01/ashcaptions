@@ -259,7 +259,7 @@ class WhisperTranscriber:
         self._pipeline = BatchedInferencePipeline(model)
         return self._pipeline
 
-    def _run(
+    def _run(  # noqa: C901 - one straight path, documented inline
         self,
         audio_path: Path | str,
         *,
@@ -298,7 +298,7 @@ class WhisperTranscriber:
         # lazily, so a codec error or a CUDA fault surfaces on iteration,
         # not on the call -- and must still arrive as a TranscriptionError.
         try:
-            raw_segments, info = runner(str(audio_path), **options)
+            raw_segments, info = runner(_load_audio(audio_path), **options)
             total = _as_float(getattr(info, "duration", 0.0))
             for raw_segment in raw_segments:
                 if should_stop is not None and should_stop():
@@ -360,6 +360,30 @@ class WhisperTranscriber:
             on_progress=on_progress,
             should_stop=should_stop,
         )
+
+
+
+def _load_audio(audio_path: Path) -> "Any":
+    """The audio as a float32 array at 16 kHz, or the path when it is not
+    the 16 kHz mono PCM WAV our extractor writes.
+
+    Handing faster-whisper an array means it never opens the file through
+    PyAV, so the bundle can leave PyAV (and the GPL-built FFmpeg inside
+    its wheel) out entirely: the licence question then rests only on the
+    separate ffmpeg.exe we call as a process.
+    """
+    import wave
+
+    import numpy as np
+
+    try:
+        with wave.open(str(audio_path), "rb") as wav:
+            if wav.getnchannels() != 1 or wav.getsampwidth() != 2 or wav.getframerate() != 16000:
+                return str(audio_path)
+            frames = wav.readframes(wav.getnframes())
+    except (wave.Error, EOFError, OSError):
+        return str(audio_path)
+    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
 
 
 def _supported_kwargs(func, options: dict[str, Any]) -> dict[str, Any]:

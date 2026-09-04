@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import IO
 
 from ash_captions import styles
-from ash_captions.config import MAX_PORT_PROBES, Settings
+from ash_captions.config import MAX_PORT_PROBES, Settings, data_root
 from ash_captions.pipeline import JobWorker, Watcher
 from ash_captions.pipeline.db import JobStatus, JobStore
 from ash_captions.web import create_app, run_server
@@ -38,6 +38,7 @@ from . import jobobject
 from .adapter import QueueAdapter
 from .catalogue import LanguageCatalogue
 from .lifecycle import RetentionSweeper, configure_logging, folder_is_live, sweep_tmp_dir
+from .updater import clean_update_leftovers
 from .runner import SharedTranscriber, _is_within, build_run_job
 from .runner_util import accepted_kwargs
 
@@ -264,6 +265,7 @@ def build_application(settings: Settings, *, lock: IO[str] | None = None):
     settings.ensure_dirs()
     _validate_default_preset(settings)
     sweep_tmp_dir(settings.tmp_dir)
+    clean_update_leftovers(data_root() / "updates")
 
     store = JobStore(settings.db_path)
     adapter = QueueAdapter(store, out_dir=settings.out_dir)

@@ -190,8 +190,7 @@ def test_build_pyinstaller_args_basic(tmp_path):
     assert args[0] == str(entry)
     assert "--onedir" in args
     assert "--noconfirm" in args
-    assert "--console" in args
-    assert "--windowed" not in args
+    assert "--windowed" in args  # the default since 0.4.1: the tray owns the logging
     assert "AshCaptions" in args
     assert f"{static_dir};ash_captions/web/static" in args
     # dist/work/spec dirs passed through, not hardcoded

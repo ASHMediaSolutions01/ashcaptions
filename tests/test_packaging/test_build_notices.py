@@ -59,9 +59,11 @@ def test_discover_ffmpeg_license(tmp_path):
 
 def test_collect_all_av_only_when_requested(tmp_path):
     args = _basic_args(tmp_path)
-    assert "av" not in args
-    args = _basic_args(tmp_path, collect_all_optional=("av",))
-    assert args[args.index("av") - 1] == "--collect-all"
+    assert "--collect-all" not in [args[i - 1] for i, a in enumerate(args) if a == "av"]
+    # PyAV is excluded and replaced by the stub in every build
+    assert args[args.index("--exclude-module") + 1] == "av"
+    args = _basic_args(tmp_path, collect_all_optional=("somepkg",))
+    assert args[args.index("somepkg") - 1] == "--collect-all"
 
 
 def test_available_optional_modules_probes_importability():

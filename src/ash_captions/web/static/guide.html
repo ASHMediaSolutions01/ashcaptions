@@ -190,7 +190,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
     <li><strong>Burn this look</strong> when it's right. A burn-only job goes into the queue and reuses the transcript, so it starts rendering immediately instead of listening to the video again. On a 5-minute 1080p file that is about two minutes.</li>
   </ol>
   <p class="note">What you see in the Studio is what gets burned: the browser draws the captions with the same engine ffmpeg uses.</p>
-  <p>The <code>.srt</code> and <code>.ass</code> in the output folder are rewritten each time you pick a look, so dragging them into Premiere gives you the same style too.</p>
+  <p>The <code>.ass</code> in the output folder is rewritten each time you pick a look, so dragging it into Premiere gives you the same style; the plain <code>.srt</code> is unchanged.</p>
 
   <h3>The 36 looks</h3>
   <p>Every look is a small JSON file in the <code>styles</code> folder, so the library grows without a release. The original nine, for reference:</p>
@@ -287,7 +287,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 <section id="worth">
   <h2>Part 9 · Worth knowing</h2>
   <ul>
-    <li><strong>Accuracy.</strong> English, Spanish and Portuguese are excellent; most European languages very good. <strong>Always skim the result before delivering.</strong> Names, brands and technical words are where mistakes hide.</li>
+    <li><strong>Accuracy.</strong> English, Spanish and Portuguese are excellent; most European languages very good. <strong>Arabic</strong>: the <code>.srt</code> and transcript are fine; for a styled look use CLEAN or POP, not the karaoke looks (the sweep runs the wrong way for right-to-left text). <strong>Always skim the result before delivering.</strong> Names, brands and technical words are where mistakes hide.</li>
     <li><strong>Apostrophes, commas and accents in file names are fine.</strong> So are network drives, as long as they stay connected for the whole job.</li>
     <li><strong>Nothing is uploaded.</strong> All of it runs on your PC. That's why we can sign NDAs without a conversation about it.</li>
     <li><strong>Old outputs clean themselves up</strong> after 30 days. Move anything you want to keep into the project folder.</li>

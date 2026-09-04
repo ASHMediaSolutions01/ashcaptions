@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import re
 import shutil
 import threading
 from datetime import datetime, timedelta, timezone
@@ -196,17 +197,28 @@ def clean_old_uploads(
     return removed
 
 
+_SCRATCH_ENTRY_RE = re.compile(r"^(job-\d+|ash-(burn|matte|preview)-.*|.*\.part)$")
+
+
 def sweep_tmp_dir(tmp_dir: Path) -> int:
     """Remove everything inside the per-job scratch directory. Called at
     startup, before the worker starts, so anything there is a leftover
     from a job that was killed mid-extract. Returns the entry count removed."""
     tmp_dir = Path(tmp_dir)
+    if _is_drive_root(tmp_dir):
+        log.error("refusing to sweep %s: it is a drive root (check tmp_dir in settings.json)", tmp_dir)
+        return 0
     try:
         entries = list(tmp_dir.iterdir())
     except OSError:
         return 0
     removed = 0
     for entry in entries:
+        # Only our own scratch entries (job-<id>, matte/burn staging). A
+        # mistyped tmp_dir in settings.json must not empty someone's folder.
+        if not _SCRATCH_ENTRY_RE.match(entry.name):
+            log.warning("leaving %s alone: not a scratch entry this app created", entry)
+            continue
         try:
             if entry.is_dir():
                 shutil.rmtree(entry)

@@ -273,16 +273,19 @@ def composite_filtergraph(
     constant-rate (matching the matte), optionally punched, then split:
     one copy gets the captions; the other is masked by the upscaled matte
     and laid over the captioned copy, so the person covers the captions.
-    The punch is applied to the matte too, so the two stay aligned.
+    The punch is applied to the matte too, so the two stay aligned, and
+    both inputs are rebased to start at t=0: a camera file whose first
+    video pts is not zero (MXF, AVCHD, some trimmed MOVs) would otherwise
+    pair frame N of the video with a later matte frame.
     """
     if fps <= 0:
         fps = 30.0
     punch = f",{punch_filter}" if punch_filter else ""
     return (
-        f"[0:v]fps={fps:g}{punch}[base];"
+        f"[0:v]setpts=PTS-STARTPTS,fps={fps:g}{punch}[base];"
         "[base]split[b1][b2];"
         f"[b1]{caption_filter}[cap];"
-        f"[1:v]fps={fps:g},scale={width}:{height}:flags=bicubic,format=gray{punch}[al];"
+        f"[1:v]setpts=PTS-STARTPTS,fps={fps:g},scale={width}:{height}:flags=bicubic,format=gray{punch}[al];"
         "[b2][al]alphamerge[fg];"
         "[cap][fg]overlay=0:0:format=auto,format=yuv420p[out]"
     )

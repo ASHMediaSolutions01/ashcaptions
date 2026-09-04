@@ -21,7 +21,7 @@ clicking.
 That's it. You now have:
 
 - An **ASH Captions** icon on your Desktop and in the Start Menu.
-- Two folders: `C:\AshCaptions\in` and `C:\AshCaptions\out`.
+- Three folders: `C:\AshCaptions\in`, `C:\AshCaptions\out` and `C:\AshCaptions\glossaries`.
 - The app running quietly in your system tray, and starting automatically
   every time you log in.
 
@@ -136,9 +136,11 @@ Useful flags:
   need PyInstaller installed, ffmpeg fetched, or `__main__.py` to exist yet.
 - `--skip-ffmpeg` -- build without ffmpeg, for local iteration only. **Not
   shippable** -- every job will fail without it.
-- `--windowed` -- drop the console window, once the tray app owns its own
-  logging (spec section 12: errors must stay reachable from the tray menu
-  either way).
+- `--console` -- keep a console window (debugging only). The default is
+  windowed: the logon task launches the app silently, the tray owns "Open
+  log file", and fatal startup errors still show a message box. The first
+  published build (0.4.0) was a console build by mistake; every editor got a
+  black window at logon and closing it killed the running job.
 
 The build **fails loudly** if `src/ash_captions/web/static/` is missing or
 incomplete, rather than shipping a control page that silently 404s -- this

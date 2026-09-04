@@ -51,6 +51,8 @@ from ash_captions.config import app_root
 
 from .jobobject import CREATE_BREAKAWAY_FROM_JOB
 
+log = logging.getLogger(__name__)
+
 logger = logging.getLogger("ash_captions.app.updater")
 
 MANIFEST_URL = (
@@ -351,6 +353,29 @@ def _default_spawn_helper(argv: list[str]) -> None:
             exc,
         )
         subprocess.Popen(argv, creationflags=flags, close_fds=True)  # noqa: S603
+
+
+def clean_update_leftovers(updates_dir: Path | str) -> int:
+    """Remove what a finished update leaves behind: the staged tree (a full
+    copy of the bundle, ~1 GB) and downloaded zips (~700 MB each). Called
+    at startup, when no apply can be in flight. Returns entries removed."""
+    updates_dir = Path(updates_dir)
+    if not updates_dir.is_dir():
+        return 0
+    removed = 0
+    for entry in updates_dir.iterdir():
+        try:
+            if entry.is_dir() and entry.name == "staged_update":
+                shutil.rmtree(entry)
+                removed += 1
+            elif entry.is_file() and entry.suffix.lower() in (".zip", ".ps1", ".part"):
+                entry.unlink()
+                removed += 1
+        except OSError as exc:
+            log.warning("could not remove update leftover %s: %s", entry, exc)
+    if removed:
+        log.info("removed %d leftover update file(s) from %s", removed, updates_dir)
+    return removed
 
 
 def apply_update(

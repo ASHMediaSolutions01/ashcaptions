@@ -34,7 +34,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pkgtools.manifest import Artifact, build_artifact  # noqa: E402
 
+AV_STUB_DIR_NAME = "scripts/pkgtools/av_stub/av"
 REPO_ROOT = Path(__file__).resolve().parents[1]
+AV_STUB_DIR = REPO_ROOT / AV_STUB_DIR_NAME
 SRC_DIR = REPO_ROOT / "src"
 PACKAGE_DIR = SRC_DIR / "ash_captions"
 STATIC_DIR = PACKAGE_DIR / "web" / "static"
@@ -84,7 +86,7 @@ NOTICE_FILES: tuple[Path, ...] = (LICENSE_PATH, NOTICES_PATH)
 # --collect-all targets that are collected only when importable: PyAV is a
 # faster-whisper dependency in a normal install, but PyInstaller aborts on a
 # --collect-all for a package that is not there, and a dry run must not.
-OPTIONAL_COLLECT_ALL = ("av",)
+OPTIONAL_COLLECT_ALL: tuple[str, ...] = ()  # PyAV is excluded on purpose; see the av stub
 
 # The bundled Whisper model is an HF cache root (see fetch_model.py): the
 # runtime hands app_root()/models to faster-whisper as its cache_dir.
@@ -276,7 +278,7 @@ def build_pyinstaller_args(
     notice_files: Sequence[Path] = NOTICE_FILES,
     collect_all_optional: Sequence[str] = (),
     app_name: str = APP_NAME,
-    console: bool = True,
+    console: bool = False,
 ) -> list[str]:
     """Build the argv PyInstaller.__main__.run() expects, for a onedir build.
 
@@ -328,6 +330,9 @@ def build_pyinstaller_args(
         # `--model-dir build\models` silently became build/build\models and
         # the build failed. Verified on the first real release rehearsal.
         args += ["--add-data", f"{Path(model_dir).resolve()};models"]
+    # PyAV is excluded (its wheel carries a GPL-built FFmpeg); a stub satisfies
+    # faster-whisper's import. Audio reaches the model as a numpy array.
+    args += ["--exclude-module", "av", "--add-data", f"{AV_STUB_DIR};av"]
     return args
 
 
@@ -394,9 +399,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Build without bundling ffmpeg. For local iteration only -- not shippable.",
     )
     parser.add_argument(
+        "--console",
+        dest="windowed",
+        action="store_false",
+        help="Keep a console window (debugging only; every editor would see it at logon).",
+    )
+    parser.add_argument(
         "--windowed",
         action="store_true",
-        help="Build without a console window (once the tray app owns its own logging).",
+        default=True,
+        help="(default) No console window: the tray app owns its logging and the logon task launches it silently.",
     )
     parser.add_argument(
         "--dry-run",

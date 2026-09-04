@@ -116,10 +116,8 @@ public `ashcaptions-releases` repo needs a seed commit first, see INSTALL.md).
 
 ### v0.3 — pick your look (done, this release)
 The Studio, saved transcripts, burn-only jobs, 36 looks with left/right
-alignment and the card-box effect. Still open from v0.3: the published
-installer and the update banner in real use; the style editor does not yet
-expose `align` and `card_box` (edit the JSON, or pick one of the shipped
-looks).
+alignment and the card-box effect. The style editor exposes `align` and
+`card_box` since v0.4.
 
 ### v0.4 — short-form effects and clients (done, this release)
 Behind-the-speaker captions, clients with per-client glossaries, the style

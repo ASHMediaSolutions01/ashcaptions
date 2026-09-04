@@ -234,13 +234,25 @@ class TestCleanOldUploads:
 
 
 class TestSweepTmpDir:
-    def test_removes_everything_inside(self, tmp_path: Path) -> None:
+    def test_removes_our_scratch_entries_and_leaves_foreign_files_alone(self, tmp_path: Path) -> None:
+        """A mistyped tmp_dir in settings.json must not empty someone's folder:
+        only entries this app creates (job-<id>, staging dirs, .part files)
+        are swept."""
         (tmp_path / "job-3").mkdir()
         (tmp_path / "job-3" / "clip.wav").write_bytes(b"x")
-        (tmp_path / "stray.wav").write_bytes(b"x")
+        (tmp_path / "leftover.part").write_bytes(b"x")
+        (tmp_path / "holiday-photos.jpg").write_bytes(b"x")
 
         assert sweep_tmp_dir(tmp_path) == 2
-        assert list(tmp_path.iterdir()) == []
+        assert [p.name for p in tmp_path.iterdir()] == ["holiday-photos.jpg"]
+
+    def test_refuses_a_drive_root(self, tmp_path: Path, monkeypatch) -> None:
+        from ash_captions.app import lifecycle
+
+        (tmp_path / "job-1").mkdir()
+        monkeypatch.setattr(lifecycle, "_is_drive_root", lambda p: True)
+        assert sweep_tmp_dir(tmp_path) == 0
+        assert (tmp_path / "job-1").is_dir()
 
     def test_missing_dir_is_fine(self, tmp_path: Path) -> None:
         assert sweep_tmp_dir(tmp_path / "nope") == 0

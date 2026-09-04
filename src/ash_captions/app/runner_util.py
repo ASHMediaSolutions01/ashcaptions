@@ -7,6 +7,7 @@ parameters without crashing against an older module."""
 from __future__ import annotations
 
 import dataclasses
+import logging
 import inspect
 import os
 import shutil
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from ash_captions import languages
+
+log = logging.getLogger(__name__)
 
 # Base weights for the progress bar. Transcription dominates real runtime
 # (spec section 9: "timing quality is the feature"), so it must dominate
@@ -177,7 +180,11 @@ def client_for_watch_path(path: Path, watch_dir: Path) -> str | None:
         return None
     try:
         return sanitize_client_name(relative.parts[0])
-    except ValueError:
+    except ValueError as exc:
+        log.warning(
+            "watch folder %r is not a usable client name (%s); running with the shared glossary only",
+            relative.parts[0], exc,
+        )
         return None
 
 

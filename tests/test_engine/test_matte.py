@@ -32,8 +32,8 @@ def test_ensure_matte_model_returns_an_existing_file(tmp_path):
 
 def test_composite_graph_shape():
     graph = matte.composite_filtergraph(caption_filter="ass=captions.ass", width=1080, height=1920, fps=30)
-    assert graph.startswith("[0:v]fps=30[base];[base]split[b1][b2];[b1]ass=captions.ass[cap];")
-    assert "[1:v]fps=30,scale=1080:1920" in graph and "format=gray[al]" in graph
+    assert graph.startswith("[0:v]setpts=PTS-STARTPTS,fps=30[base];[base]split[b1][b2];[b1]ass=captions.ass[cap];")
+    assert "[1:v]setpts=PTS-STARTPTS,fps=30,scale=1080:1920" in graph and "format=gray[al]" in graph
     assert "[b2][al]alphamerge[fg];[cap][fg]overlay=0:0:format=auto,format=yuv420p[out]" in graph
 
 

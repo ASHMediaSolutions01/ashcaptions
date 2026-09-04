@@ -205,7 +205,8 @@ Long files work; they just take a while.
 | 90 minutes | ~30–40 min | ~30 min | ~1.5–2 h |
 
 - **Leave the terminal window open and the PC awake.** If the app stops
-  mid-job, the job restarts from the beginning next time.
+  mid-job, the job picks up again next time (the transcript is kept, so only
+  the unfinished stage is redone).
 - **You can close the browser tab.** The job keeps running; open the page again
   any time.
 - **Watch the clock, not the bar.** "Running for 23 min" ticking means it is
@@ -239,8 +240,8 @@ live on it, and every look one click away.
    minutes for a 5-minute 1080p file.
 
 What you see in the Studio is what gets burned: the browser draws the captions
-with the same engine ffmpeg uses. The `.srt` and `.ass` in the output folder
-are rewritten each time you pick a look.
+with the same engine ffmpeg uses. The `.ass` in the output folder is rewritten
+each time you pick a look; the `.srt` (plain text, no styling) is unchanged.
 
 ### The 36 looks
 
@@ -376,7 +377,9 @@ C:\AshCaptions\ash-captions.log
 ## Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
-  languages very good. **Always skim the result before delivering** — names,
+  languages very good. **Arabic**: the `.srt` and transcript are fine; for a
+  styled look use CLEAN or POP, not the karaoke looks (the sweep runs the wrong
+  way for right-to-left text). **Always skim the result before delivering** — names,
   brands and technical words are where mistakes hide.
 - **Apostrophes, commas and accents in file names are fine.** So are network
   drives, as long as they stay connected for the whole job.

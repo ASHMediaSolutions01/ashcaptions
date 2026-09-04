@@ -84,6 +84,23 @@ def sane_fps(value: float) -> float:
     return value
 
 
+def _rotation_degrees(stream: dict) -> int:
+    """The stream's display rotation in degrees (0, 90, 180, 270), from the
+    display-matrix side data (modern) or the legacy ``rotate`` tag."""
+    value = None
+    for side in stream.get("side_data_list") or []:
+        if isinstance(side, dict) and "rotation" in side:
+            value = side["rotation"]
+            break
+    if value is None:
+        value = (stream.get("tags") or {}).get("rotate")
+    try:
+        degrees = int(round(float(value)))
+    except (TypeError, ValueError):
+        return 0
+    return degrees % 360
+
+
 def probe_video(
     video_path: Path | str, *, ffprobe_path: Path | str = DEFAULT_FFPROBE_PATH
 ) -> VideoInfo:
@@ -97,7 +114,8 @@ def probe_video(
         str(ffprobe_path),
         "-v", "error",
         "-show_entries",
-        "stream=codec_type,codec_name,width,height,avg_frame_rate:format=duration",
+        "stream=codec_type,codec_name,width,height,avg_frame_rate"
+        ":stream_side_data=rotation:stream_tags=rotate:format=duration",
         "-of", "json",
         str(video_path),
     ]
@@ -127,6 +145,13 @@ def probe_video(
         video = next(s for s in streams if s.get("codec_type") == "video")
         width = int(video["width"])
         height = int(video["height"])
+        # Phones store portrait video as 1920x1080 plus a 90-degree display
+        # matrix; ffmpeg auto-rotates on decode, so the frames the captions
+        # are drawn on are 1080x1920. Without this swap a phone reel got a
+        # landscape PlayRes (captions ~1.8x too big) and the matte composite
+        # refused to merge frames of different sizes.
+        if _rotation_degrees(video) % 180 == 90:
+            width, height = height, width
     except (json.JSONDecodeError, KeyError, StopIteration, TypeError, ValueError, AttributeError) as exc:
         raise ProbeError(
             f"ffprobe gave no usable video stream for {video_path.name}"
