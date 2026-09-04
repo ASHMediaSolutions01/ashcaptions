@@ -99,7 +99,7 @@ The `-e` matters: without it the styles and fonts are not found.
 **5b. The 24 caption fonts** and their licences (about 1 minute):
 
 ```
-.venv\Scripts\python.exe scriptsetch_fonts.py
+.venv\Scripts\python.exe scripts\fetch_fonts.py
 ```
 
 You should see `wrote 24 font file(s)`.
