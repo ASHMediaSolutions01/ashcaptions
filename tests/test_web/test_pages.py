@@ -55,3 +55,32 @@ def test_theme_respects_reduced_motion_and_has_one_focus_ring():
     assert "prefers-reduced-motion: reduce" in theme
     assert ":focus-visible { box-shadow: var(--focus)" in theme
     assert ".badge::before" in theme  # a dot next to the word, never colour alone
+
+
+def test_finished_queue_rows_show_one_primary_action_and_no_bar():
+    """Spec v0.5 section 5: one primary button per row (Open in Studio; Retry
+    on a failed row), the housekeeping as subtle buttons, and a finished job
+    shows its pill and time rather than a full green bar."""
+    from ash_captions.web.app import STATIC_DIR
+
+    queue_js = (STATIC_DIR / "queue.js").read_text(encoding="utf-8")
+    actions = queue_js[queue_js.index("function actionsFor") : queue_js.index("// ---- actions ----")]
+    assert actions.count('"btn small primary"') == 1  # Open in Studio
+    assert 'button("Retry", "primary"' in actions
+    assert 'button("Open folder", "subtle"' in actions
+    assert 'button("Copy path", "subtle"' in actions
+    assert 'button("Remove", "quiet"' in actions
+    assert 'refs.track.hidden = finished' in queue_js
+    assert 'stageText = "Done"' not in queue_js  # the badge already says Done
+
+
+def test_disabled_primary_button_stays_readable():
+    from ash_captions.web.app import STATIC_DIR
+
+    theme = (STATIC_DIR / "theme.css").read_text(encoding="utf-8")
+    assert ".btn.primary:disabled" in theme
+    assert ".btn.subtle {" in theme
+    # The old rule faded every disabled button to 45%, which made the filled
+    # Start button an unreadable purple ghost. (The nav's disabled Studio
+    # link keeps its own 0.45; that one is a link, not a button.)
+    assert '.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45;' not in theme

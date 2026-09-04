@@ -147,13 +147,24 @@ kbd { font-size: 12px; background: var(--raised); border: 1px solid var(--line-s
   cursor: pointer;
 }
 .btn:hover { background: #2b303c; border-color: #4a5162; }
-.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.6; cursor: not-allowed; }
+/* A disabled filled button keeps its shape and a readable label (muted on
+   raised is 5.8:1) instead of fading to a purple ghost. */
+.btn.primary:disabled, .btn.primary[aria-disabled="true"] {
+  opacity: 1;
+  background: var(--raised);
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
 .btn.primary { background: var(--accent-fill); border-color: transparent; color: #fff; }
 .btn.primary:hover:not(:disabled) { background: var(--accent-fill-hover); }
 .btn.large { min-height: 40px; padding: 8px 18px; font-size: 15px; }
 .btn.small { min-height: 28px; padding: 3px 10px; font-size: 13px; font-weight: 500; }
 .btn.quiet { background: transparent; border-color: transparent; color: var(--accent); }
 .btn.quiet:hover { background: var(--accent-soft); border-color: transparent; }
+/* Secondary actions on a queue row: outlined, quieter than the one primary. */
+.btn.subtle { background: transparent; border-color: var(--line); color: var(--ink-soft); font-weight: 500; }
+.btn.subtle:hover { background: var(--raised); border-color: var(--line-strong); color: var(--ink); }
 .btn.danger { color: var(--bad); }
 .btn.danger:hover { background: var(--bad-soft); border-color: var(--bad); }
 .btn .spinner { width: 14px; height: 14px; border-width: 2px; }
