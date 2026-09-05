@@ -8,6 +8,7 @@
 <!-- __VERSION__ is stamped with the running version when served (web/app.py). -->
 <link rel="stylesheet" href="/static/theme.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/style_editor.css?v=__VERSION__">
+<link rel="stylesheet" href="/static/look_card.css?v=__VERSION__">
 </head>
 <body>
 
@@ -32,7 +33,6 @@
     <div id="style-list" role="listbox" aria-label="Styles"></div>
     <div class="picker-actions">
       <button type="button" class="btn small" id="duplicate-btn">Duplicate</button>
-      <button type="button" class="btn small" id="reset-btn" hidden>Reset to built-in</button>
       <button type="button" class="btn small danger" id="delete-btn" hidden>Delete</button>
     </div>
   </section>
@@ -45,6 +45,11 @@
 
     <div class="sample-wrap" aria-hidden="true">
       <div class="sample" id="sample"></div>
+    </div>
+
+    <div class="scope-notice" id="scope-notice" hidden role="status">
+      <p id="scope-notice-text"></p>
+      <button type="button" class="btn small" id="scope-reset-btn" hidden>Reset to built-in</button>
     </div>
 
     <div class="tabs" role="tablist" aria-label="Style settings">
@@ -76,8 +81,8 @@
       </div>
     </div>
 
-    <!-- Deliberately not exposed here: colors.shadow and the "exit"
-         transition. Both round-trip unchanged through Save. -->
+    <!-- Deliberately not exposed here: colors.shadow. It round-trips
+         unchanged through Save. -->
     <div class="panel" id="panel-colours" role="tabpanel" aria-labelledby="tab-colours" hidden>
       <div class="colour-row">
         <label class="colour-field"><span>Text</span><input type="color" id="colour-text"></label>
@@ -93,9 +98,25 @@
         <div class="radio-row" id="active-word-effect-group"></div>
         <p class="hint" id="active-word-help">Box highlight and Scale + box show one word at a time, each in its own box. Bar behind the whole caption keeps every word on one bar and marks the active word by colour: the news lower-third look.</p>
       </div>
-      <div class="field">
-        <span class="field-label">Entrance</span>
-        <div class="radio-row" id="entrance-effect-group"></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">Entrance</span>
+          <div class="radio-row" id="entrance-effect-group"></div>
+        </div>
+        <div class="field speed-field">
+          <label for="entrance-duration-input">Speed (ms)</label>
+          <input type="number" id="entrance-duration-input" min="0" max="2000" step="10">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">Exit</span>
+          <div class="radio-row" id="exit-effect-group"></div>
+        </div>
+        <div class="field speed-field">
+          <label for="exit-duration-input">Speed (ms)</label>
+          <input type="number" id="exit-duration-input" min="0" max="2000" step="10">
+        </div>
       </div>
     </div>
 
@@ -155,12 +176,20 @@
       <p class="hint" id="preview-time-hint">Pick a moment where someone is talking.</p>
     </div>
 
-    <button type="button" class="btn primary" id="render-btn">Render preview</button>
+    <button type="button" class="btn primary" id="render-btn">Preview 3 seconds</button>
     <div id="preview-status" role="status"></div>
 
     <div id="preview-output" hidden>
       <video id="preview-video" controls></video>
+      <p class="hint">This is a 3-second preview. To export the whole video, open the job in the Studio.</p>
     </div>
+
+    <!-- Track C's export control (spec 6.3): mounted only when the chosen
+         preview source resolves to a real queued job -- see
+         style_editor_preview.js. Empty until export.js is merged and its
+         <script> tag added below (see the comment near the bottom of
+         this file); the mount call there is already guarded. -->
+    <div id="export"></div>
   </section>
 
 </main>
@@ -168,6 +197,17 @@
 <script src="/static/api.js?v=__VERSION__"></script>
 <script src="/static/nav.js?v=__VERSION__"></script>
 <script src="/static/toast.js?v=__VERSION__"></script>
+<script src="/static/vendor/jassub/jassub.umd.js?v=__VERSION__"></script>
+<script src="/static/look_card_ass.js?v=__VERSION__"></script>
+<script src="/static/look_card.js?v=__VERSION__"></script>
+<!-- Track C's export control (spec 6.3) isn't merged into this worktree
+     yet (web/static/export.js doesn't exist). The mount point above and
+     the guarded window.AshExport.mount() call in style_editor_preview.js
+     are already in place; once C merges, the integrator adds a <script>
+     tag for export.js here, the same way the other static/*.js files
+     just above are loaded. Not added unconditionally now because
+     test_studio.py's asset-resolution check would fail on a 404 for a
+     file this track doesn't own. -->
 <script src="/static/style_editor_preview.js?v=__VERSION__"></script>
 <script src="/static/style_editor.js?v=__VERSION__"></script>
 </body>

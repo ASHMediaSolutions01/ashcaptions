@@ -10,11 +10,13 @@
   const styleFilter = $("style-filter");
   const styleCount = $("style-count");
   const duplicateBtn = $("duplicate-btn");
-  const resetBtn = $("reset-btn");
   const deleteBtn = $("delete-btn");
   const editingName = $("editing-name");
   const editingBadge = $("editing-badge");
   const sample = $("sample");
+  const scopeNotice = $("scope-notice");
+  const scopeNoticeText = $("scope-notice-text");
+  const scopeResetBtn = $("scope-reset-btn");
   const fontSelect = $("font-select");
   const sizeInput = $("size-input");
   const spacingInput = $("spacing-input");
@@ -25,6 +27,9 @@
   const colourBox = $("colour-box");
   const activeWordGroup = $("active-word-effect-group");
   const entranceGroup = $("entrance-effect-group");
+  const exitGroup = $("exit-effect-group");
+  const entranceDurationInput = $("entrance-duration-input");
+  const exitDurationInput = $("exit-duration-input");
   const positionGroup = $("position-group");
   const alignGroup = $("align-group");
   const saveBtn = $("save-btn");
@@ -44,7 +49,11 @@
     ["card_box", "Bar behind the whole caption"], ["karaoke", "Karaoke fill"],
     ["shake", "Shake"], ["glow", "Glow"],
   ];
+  // Entrance and exit share one set of values (schema.py's TRANSITION_EFFECTS).
   const ENTRANCE_EFFECTS = [["none", "None"], ["fade", "Fade"], ["rise", "Rise"], ["slide", "Slide"]];
+  const EXIT_EFFECTS = ENTRANCE_EFFECTS;
+  const MIN_DURATION_MS = 0;
+  const MAX_DURATION_MS = 2000; // schema.py's _MAX_DURATION_MS
   const POSITIONS = [["bottom", "Bottom"], ["center", "Center"], ["top", "Top"], ["lower_third", "Lower third"]];
   const ALIGNS = [["left", "Left"], ["center", "Centre"], ["right", "Right"]];
   const DEFAULT_ALIGN = "center"; // schema default for styles saved before `align` existed
@@ -100,6 +109,7 @@
   }
   buildRadioGroup(activeWordGroup, "active-word-effect", ACTIVE_WORD_EFFECTS, (value) => { draft.active_word.effect = value; });
   buildRadioGroup(entranceGroup, "entrance-effect", ENTRANCE_EFFECTS, (value) => { draft.entrance.effect = value; });
+  buildRadioGroup(exitGroup, "exit-effect", EXIT_EFFECTS, (value) => { draft.exit.effect = value; });
   buildRadioGroup(positionGroup, "position", POSITIONS, (value) => { draft.layout.position = value; });
   buildRadioGroup(alignGroup, "align", ALIGNS, (value) => { draft.layout.align = value; });
 
@@ -154,8 +164,15 @@
     return style.shipped ? { text: "built-in", cls: "" } : { text: "custom", cls: "custom" };
   }
 
+  // Cards created for the picker's rows, so a re-render (every filter
+  // keystroke) can release their pool slots and IntersectionObserver
+  // registrations before the list is rebuilt -- see look_card.js.
+  let styleListCards = [];
+
   function renderStyleList() {
     const query = styleFilter.value.trim().toLowerCase();
+    for (const card of styleListCards) if (window.AshLookCard) window.AshLookCard.dispose(card);
+    styleListCards = [];
     styleList.innerHTML = "";
     let shown = 0;
     for (const style of styles) {
@@ -167,7 +184,14 @@
       item.tabIndex = 0;
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", style.name === selectedName ? "true" : "false");
+      if (window.AshLookCard) {
+        const thumb = window.AshLookCard.create(style.definition, { fontDivisor: 6, fontMin: 7, fontMax: 10 });
+        thumb.className += " ash-look-card--thumb";
+        styleListCards.push(thumb);
+        item.appendChild(thumb);
+      }
       const name = document.createElement("span");
+      name.className = "style-item-name";
       name.textContent = style.name;
       const tagEl = document.createElement("span");
       tagEl.className = `tag${tag.cls ? ` ${tag.cls}` : ""}`;
@@ -196,15 +220,31 @@
     renderStyleList();
     editingName.textContent = name;
     hidePrompts();
-    if (style.customized_locally) {
-      editingBadge.textContent = "Built-in, customized locally";
-      showSaveStatus(`Every job using "${name}" (the watch folder too) gets this edited version, not the original.`, true);
-    } else {
-      editingBadge.textContent = style.shipped ? "Built-in" : "Custom";
-      hideSaveStatus();
-    }
+    hideSaveStatus();
+    editingBadge.textContent = style.customized_locally
+      ? "Built-in, customized locally"
+      : style.shipped ? "Built-in" : "Custom";
     deleteBtn.hidden = style.shipped;
-    resetBtn.hidden = !style.shipped;
+    renderScopeNotice(style);
+  }
+
+  // A saved style is written to the user styles directory and layered over
+  // the shipped one *by name* -- a job stores only the style's name, never
+  // its content -- so editing a built-in look changes what every job using
+  // it renders as, including old jobs the moment they're restyled or
+  // burned again. This says so next to Save, every time a shipped look is
+  // open, whether or not it already carries a local override.
+  function renderScopeNotice(style) {
+    if (!style.shipped) {
+      scopeNotice.hidden = true;
+      scopeResetBtn.hidden = true;
+      return;
+    }
+    scopeNotice.hidden = false;
+    scopeNoticeText.textContent =
+      `Saving changes "${style.name}" for every job that uses it on this PC, including old jobs ` +
+      "if they are restyled or burned again. Files already produced keep the captions they have.";
+    scopeResetBtn.hidden = !style.customized_locally;
   }
 
   // A deep copy with the fields this form edits guaranteed present.
@@ -229,6 +269,9 @@
     colourBox.value = toHex6(draft.colors.box);
     setRadioValue(activeWordGroup, draft.active_word.effect);
     setRadioValue(entranceGroup, draft.entrance.effect);
+    entranceDurationInput.value = draft.entrance.duration_ms;
+    setRadioValue(exitGroup, draft.exit.effect);
+    exitDurationInput.value = draft.exit.duration_ms;
     setRadioValue(positionGroup, draft.layout.position);
     setRadioValue(alignGroup, draft.layout.align || DEFAULT_ALIGN);
     renderSample();
@@ -242,35 +285,30 @@
     return newHex6 + alpha;
   }
 
-  // ---- The live sample: "Pick this look" in the draft's own type ----
+  // ---- The live sample: "Pick this look", animated, real renderer ----
+  // Spec 4: the header preview shares look_card.js with the style list
+  // (below) and the Studio's looks list -- one component, three places.
+  // The sample element is created once and updated in place so an
+  // editor dragging a colour or size slider doesn't tear down and
+  // rebuild an IntersectionObserver-registered card on every "input"
+  // event; the update itself is debounced (a JASSUB setTrack per
+  // keystroke is needless work the editor never sees, since frames only
+  // repaint a few times a second anyway).
+
+  let sampleCard = null;
+  let sampleUpdateTimer = null;
 
   function renderSample() {
-    if (!draft) return;
-    const c = draft.colors || {};
-    const effect = (draft.active_word || {}).effect;
+    if (!draft || !window.AshLookCard) return;
     sample.className = `sample ${draft.layout.position || "bottom"} ${draft.layout.align || DEFAULT_ALIGN}`;
-    sample.style.fontFamily = `${JSON.stringify(draft.font || "Inter")}, sans-serif`;
-    sample.style.fontSize = `${Math.round(Math.min(44, Math.max(16, (draft.size || 72) / 2.2)))}px`;
-    sample.style.letterSpacing = `${(draft.letter_spacing || 0) * 0.02}em`;
-    sample.style.textTransform = draft.uppercase ? "uppercase" : "none";
-    sample.style.color = c.text || "#fff";
-    sample.style.textShadow = `0 0 2px ${c.outline || "#000"}, 0 0 4px ${c.outline || "#000"}, 0 2px 4px ${c.shadow || "transparent"}`;
-    sample.innerHTML = "";
-    const boxed = ["box", "scale_box"].includes(effect);
-    const barred = effect === "card_box";
-    ["Pick", "this", "look"].forEach((word, i) => {
-      const w = document.createElement("span");
-      w.className = "w";
-      w.textContent = word;
-      if (barred && c.box) w.style.background = c.box;
-      if (i === 1) {
-        w.style.color = c.active || c.text || "#fff";
-        if (boxed && c.box) w.style.background = c.box;
-        if (effect === "glow") w.style.textShadow = `0 0 10px ${c.active || "#fff"}`;
-        if (effect === "pop" || effect === "scale_box") w.style.transform = "scale(1.1)";
-      }
-      sample.appendChild(w);
-    });
+    if (!sampleCard) {
+      sampleCard = window.AshLookCard.create(draft);
+      sample.innerHTML = "";
+      sample.appendChild(sampleCard);
+      return;
+    }
+    clearTimeout(sampleUpdateTimer);
+    sampleUpdateTimer = setTimeout(() => window.AshLookCard.update(sampleCard, draft), 150);
   }
 
   // ---- Field bindings ----
@@ -283,6 +321,20 @@
   colourActive.addEventListener("input", () => { draft.colors.active = withPreservedAlpha(draft.colors.active, colourActive.value); renderSample(); });
   colourOutline.addEventListener("input", () => { draft.colors.outline = withPreservedAlpha(draft.colors.outline, colourOutline.value); renderSample(); });
   colourBox.addEventListener("input", () => { draft.colors.box = withPreservedAlpha(draft.colors.box, colourBox.value); renderSample(); });
+
+  function clampDuration(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(MAX_DURATION_MS, Math.max(MIN_DURATION_MS, Math.round(n)));
+  }
+  entranceDurationInput.addEventListener("input", () => {
+    draft.entrance.duration_ms = clampDuration(entranceDurationInput.value, draft.entrance.duration_ms);
+    renderSample();
+  });
+  exitDurationInput.addEventListener("input", () => {
+    draft.exit.duration_ms = clampDuration(exitDurationInput.value, draft.exit.duration_ms);
+    renderSample();
+  });
 
   // ---- Save / Save as / Duplicate / Delete / Reset ----
 
@@ -343,7 +395,7 @@
     showSaveStatus("Deleted.", true);
   });
 
-  resetBtn.addEventListener("click", async () => {
+  scopeResetBtn.addEventListener("click", async () => {
     if (!selectedName) return;
     // Removes the local override on the server, so the shipped definition
     // is back in force for every job -- not just loaded into the form.

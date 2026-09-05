@@ -74,9 +74,29 @@
   async function onSourceChanged() {
     const other = sourceSelect.value === OTHER;
     pathField.hidden = !other;
+    mountExport(other ? null : jobsByPath.get(sourceSelect.value));
     if (other) { timeHint.textContent = "Pick a moment where someone is talking."; return; }
     const job = jobsByPath.get(sourceSelect.value);
     if (job) await defaultStartFrom(job);
+  }
+
+  // Track C's export control (spec 6.3) needs a real job id, which only
+  // exists when the chosen preview source is one of the recent jobs in the
+  // dropdown -- an "Other..." path picked by hand or Browse... has none.
+  // Guarded because that script may not be merged into this worktree yet
+  // (see style_editor.html) and because AshExport.mount() expects a fresh
+  // mount point on every call, not one it owns across source changes.
+  const exportMount = $("export");
+  function mountExport(job) {
+    if (!exportMount) return;
+    exportMount.innerHTML = "";
+    if (!job || !window.AshExport || typeof window.AshExport.mount !== "function") return;
+    try {
+      window.AshExport.mount(job.id);
+    } catch (err) {
+      // Never let an export-control bug break the style editor.
+      console.error("AshExport.mount:", err);
+    }
   }
 
   // The first cue's start in the job's .srt: the first second with speech,
