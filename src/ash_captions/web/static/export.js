@@ -290,10 +290,16 @@
 
   // Self-mount on the Studio page (/studio/{id}): the interfaces table's
   // `mount(jobId)` is the contract other pages call explicitly (the Styles
-  // page, track D); the Studio's own #export is this file's job to wire.
+  // page); the Studio's own #export is this file's job to wire.
+  //
+  // Only on /studio/. The Styles page has an #export too, and taking the
+  // last path segment there asked the server for a job called
+  // "style-editor" -- a 404 in the console on every visit, and a burn
+  // button that could never work.
   const studioMount = document.getElementById("export");
-  if (studioMount) {
-    const jobId = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
+  const parts = location.pathname.split("/").filter(Boolean);
+  if (studioMount && parts.length === 2 && parts[0] === "studio") {
+    const jobId = decodeURIComponent(parts[1]);
     if (jobId) mount(jobId, studioMount);
   }
 })();

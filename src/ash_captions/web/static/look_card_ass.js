@@ -18,7 +18,12 @@
   "use strict";
 
   const LOOP_MS = 2000;
-  const PLAY_RES = [1080, 1920]; // styles/render.py's DEFAULT_PLAY_RES
+  // A card is a wide strip, not a phone screen. Rendering the real
+  // 1080x1920 frame into a 40px-tall card put the text at about 1.5px --
+  // seen on the Styles page, where every bottom-placed look came out blank.
+  // A card-shaped PlayRes previews the *look*: its type, colour and motion,
+  // centred. Where it sits on the video is the Placement tab's job.
+  const PLAY_RES = [1080, 240];
   const SAMPLE_WORDS = ["Pick", "this", "look"];
 
   const RISE_OFFSET_PX = 46;
@@ -248,12 +253,25 @@
     return `Dialogue: ${layer || 0},${formatAssTime(start)},${formatAssTime(end)},${styleName},,0,0,0,,${text}`;
   }
 
+  // The sample is always centred in its card, whatever the look does on a
+  // real video: a card is too short to show a lower third and still show
+  // the type. Margins go with it, or a 120px bottom margin eats the strip.
+  function previewLayout(style) {
+    const layout = style.layout || {};
+    return Object.assign({}, style, {
+      layout: Object.assign({}, layout, {
+        position: "center", align: "center", margin_l: 0, margin_r: 0, margin_v: 0,
+      }),
+    });
+  }
+
   // A 3-word sample card, evenly sliced across one LOOP_MS cycle -- close
   // enough to how styles/render.py sizes a per-word event (from the next
   // word's start, or the card's end for the last word) to show the same
   // shape of motion without a real transcript to draw timing from.
   function buildSampleAss(style) {
     const [width, height] = PLAY_RES;
+    style = previewLayout(style);
     const baseName = safeStyleName(style.name);
     const boxName = baseName + "_BOX";
     const header = assHeader(style, baseName, boxName, width, height);

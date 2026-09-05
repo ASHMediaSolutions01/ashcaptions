@@ -24,10 +24,13 @@
 .picker-card .card-head { margin-bottom: 0; }
 #style-list { display: flex; flex-direction: column; gap: 4px; max-height: calc(100vh - 290px); overflow-y: auto; scrollbar-width: thin; }
 .style-item {
-  display: flex;
+  /* The animated preview sits above the name, not beside it. Beside it, a
+     198px column left about 90px for the text and three different looks
+     all read "BOTTOM..." -- seen on the real page, at 1366x768. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
   padding: 7px 10px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);

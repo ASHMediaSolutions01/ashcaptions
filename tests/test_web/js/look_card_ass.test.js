@@ -111,7 +111,13 @@ test("buildSampleAss: a standard (pop) look gets one event per word, header firs
   const out = ass.buildSampleAss(style);
   assert.match(out, /^\[Script Info\]/);
   assert.match(out, /PlayResX: 1080/);
-  assert.match(out, /PlayResY: 1920/);
+  // A card is a wide strip, not a phone screen. Rendering the real 9:16
+  // frame into a 40px-tall card put the text at about 1.5px and every
+  // bottom-placed look came out blank on the Styles page. The card frame
+  // is card-shaped, and the sample is centred in it whatever the look
+  // does on a real video -- position belongs to the Placement tab.
+  assert.match(out, /PlayResY: 240/);
+  assert.match(out, /,5,0,0,0,1\n/); // \an5, no margins
   const dialogues = out.split("\n").filter((line) => line.startsWith("Dialogue:"));
   assert.equal(dialogues.length, ass.SAMPLE_WORDS.length);
   assert.match(dialogues[0], /\\fad\(120,0\)/); // entrance only on the first word
