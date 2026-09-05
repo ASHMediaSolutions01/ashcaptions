@@ -20,13 +20,13 @@ not a growing list of special cases per look.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..styles.render import render_ass as _render_ass_styled
 from ..styles.render import write_ass as _write_ass_styled
-from ..styles.schema import Style
+from ..styles.schema import Style, WordStyle
 from .rules import Card
 from .transcribe import Segment
 
@@ -137,6 +137,7 @@ def render_ass(
     *,
     play_res: tuple[int, int] = DEFAULT_PLAY_RES,
     anchor: tuple[float, float] | None = None,
+    word_styles: Mapping[tuple[float, float], WordStyle] | None = None,
 ) -> str:
     """Render styled, word-by-word ASS captions with the active word highlighted.
 
@@ -153,7 +154,7 @@ def render_ass(
     captions to one point. Only the ``Style`` path supports it.
     """
     if isinstance(preset, Style):
-        return _render_ass_styled(cards, preset, play_res=play_res, anchor=anchor)
+        return _render_ass_styled(cards, preset, play_res=play_res, anchor=anchor, word_styles=word_styles)
     if anchor is not None:
         raise TypeError("anchor is only supported for Style captions, not the legacy AssPreset")
 
@@ -172,9 +173,12 @@ def write_ass(
     *,
     play_res: tuple[int, int] = DEFAULT_PLAY_RES,
     anchor: tuple[float, float] | None = None,
+    word_styles: Mapping[tuple[float, float], WordStyle] | None = None,
 ) -> Path:
     if isinstance(preset, Style):
-        return _write_ass_styled(cards, path, preset, play_res=play_res, anchor=anchor)
+        return _write_ass_styled(
+            cards, path, preset, play_res=play_res, anchor=anchor, word_styles=word_styles
+        )
     return _write(render_ass(cards, preset, play_res=play_res, anchor=anchor), path)
 
 
