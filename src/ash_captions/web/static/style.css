@@ -123,7 +123,11 @@
 .job-meta { font-size: 12.5px; color: var(--muted); }
 .job-meta .client { color: var(--ink-soft); font-weight: 600; }
 .job-status-line { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 600; min-height: 18px; }
-.job-status-line .job-stage:empty + .job-elapsed { margin-left: auto; }
+/* A finished row has no stage text. Left as an empty flex item it would
+   push the time to the far right of an otherwise empty line, leaving a band
+   of dead space in every done row; dropping it keeps the time in the text
+   column under the name and the settings. */
+.job-status-line .job-stage:empty { display: none; }
 .job.done .job-stage { color: var(--ok); }
 .job.failed .job-stage { color: var(--bad); }
 .job.pending .job-stage { color: var(--pending); }

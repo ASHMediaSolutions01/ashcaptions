@@ -1,11 +1,17 @@
 # ASH Captions
 
-In-house captioning for Ash Media Solutions. Drop in a video, get back accurate,
-styled, correctly-timed captions in 54 languages — running entirely on your own
-PC, so client footage never leaves the building.
+In-house captioning for Ash Media Solutions. Give it a video, get back
+accurate, styled, correctly-timed captions in 54 languages, running entirely
+on your own PC so client footage never leaves the building.
 
-Outputs `.srt` for Premiere and Resolve, styled `.ass` captions, a plain
-transcript, an optional English translation, and an optional burned-in MP4.
+When a job finishes, the **Studio** opens: the video plays with the captions
+drawn on it, 36 looks can be tried on the real footage, the caption can be
+dragged anywhere on the frame, and for a language nobody on the desk speaks
+the transcript panel shows the English under each line with the uncertain
+words marked. Then burn it in, or take the `.srt` into Premiere or Resolve.
+
+Outputs `.srt`, styled `.ass`, a plain transcript, an optional English
+translation, and an optional burned-in MP4.
 
 ---
 
@@ -13,7 +19,8 @@ transcript, an optional English translation, and an optional burned-in MP4.
 
 | If you are… | Read |
 |---|---|
-| **An editor setting this up on your PC** | **[docs/EDITOR-GUIDE.md](docs/EDITOR-GUIDE.md)** — setup commands with screenshots; the same guide lives inside the app at `/guide` |
+| **An editor setting this up on your PC** | **[docs/EDITOR-GUIDE.md](docs/EDITOR-GUIDE.md)** — setup, captioning, looks and troubleshooting, with screenshots. The same guide is inside the app at `/guide`, and [docs/ASH-Captions-Guide.html](docs/ASH-Captions-Guide.html) is a single file you can open before installing anything |
+| Wondering what this is and what it costs | [PRODUCT.md](PRODUCT.md) |
 | Building or releasing a version | [docs/INSTALL.md](docs/INSTALL.md) |
 | Picking up the project | [docs/STATUS.md](docs/STATUS.md) — what works, the roadmap, known limits |
 | Asking *why* something is built this way | [the design spec](docs/superpowers/specs/2026-08-29-ash-captions-design.md) |

@@ -101,25 +101,44 @@ def test_studio_video_gets_the_job_thumbnail_as_poster(client, app):
     assert 'poster="' not in (STATIC_DIR / "studio.html").read_text(encoding="utf-8")
 
 
-def test_theme_defines_the_v05_studio_classes():
-    """Tracks A (caption drag) and B (caption check) attach these classes to
-    their own markup; the styling is E's (spec v0.5 work split)."""
+def test_the_studio_pieces_are_styled_beside_their_scripts():
+    """The drag handle and the caption-check panel are styled in the files
+    that ship with their scripts, not in theme.css. theme.css once carried a
+    draft of both, written against markup that changed before it shipped;
+    its `.caption-drag` rule landed on the full-frame drag *layer* and drew
+    a dashed border around every video in the Studio."""
     from ash_captions.web.app import STATIC_DIR
 
+    drag = (STATIC_DIR / "studio_drag.css").read_text(encoding="utf-8")
+    check = (STATIC_DIR / "studio_check.css").read_text(encoding="utf-8")
     theme = (STATIC_DIR / "theme.css").read_text(encoding="utf-8")
-    for selector in (
-        ".caption-drag {",
-        ".caption-drag.dragging",
-        ".caption-drag-label",
-        ".transcript-panel {",
-        ".transcript-panel .line.active",
-        ".word.uncertain-amber",
-        ".word.uncertain-red",
-        ".chip-warn {",
-        ".toggle {",
-        ".toggle input:checked",
-    ):
-        assert selector in theme, selector
+
+    assert ".caption-handle" in drag and ".caption-handle:hover" in drag
+    assert "pointer-events: none" in drag, "the layer must not swallow clicks on the picture"
+    assert ".check-row" in check and ".check-src" in check and ".check-en" in check
+
+    for stale in (".caption-drag {", ".caption-drag-label", ".transcript-panel", ".word.uncertain-"):
+        assert stale not in theme, f"{stale} belongs beside its script, not in theme.css"
+
+
+def test_the_caption_check_panel_fills_its_width():
+    """The panel is a flex column, which sized the list to its content and
+    left half the panel empty; the English sits beside the source when there
+    is room, which is the whole point of the panel."""
+    from ash_captions.web.app import STATIC_DIR
+
+    check = (STATIC_DIR / "studio_check.css").read_text(encoding="utf-8")
+    assert "align-self: stretch" in check
+    assert "@container" in check and "grid-template-columns" in check
+
+
+def test_a_finished_row_keeps_its_time_in_the_text_column():
+    """An empty stage element pushed the time to the far right of an
+    otherwise empty line, leaving a band of dead space in every done row."""
+    from ash_captions.web.app import STATIC_DIR
+
+    style = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    assert ".job-status-line .job-stage:empty { display: none; }" in style
 
 
 def test_guide_script_lives_in_its_own_file(client, app):

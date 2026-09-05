@@ -12,7 +12,23 @@
 .check-chip:disabled { color: var(--muted); background: transparent; border-color: var(--line); cursor: default; }
 .check-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .check-spacer { flex: 1 1 auto; }
-.check-list { position: relative; overflow-y: auto; scrollbar-width: thin; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.check-list {
+  position: relative;
+  align-self: stretch;          /* the panel is a flex column that would otherwise size this to its content */
+  container-type: inline-size;  /* the row layout below follows the panel's width, not the window's */
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+/* Wide enough for two columns: source on the left, English level with it on
+   the right, so the eye compares a line with its translation instead of
+   reading down. Narrower panels keep them stacked. */
+@container (min-width: 720px) {
+  .check-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; align-items: start; }
+  .check-en { padding-top: 1px; }
+}
 .check-row { padding: 6px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .check-row:last-child { border-bottom: none; }
 .check-row:hover { background: var(--raised); }
