@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Protocol
 
 from ..engine.rules import Card
@@ -208,7 +209,7 @@ def free_events(
 
     lines: list[str] = []
     for index, word in enumerate(words):
-        slot = slots[assignment[index]]
+        slot = _at_intensity(slots[assignment[index]], style.layout.intensity)
         start = word.start
         end = card.end if card.end > start else start + 0.01
         event_ms = max(1, round((end - start) * 1000))
@@ -217,6 +218,26 @@ def free_events(
         text = _prepare_word_text(word.text, style)
         lines.append(_dialogue_line(start, end, style_name, f"{{{tags}}}{text}"))
     return lines
+
+
+def _at_intensity(slot: Slot, intensity: float) -> Slot:
+    """The slot as the look's ``intensity`` dial leaves it.
+
+    1.0 is the slot list as its author drew it; 0.0 is a tidy stack on the
+    centre column at the look's own size. Only ``x`` and ``scale`` move --
+    ``y`` stays put, or the words would land on top of one another.
+
+    Applied *after* ``assign_slots``, so the dial changes how dramatic a
+    layout is and never which word goes where. Both interpolations stay
+    inside the schema's own ranges, since each moves toward a value the
+    range already contains."""
+    if intensity >= 1.0:
+        return slot
+    return replace(
+        slot,
+        x=0.5 + (slot.x - 0.5) * intensity,
+        scale=1.0 + (slot.scale - 1.0) * intensity,
+    )
 
 
 def _placement_for(

@@ -261,3 +261,62 @@ def test_braces_and_backslashes_are_escaped_like_every_other_renderer():
 def test_uppercase_applies():
     style = _style(uppercase=True)
     assert "2ND" in "".join(_events(style))
+
+
+# ---------------------------------------------------------------------------
+# the intensity dial
+# ---------------------------------------------------------------------------
+
+
+def _at(intensity: float) -> dict[str, str]:
+    return _by_word(_events(_style(layout={**FREE_STYLE["layout"], "intensity": intensity})))
+
+
+def test_intensity_1_is_the_look_as_its_author_drew_it():
+    assert _at(1.0) == _by_word(_events())
+
+
+def test_intensity_0_is_a_tidy_stack_on_the_centre_column_at_one_size():
+    events = _at(0.0)
+    for word in ("2nd", "Highest", "residential"):
+        assert _tag(events[word], "pos").startswith("540,"), (word, events[word])
+    # 540 is 0.50 x 1080 whatever the slot's own x was.
+    assert _tag(events["the"], "move").startswith("540,")
+    # Every word settles at the look's own size. The entrances still run --
+    # intensity is about spread and size, not about whether words animate --
+    # so it is the *settled* scale that flattens, not the tag it starts on.
+    assert "\\t(0,120,\\fscx100)" in events["2nd"]  # the 2.00 slot flattened
+    assert "\\t(0,120,\\fscx100)" in events["Highest"]
+    assert "\\t(0,240,\\fscx100\\fscy100)" in events["the"]
+    assert "\\fscx100\\fscy100" in events["residential"]  # entrance "none"
+
+
+def test_intensity_leaves_the_vertical_alone_so_words_never_stack_up():
+    """Only x and scale move; collapsing y would put two words on one
+    point, which is the thing the slot list exists to prevent."""
+    for word in ("2nd", "Highest", "residential"):
+        full, flat = _tag(_at(1.0)[word], "pos"), _tag(_at(0.0)[word], "pos")
+        assert full.split(",")[1] == flat.split(",")[1], word
+
+
+def test_intensity_interpolates_both_the_spread_and_the_sizes():
+    half = _at(0.5)
+    # slot 2 sits at x=0.40 (432 px); halfway to the centre column is 486.
+    assert _tag(half["Highest"], "pos") == "486,1344"
+    # ...and its 2.00x neighbour is halfway back to 100%.
+    assert "\\fscy150" in half["2nd"]
+
+
+def test_intensity_does_not_change_which_word_gets_which_slot():
+    """The dial changes how dramatic a layout is, never its assignment --
+    so it is applied after assign_slots, not before."""
+    for intensity in (1.0, 0.6, 0.0):
+        events = _at(intensity)
+        assert "\\i1" in events["the"] and "\\i1" not in events["2nd"]
+        assert "\\c&H00D4FF&" in events["2nd"]  # still the active-role slot
+        assert "\\c&H0A0A0A&" in events["Highest"]  # still the outline-role slot
+
+
+def test_intensity_scales_the_border_with_the_size_it_scales():
+    assert "\\bord10" in _at(1.0)["2nd"]  # 5 x 2.00
+    assert "\\bord5" in _at(0.0)["2nd"]  # 5 x 1.00

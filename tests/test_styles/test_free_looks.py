@@ -119,3 +119,24 @@ def test_the_free_looks_reach_the_web_layer_with_no_code_change():
         assert layout["mode"] == "free"
         assert layout["slots"] and isinstance(layout["slots"], list)
     json.dumps([row.model_dump() for row in rows.values()])
+
+
+# Slot centres must leave room for their own glyphs inside the platform
+# safe zones (TikTok/Reels put their interface over the top ~10% and
+# bottom ~12% of a 9:16 frame). This is the cheap guard for a new look;
+# test_free_real.py measures the actual ink on a burned frame.
+SAFE_CENTRE_BAND = (0.18, 0.82)
+
+
+@pytest.mark.parametrize("name", sorted(FREE_LOOKS))
+def test_every_slot_centre_leaves_room_for_the_platform_interface(name, shipped):
+    low, high = SAFE_CENTRE_BAND
+    for index, slot in enumerate(shipped[name].layout.slots):
+        assert low <= slot.y <= high, (name, index, slot.y)
+
+
+@pytest.mark.parametrize("name", sorted(FREE_LOOKS))
+def test_every_look_ships_at_full_intensity(name, shipped):
+    """The dial is for the editor to turn down; a shipped look is the
+    look as drawn."""
+    assert shipped[name].layout.intensity == 1.0

@@ -88,6 +88,7 @@ _MIN_MAX_WORDS, _MAX_MAX_WORDS = 1, 8
 _MIN_MARGIN, _MAX_MARGIN = 0, 2000
 _MIN_SLOT_SCALE, _MAX_SLOT_SCALE = 0.2, 3.0
 _MIN_SLOT_BORDER, _MAX_SLOT_BORDER = 0.0, 3.0
+_MIN_INTENSITY, _MAX_INTENSITY = 0.0, 1.0
 _MAX_SLOTS = _MAX_MAX_WORDS  # a card can never be wider than max_words
 
 
@@ -292,13 +293,21 @@ class Layout:
     # keeps it there while the next arrives -- see Slot and render_free.
     mode: str = "line"
     slots: tuple[Slot, ...] = ()
+    # How much of the look's drama to use, 0.0-1.0. 1.0 is the slot list
+    # as its author drew it; 0.0 is a tidy centred stack at one size.
+    # Free mode only -- it is the one dial that makes three free looks
+    # feel like a family rather than three fixed pictures.
+    intensity: float = 1.0
 
     @classmethod
     def from_dict(cls, data: dict, *, check_font: bool = True) -> "Layout":
         _reject_unknown_keys(
             "layout",
             data,
-            {"position", "max_words", "margin_l", "margin_r", "margin_v", "align", "mode", "slots"},
+            {
+                "position", "max_words", "margin_l", "margin_r", "margin_v", "align",
+                "mode", "slots", "intensity",
+            },
         )
         defaults = cls()
         position = _require_choice("layout.position", data.get("position", defaults.position), POSITIONS)
@@ -320,6 +329,11 @@ class Layout:
         )
         mode = _require_choice("layout.mode", data.get("mode", defaults.mode), LAYOUT_MODES)
         slots = _slots_from_list(data.get("slots", []), mode=mode, max_words=int(max_words), check_font=check_font)
+        intensity = _require_number(
+            "layout.intensity", data.get("intensity", defaults.intensity), lo=_MIN_INTENSITY, hi=_MAX_INTENSITY
+        )
+        if mode != "free" and intensity != defaults.intensity:
+            raise StyleValidationError('layout.intensity: intensity is only used by mode "free"')
         return cls(
             position=position,
             max_words=int(max_words),
@@ -329,6 +343,7 @@ class Layout:
             align=align,
             mode=mode,
             slots=slots,
+            intensity=float(intensity),
         )
 
     def to_dict(self) -> dict:
