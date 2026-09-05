@@ -8,7 +8,6 @@ from __future__ import annotations
 from ash_captions.engine.rules import (
     GAP_SNAP_THRESHOLD_SECONDS,
     MIN_CARD_DURATION_SECONDS,
-    SILENCE_GAP_SECONDS,
     Card,
     build_cards,
 )

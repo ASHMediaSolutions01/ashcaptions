@@ -394,7 +394,7 @@ def test_word_timestamps_are_clamped_monotonic_across_segments(tmp_path, monkeyp
     ]
     words = transcriber.transcribe(_audio(tmp_path)).words
     assert [(w.start, w.end) for w in words] == [(0.0, 1.0), (1.0, 1.6), (1.6, 1.6), (2.0, 2.0)]
-    assert all(later.start >= earlier.end for earlier, later in zip(words, words[1:]))
+    assert all(later.start >= earlier.end for earlier, later in zip(words, words[1:], strict=False))
 
 
 def test_cancellation_is_a_transcription_error_and_defaults_keep_old_fakes_working():

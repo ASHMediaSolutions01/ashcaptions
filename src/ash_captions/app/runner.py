@@ -42,14 +42,6 @@ from ash_captions.styles.render import anchor_pixels
 from .catalogue import dialect_preset_id
 from .runner_transcript import _reusable_transcript, _save_transcript
 from .runner_translate import run_translate_only
-from .transcript import (
-    SourceStamp,
-    TranscriptError,
-    TranscriptRecord,
-    load_transcript,
-    save_transcript,
-    transcript_path,
-)
 from .lifecycle import write_job_marker
 from .runner_util import (  # noqa: F401 - re-exported for tests and callers
     _CANCEL_EXCEPTIONS,
@@ -111,7 +103,7 @@ def _probe_or_none(video_path: Path, ffmpeg_path: Path) -> "engine.VideoInfo | N
         return None
 
 
-def build_run_job(
+def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional stage
     settings: Settings,
     *,
     watch_dir: Path,
@@ -156,7 +148,7 @@ def build_run_job(
             )
         return lazy_transcriber["instance"]
 
-    def run_job(job: Job, report: Callable[[int], None]) -> AfterDone | None:
+    def run_job(job: Job, report: Callable[[int], None]) -> AfterDone | None:  # noqa: C901
         set_stage: Callable[[str], None] = getattr(report, "stage", None) or (lambda _name: None)
         should_stop: Callable[[], bool] | None = getattr(report, "should_stop", None)
         video_path = Path(job.input_path)

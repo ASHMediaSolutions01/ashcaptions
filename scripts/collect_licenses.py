@@ -79,7 +79,7 @@ def collect(dest: Path, *, fetch_gpl3: bool = True) -> list[tuple[str, str, str,
             last_exc: Exception | None = None
             for url in GPL3_URLS:
                 try:
-                    with urllib.request.urlopen(url, timeout=60) as resp:
+                    with urllib.request.urlopen(url, timeout=60) as resp:  # noqa: S310 - fixed https URLs
                         text = resp.read()
                     break
                 except Exception as exc:  # noqa: BLE001 - try the next mirror

@@ -155,7 +155,7 @@ class TestCancellation:
 
 class TestDoneBeforeDelete:
     def test_after_done_runs_only_once_the_row_says_done(self, store: JobStore) -> None:
-        job_id = store.insert_job("a.mp4", "out/a", make_options())
+        store.insert_job("a.mp4", "out/a", make_options())
         seen: list[JobStatus] = []
 
         def run_job(job: Job, report):

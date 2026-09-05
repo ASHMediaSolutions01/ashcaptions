@@ -56,6 +56,10 @@ scripts/      build, release, and one-time fetch tooling
 
 Tests: `.venv\Scripts\python.exe -m pip install -e ".[dev]"` once, then `.venv\Scripts\python.exe -m pytest tests -q`.
 The real-ffmpeg and real-font suites run with `ASH_REAL_FFMPEG=1` set.
+Lint: `.venv\Scripts\python.exe -m ruff check src tests scripts installer`.
+Both run on every push in `.github/workflows/ci.yml`. Green there is the floor,
+not the bar: before a release the built bundle is launched and driven for real,
+because every serious bug this project has had passed its tests first.
 
 Licence: proprietary, all rights reserved (see `LICENSE`); the repo is public
 so the studio's editors can clone it without an account. Third-party notices

@@ -16,20 +16,14 @@ What is real and what is staged: the queue figures render the live job
 list through ``AshQueue.render`` with statuses rewritten (one running row,
 one failed row) so the guide shows every state without waiting for a job;
 ids and filenames stay real so the thumbnails load. The Studio figures are
-real. ``moving-caption.png`` and ``check-captions.png`` use the real
-elements when tracks A and B are merged (``.caption-drag`` /
-``.transcript-panel`` present) and otherwise inject the markup from the
-plan's Interfaces block, printing "staged" so the run after integration
-is not forgotten.
+real, ``moving-caption.png`` and ``check-captions.png`` included: both use
+the live elements (``.caption-drag`` / ``.transcript-panel``). The fallback
+that injects the markup and prints "staged" survives only for a tree where
+those two features are missing; a normal run never reaches it.
 
-Note (track E, v0.5): this script was written and unit-tested but was not
-run for this build. Tracks A and B (caption drag, caption check) were not
-yet merged, and the plan asked this track not to `pip install playwright`
-or touch pyproject.toml, so no browser capture happened here. The existing
-PNGs under web/static/guide/ and docs/images/ (from the pre-v0.5 build)
-were left in place so the in-app guide keeps rendering. Once Playwright is
-installed and A/B are merged, run this with `--job 5` to refresh every
-figure, including the two new ones, then scripts/export_guide.py.
+All nine figures were last captured for v0.5.1. After changing anything the
+guide shows, rerun this with ``--job 5`` and then scripts/export_guide.py,
+so the in-app guide and docs/ASH-Captions-Guide.html agree with the build.
 
 Playwright is imported inside ``main`` so the pure helpers (``FIGURES``,
 ``stage_jobs``, ``spoken_moment``) are testable without it.
@@ -290,8 +284,8 @@ def staged_check_lines(session: Session) -> list[dict]:
 def _cues(srt_text: str) -> list[dict]:
     cues = []
     for block in srt_text.replace("\r", "").split("\n\n"):
-        lines = [l for l in block.split("\n") if l.strip()]
-        idx = next((i for i, l in enumerate(lines) if "-->" in l), -1)
+        lines = [line for line in block.split("\n") if line.strip()]
+        idx = next((i for i, line in enumerate(lines) if "-->" in line), -1)
         if idx < 0:
             continue
         m = _SRT_TIME.match(lines[idx].strip())

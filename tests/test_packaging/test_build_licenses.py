@@ -1,5 +1,4 @@
 """The bundle ships the collected licence texts and refuses to build without them."""
-from pathlib import Path
 
 import pytest
 

@@ -132,7 +132,7 @@ def _postprocess_words(
         kwargs = {"entries": entries} if entries is not None else {}
         texts = batch([word.text for word in words], resolved, glossary_path, **kwargs)
         if len(texts) == len(words):
-            return tuple(dataclasses.replace(word, text=text) for word, text in zip(words, texts))
+            return tuple(dataclasses.replace(word, text=text) for word, text in zip(words, texts, strict=True))
     return tuple(
         dataclasses.replace(word, text=_postprocess_text(word.text, resolved, glossary_path, entries))
         for word in words

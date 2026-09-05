@@ -14,7 +14,7 @@ from ash_captions.app.adapter import QueueAdapter, _to_web_job
 from ash_captions.pipeline.db import JobStore
 from ash_captions.web.interfaces import JobNotRetryableError
 from ash_captions.web.models import Job as WebJob
-from ash_captions.web.models import JobOptions, JobStatus
+from ash_captions.web.models import JobOptions
 
 
 def make_options(**overrides) -> JobOptions:

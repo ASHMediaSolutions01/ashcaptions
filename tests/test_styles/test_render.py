@@ -232,21 +232,21 @@ def test_uppercase_transform_applied_to_every_word():
 def test_position_bottom_uses_alignment_2():
     style = Style.from_dict({"name": "X", "layout": {"position": "bottom"}}, check_font=False)
     out = render_ass([card([word("one", 0.0, 0.3)])], style)
-    style_line = next(l for l in out.splitlines() if l.startswith("Style: X,"))
+    style_line = next(line for line in out.splitlines() if line.startswith("Style: X,"))
     assert style_line.split(",")[18] == "2"
 
 
 def test_position_top_uses_alignment_8():
     style = Style.from_dict({"name": "X", "layout": {"position": "top"}}, check_font=False)
     out = render_ass([card([word("one", 0.0, 0.3)])], style)
-    style_line = next(l for l in out.splitlines() if l.startswith("Style: X,"))
+    style_line = next(line for line in out.splitlines() if line.startswith("Style: X,"))
     assert style_line.split(",")[18] == "8"
 
 
 def test_position_center_uses_alignment_5():
     style = Style.from_dict({"name": "X", "layout": {"position": "center"}}, check_font=False)
     out = render_ass([card([word("one", 0.0, 0.3)])], style)
-    style_line = next(l for l in out.splitlines() if l.startswith("Style: X,"))
+    style_line = next(line for line in out.splitlines() if line.startswith("Style: X,"))
     assert style_line.split(",")[18] == "5"
 
 
@@ -255,7 +255,7 @@ def test_layout_margins_appear_in_style_line():
         {"name": "X", "layout": {"margin_l": 11, "margin_r": 22, "margin_v": 33}}, check_font=False
     )
     out = render_ass([card([word("one", 0.0, 0.3)])], style)
-    style_line = next(l for l in out.splitlines() if l.startswith("Style: X,"))
+    style_line = next(line for line in out.splitlines() if line.startswith("Style: X,"))
     fields = style_line.split(",")
     assert fields[19:22] == ["11", "22", "33"]
 
@@ -353,7 +353,7 @@ def test_glow_widens_and_restores_the_outline():
     base = max(1, round(80 * 0.055))  # 4
     assert f"\\bord{max(base + 3, base * 2)}\\blur4\\be1" in out
     assert f"\\bord{base}\\blur0\\be0" in out
-    style_line = next(l for l in out.splitlines() if l.startswith("Style: G,"))
+    style_line = next(line for line in out.splitlines() if line.startswith("Style: G,"))
     assert style_line.split(",")[16] == str(base)  # header Outline column matches the restore value
 
 

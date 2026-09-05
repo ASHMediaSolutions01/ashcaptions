@@ -1,15 +1,8 @@
 """scripts/guide_screenshots.py: the pure helpers that stage a fake queue for
 the screenshot script and find a moment worth screenshotting in an .srt, kept
 importable and testable without Playwright installed (Playwright is imported
-lazily inside main(), per the v0.5 plan's constraint that this track does not
-add it to the venv or to pyproject.toml).
-
-Track E wrote this script but did not run it: the two figures that need
-tracks A and B's markup (moving-caption.png, check-captions.png) are staged
-in FIGURES for when the integrated build can capture them for real (see the
-plan's Task 6 note and the report to the lead). guide.html is not yet wired
-to those two names, so the figure-list check here is a subset, not the exact
-match the original plan's version used."""
+lazily inside main(), so the module and these tests run on a machine that has
+no browser)."""
 from __future__ import annotations
 
 import re
@@ -21,15 +14,13 @@ import guide_screenshots
 GUIDE_HTML = Path(__file__).resolve().parents[2] / "src" / "ash_captions" / "web" / "static" / "guide.html"
 
 
-def test_every_referenced_guide_figure_has_a_capture():
-    """Every screenshot guide.html currently references has a matching
-    capture function; FIGURES may additionally define captures not yet
-    linked from the page (moving-caption.png, check-captions.png -- staged
-    until tracks A and B are merged and the real capture is rerun)."""
+def test_the_guide_and_the_capture_script_name_exactly_the_same_figures():
+    """Exact match, both ways. A figure added to the guide without a capture
+    goes stale at the next recapture; a capture nothing references is dead
+    code that still costs a browser page on every run."""
     referenced = set(re.findall(r'src="/static/guide/([^"]+)"', GUIDE_HTML.read_text(encoding="utf-8")))
     names = {f.name for f in guide_screenshots.FIGURES}
-    assert referenced <= names
-    assert {"moving-caption.png", "check-captions.png"} <= names
+    assert referenced == names
 
 
 def _job(job_id: str, status: str = "done") -> dict:

@@ -22,7 +22,7 @@ from .models import PreviewJob, PreviewRequest, PreviewStatus, StyleSummary
 from .validation import validate_local_path
 
 
-def build_styles_router(get_style_provider, get_preview_renderer) -> APIRouter:
+def build_styles_router(get_style_provider, get_preview_renderer) -> APIRouter:  # noqa: C901 - one branch per route
     """`get_style_provider`/`get_preview_renderer` are the same `Request ->
     StyleProvider`/`Request -> PreviewRenderer` closures `create_app()`
     builds for its own routes -- passed in rather than reconstructed here

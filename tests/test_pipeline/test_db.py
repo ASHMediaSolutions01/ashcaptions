@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ash_captions.pipeline.db import Job, JobOptions, JobStatus, JobStore
+from ash_captions.pipeline.db import JobOptions, JobStatus, JobStore
 
 
 def make_options(**overrides: object) -> JobOptions:

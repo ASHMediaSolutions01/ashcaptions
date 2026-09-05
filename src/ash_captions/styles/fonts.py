@@ -217,7 +217,7 @@ def download_licenses(
             continue
         try:
             url = _license_url(entry)
-            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310
             with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
                 text = response.read().decode("utf-8")
             out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -254,7 +254,7 @@ def _fetch_font_bytes(entry: FontEntry) -> bytes:
         raise RuntimeError(
             f"no font file URL in the Google Fonts CSS response for {entry.family!r}"
         )
-    font_request = urllib.request.Request(font_url, headers={"User-Agent": _USER_AGENT})
+    font_request = urllib.request.Request(font_url, headers={"User-Agent": _USER_AGENT})  # noqa: S310
     with urllib.request.urlopen(font_request, timeout=30) as response:  # noqa: S310
         data = response.read()
     if not data.startswith(_SFNT_MAGICS):

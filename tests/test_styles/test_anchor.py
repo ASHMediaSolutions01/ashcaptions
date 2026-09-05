@@ -87,7 +87,7 @@ def test_the_style_lines_alignment_is_unchanged_by_an_anchor():
     style = Style.from_dict({"name": "X", "layout": {"position": "top", "align": "left"}}, check_font=False)
     plain = render_ass(cards(), style)
     pinned = render_ass(cards(), style, anchor=ANCHOR)
-    style_line = lambda out: next(l for l in out.splitlines() if l.startswith("Style: X,"))  # noqa: E731
+    style_line = lambda out: next(line for line in out.splitlines() if line.startswith("Style: X,"))  # noqa: E731
     assert style_line(plain) == style_line(pinned)
     assert style_line(pinned).split(",")[18] == "7"  # top-left stays \an7 around the moved anchor
 

@@ -105,7 +105,7 @@ def resolve_release_url(variant: str = DEFAULT_VARIANT, *, timeout: float = 30) 
         req = urllib.request.Request(
             RELEASES_API, headers={"Accept": "application/vnd.github+json"}
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - GitHub releases API
             data = json.loads(resp.read().decode("utf-8"))
         tag_name = data.get("tag_name")
         for asset in data.get("assets", []):
@@ -124,7 +124,7 @@ def download_file(url: str, dest: Path, *, timeout: float = 300) -> Path:
     network for the actual artifact."""
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url, timeout=timeout) as resp, dest.open("wb") as f:
+    with urllib.request.urlopen(url, timeout=timeout) as resp, dest.open("wb") as f:  # noqa: S310
         while True:
             chunk = resp.read(1024 * 1024)
             if not chunk:

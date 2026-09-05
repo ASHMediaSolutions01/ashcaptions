@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import sys
 import zipfile
-from pathlib import Path
 
 import build
 import pytest

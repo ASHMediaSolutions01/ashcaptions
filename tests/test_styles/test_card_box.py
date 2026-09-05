@@ -15,10 +15,10 @@ def test_card_box_puts_the_bar_on_the_base_style_and_keeps_the_whole_caption():
     style = Style.from_dict({"name": "NEWSY", "font": "Inter", "colors": {"box": "#0B2545EE"},
                              "active_word": {"effect": "card_box"}, "layout": {"position": "lower_third", "align": "left"}})
     ass = render_ass([_card()], style, play_res=(1920, 1080))
-    base = [l for l in ass.splitlines() if l.startswith("Style: NEWSY,")][0]
+    base = [line for line in ass.splitlines() if line.startswith("Style: NEWSY,")][0]
     fields = base.split(",")
     assert fields[15] == "3"  # BorderStyle: opaque box on the base style
-    events = [l for l in ass.splitlines() if l.startswith("Dialogue:")]
+    events = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
     assert events, "no events"
     # every event carries all three words (the whole caption is on screen)
     assert all("Breaking" in e and "news" in e and "tonight" in e for e in events)
@@ -28,6 +28,6 @@ def test_card_box_puts_the_bar_on_the_base_style_and_keeps_the_whole_caption():
 def test_box_effect_still_shows_one_word_at_a_time():
     style = Style.from_dict({"name": "POPPY", "font": "Inter", "active_word": {"effect": "box", "box": True}})
     ass = render_ass([_card()], style, play_res=(1080, 1920))
-    events = [l for l in ass.splitlines() if l.startswith("Dialogue:")]
+    events = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
     assert len(events) == 3
     assert not any("Breaking" in e and "news" in e for e in events)

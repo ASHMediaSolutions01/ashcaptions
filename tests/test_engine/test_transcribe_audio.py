@@ -35,7 +35,6 @@ def test_other_formats_fall_back_to_the_path(tmp_path):
 
 def test_the_bundle_av_stub_satisfies_the_import_and_refuses_use(tmp_path):
     import importlib.util
-    import sys
 
     stub_dir = Path(__file__).resolve().parents[2] / "scripts" / "pkgtools" / "av_stub" / "av"
     spec = importlib.util.spec_from_file_location("av_stub_for_test", stub_dir / "__init__.py")
@@ -43,7 +42,7 @@ def test_the_bundle_av_stub_satisfies_the_import_and_refuses_use(tmp_path):
     spec.loader.exec_module(module)
     assert module.__version__.endswith("ash-stub")
     try:
-        module.open
+        _ = module.open
     except RuntimeError as exc:
         assert "ffmpeg.exe" in str(exc)
     else:  # pragma: no cover

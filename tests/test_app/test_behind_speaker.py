@@ -9,7 +9,6 @@ import pytest
 
 from ash_captions import engine
 from ash_captions.app.runner import build_run_job
-from ash_captions.config import Settings
 from ash_captions.pipeline.db import STAGES, JobOptions, JobStore
 
 from .test_studio_pipeline import CountingTranscriber, _job, _settings, _video

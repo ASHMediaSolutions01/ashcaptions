@@ -1,12 +1,15 @@
 # ASH Captions — Status
 
-Last verified: **2026-09-04**. Everything under "verified" below was checked by
+Last verified: **2026-09-05**. Everything under "verified" below was checked by
 running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
 - Tests: **1536 passing, 30 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
+- Every push runs the suite and `ruff check` on Windows:
+  `.github/workflows/ci.yml`. Green there is the floor; a release is still
+  only real once the built bundle has been launched and driven by hand.
 - Design decisions and their reasoning: `docs/superpowers/specs/2026-08-29-ash-captions-design.md`
 - Editor instructions: `docs/EDITOR-GUIDE.md`, and inside the app at `/guide`
 - Build/release instructions: `docs/INSTALL.md`

@@ -3,7 +3,6 @@ outputs; a burn_only job re-renders from it without transcribing; the queue
 adapter can restyle in place and enqueue a burn-only job."""
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 
 import pytest

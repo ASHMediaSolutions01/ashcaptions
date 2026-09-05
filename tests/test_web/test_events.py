@@ -177,7 +177,7 @@ class TestSingleLongLivedConnection:
             for progress in (0.1, 0.4, 0.9):
                 await asyncio.sleep(POLL * 3)
                 fake_queue.force_status(job.id, JobStatus.RUNNING, progress=progress, stage="transcribe")
-                frame = await conn.frame_matching(lambda f: _is_jobs_frame(f) and _jobs_in(f)[0]["progress"] == progress)
+                frame = await conn.frame_matching(lambda f, p=progress: _is_jobs_frame(f) and _jobs_in(f)[0]["progress"] == p)
                 seen.append(_jobs_in(frame)[0])
             assert not conn.task.done()
             await conn.close_tab()

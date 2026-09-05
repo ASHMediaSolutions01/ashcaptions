@@ -25,6 +25,11 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.4",
     "httpx>=0.27",
+    "ruff>=0.16",
+    # scripts/guide_screenshots.py drives a real browser to recapture the
+    # guide figures. It also needs the browser itself, once per machine:
+    #     python -m playwright install chromium
+    "playwright>=1.48",
     # Build box only: scripts/build.py and scripts/fetch_model.py.
     "pyinstaller>=6.22,<7",
     "huggingface_hub>=1.29,<2",
@@ -50,3 +55,37 @@ ash_captions = ["web/static/*", "web/static/guide/*", "web/static/vendor/jassub/
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+# Linting. The selection is deliberately about correctness, not house style:
+# pyflakes and pycodestyle errors, bugbear traps, blind excepts (the codebase
+# already annotates the deliberate ones with `# noqa: BLE001`), bandit's
+# security checks, and a complexity ceiling. Formatting rules are left out so
+# the linter never argues about a diff.
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["src/ash_captions/web/static/vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "BLE", "S", "C901"]
+ignore = [
+    # Line length is a review question, not a build failure.
+    "E501",
+    # FastAPI's whole idiom is `Depends()` / `Query()` in a default argument.
+    "B008",
+    # `raise ValueError("plain words")` inside an except is how errors reach
+    # the editor's screen; the original is logged where it matters.
+    "B904",
+    # This app exists to drive ffmpeg, powershell and node. Every subprocess
+    # call is a fixed argument list built in code, never a shell string.
+    "S603",
+    "S607",
+    # `assert` is the test suite's whole vocabulary, and in src/ it is only
+    # ever an internal invariant for the type checker. Nothing runs under -O.
+    "S101",
+]
+
+[tool.ruff.lint.mccabe]
+# Today's ceiling, not an aspiration: three functions are above it and carry
+# an explicit `# noqa: C901`. Nothing new should join them.
+max-complexity = 15

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -72,7 +71,6 @@ def test_render_matte_with_a_fake_model_produces_a_playable_clip(tmp_path):
 
 
 def test_burn_command_with_matte_uses_a_complex_graph(tmp_path, monkeypatch):
-    from ash_captions.engine import burn as burn_mod
 
     monkeypatch.setattr(encoders, "available_encoders", lambda _p: frozenset({"libx264"}))
     monkeypatch.setattr(encoders, "ffmpeg_major_version", lambda _p: 8)

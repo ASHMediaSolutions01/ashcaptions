@@ -139,4 +139,4 @@ def _launch_detached(command: list[str]) -> None:
 
 
 def _startfile(path: str) -> None:
-    os.startfile(path)  # type: ignore[attr-defined]  # Windows-only, this app's only target
+    os.startfile(path)  # type: ignore[attr-defined]  # noqa: S606 - Windows-only, this app's only target

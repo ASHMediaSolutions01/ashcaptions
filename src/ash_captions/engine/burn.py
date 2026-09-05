@@ -37,9 +37,7 @@ removes its part file. Cancelling from inside: pass ``should_stop``.
 from __future__ import annotations
 
 import os
-import re
 import shutil
-import subprocess
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -67,7 +65,6 @@ from .ffmpeg_process import (
     ProgressCallback,
     StopCheck,
     _parse_progress_line,  # noqa: F401  (re-exported for tests and callers)
-    no_window_flags,
     run_ffmpeg,
 )
 from .probe import ProbeError, VideoInfo, ffprobe_beside, probe_video

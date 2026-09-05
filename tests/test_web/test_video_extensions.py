@@ -1,4 +1,4 @@
-"""The control page and the watch folder accept the same video types: a
+r"""The control page and the watch folder accept the same video types: a
 file that works dropped into in\ must not be refused by Browse."""
 from ash_captions.pipeline.watcher import VIDEO_EXTENSIONS
 from ash_captions.web.models import ALLOWED_VIDEO_EXTENSIONS

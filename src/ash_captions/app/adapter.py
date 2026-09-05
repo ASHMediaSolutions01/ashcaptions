@@ -214,7 +214,7 @@ class QueueAdapter:
         outside the frame."""
         job = self._require_job(job_id)
         record = self._transcript_for(job)
-        if not preset in styles.list_styles():
+        if preset not in styles.list_styles():
             raise ValueError(f"Unknown caption style {preset!r}")
         style = styles.resolve_style(preset)
         options = job.options if position is KEEP_POSITION else _with_position(job.options, position)
@@ -246,7 +246,7 @@ class QueueAdapter:
         self._capture_loop()
         job = self._require_job(job_id)
         self._transcript_for(job)  # raise now, not an hour later in the worker
-        if not preset in styles.list_styles():
+        if preset not in styles.list_styles():
             raise ValueError(f"Unknown caption style {preset!r}")
         if not Path(job.input_path).is_file():
             raise ValueError("The original video is no longer where it was, so it cannot be burned.")

@@ -56,7 +56,7 @@ def _escape(path: Path) -> str:
 
 
 def _near(pixel: tuple[int, int, int], colour: tuple[int, int, int], tolerance: int) -> bool:
-    return all(abs(a - b) <= tolerance for a, b in zip(pixel, colour))
+    return all(abs(a - b) <= tolerance for a, b in zip(pixel, colour, strict=True))
 
 
 def _glow_mint() -> Style:

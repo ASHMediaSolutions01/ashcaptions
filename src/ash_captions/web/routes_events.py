@@ -120,13 +120,13 @@ def build_events_router(get_queue: Callable[[Request], JobQueue]) -> APIRouter:
                     pending.cancel()
                     try:
                         await asyncio.wait({pending})
-                    except Exception:  # noqa: BLE001 - teardown must not raise over a closed connection
+                    except Exception:  # noqa: BLE001, S110 - teardown must not raise over a closed connection
                         pass
                 aclose = getattr(subscription, "aclose", None)
                 if aclose is not None:
                     try:
                         await aclose()
-                    except Exception:  # noqa: BLE001
+                    except Exception:  # noqa: BLE001, S110
                         pass
 
         return StreamingResponse(
