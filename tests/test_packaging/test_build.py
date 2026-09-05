@@ -22,7 +22,7 @@ def test_importing_build_does_not_import_pyinstaller():
 
 def test_read_project_version_reads_real_pyproject():
     version = build.read_project_version(build.PYPROJECT_PATH)
-    assert version == "0.5.0"
+    assert version == "0.5.1"
 
 
 def test_read_project_version_missing_key(tmp_path):

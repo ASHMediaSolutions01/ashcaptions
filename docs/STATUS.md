@@ -18,8 +18,20 @@ running it, not inferred.
 
 ## Where the project is
 
-**v0.5.0 is what master is now, and what is published** (2026-09-04). It is
-the build the six editors install and test. On top of v0.4.2:
+**v0.5.1 is what master is now, and what is published** (2026-09-05). It is
+the build the six editors install and test.
+
+0.5.1 is 0.5.0 plus what opening the pages on a 1366x768 laptop turned up: a
+dashed rectangle was drawn around every video in the Studio (two of the v0.5
+work tracks used one class name for different elements, and the losing
+draft, 110 lines of it, was dead or wrong); the caption-check panel used 589
+of its 1034 pixels, and now fills them with the English beside the source
+rather than under it; and a finished queue row no longer carries an empty
+band where its progress bar used to be. Guide screenshots recaptured.
+PRODUCT.md, which still described a nine-look watch-folder service on a
+shared office PC, now describes what shipped.
+
+On top of v0.4.2, v0.5 brought:
 
 - **Move the caption anywhere.** Drag it on the video in the Studio and the
   captions redraw there in about a second; arrow keys nudge by 1% of the

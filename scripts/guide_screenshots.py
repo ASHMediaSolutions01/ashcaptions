@@ -368,7 +368,11 @@ def fig_check_captions(s: Session) -> None:
     else:
         print("check-captions.png: staged (no caption-check panel on the page)")
         s.page.evaluate(STAGED_CHECK_MARKUP, staged_check_lines(s))
-    s.page.wait_for_timeout(200)
+    # The drag handle shows its dashed outline on hover or focus, and this
+    # figure is about the transcript, not the caption's position.
+    s.page.mouse.move(4, 4)
+    s.page.evaluate("document.activeElement && document.activeElement.blur()")
+    s.page.wait_for_timeout(300)
     shoot(s, "check-captions.png", selector=".stage-column")
 
 
