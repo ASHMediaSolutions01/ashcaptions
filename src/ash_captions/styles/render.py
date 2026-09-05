@@ -61,8 +61,10 @@ backslash inside the Text field -- a raw one would open an override
 block (or, for ``\\N``/``\\n``/``\\h``, be interpreted as a control code)
 that was never meant to be there. That is a rendering bug on ordinary
 transcripts ("use the {name} field") and an injection vector on
-adversarial ones, so every word goes through ``_escape_ass_text`` before
-it touches an f-string.
+adversarial ones, so every word goes through
+``render_word.escape_ass_text`` before it touches an f-string. That module
+also holds the per-word text and inline effect tags, including the editor's
+own per-word overrides (v0.6 design, section 2).
 """
 from __future__ import annotations
 
@@ -73,18 +75,23 @@ from ..engine.rules import Card
 from .ass_format import (
     ass_alignment,
     ass_header,
-    ass_inline_colour,
     format_ass_time,
     safe_style_name,
 )
-from .render_glow import HALO_LAYER, POP_HALF_MS, TEXT_LAYER, halo_line_text, scale_transform_tags
+from .render_glow import HALO_LAYER, TEXT_LAYER, halo_line_text
+from .render_word import (
+    WordStyles,
+    karaoke_override_tags,
+    line_text,
+    override_tags,
+    pop_scale_tags,
+    prepare_word_text,
+    scale_pct,
+    word_style_for,
+)
 from .schema import Style
 
 DEFAULT_PLAY_RES = (1080, 1920)  # vertical short-form default
-
-# Fullwidth lookalikes: visually close to the ASCII originals, structurally
-# inert to the ASS/libass tag parser.
-_ESCAPE_MAP = {"{": "｛", "}": "｝", "\\": "＼"}
 
 
 _RISE_OFFSET_PX = 46
@@ -102,6 +109,7 @@ def render_ass(
     *,
     play_res: tuple[int, int] | None = None,
     anchor: tuple[float, float] | None = None,
+    word_styles: WordStyles | None = None,
 ) -> str:
     """Render animated, word-by-word ASS captions for ``style``.
 
@@ -113,6 +121,13 @@ def render_ass(
     entrance) or starts there (exit), instead of relying on the Style
     line's margins; the Style line itself is untouched. ``None`` leaves
     the output exactly as it was without the feature.
+
+    ``word_styles`` maps a word's ``(start, end)`` to the ``WordStyle``
+    that overrides the look for that one word -- colour, size, weight,
+    slant (v0.6 design, section 2). Timings are unique and survive card
+    building, so no index arithmetic can drift out of alignment. ``None``
+    or an empty mapping renders byte-identical ``.ass`` to the renderer
+    before the feature existed; the merge itself is in ``render_word``.
     """
     width, height = _resolve_play_res(play_res)
     pinned = _resolve_anchor(anchor)
@@ -122,7 +137,7 @@ def render_ass(
 
     events: list[str] = []
     for card in cards:
-        events.extend(_card_events(card, style, base_name, box_name, width, height, pinned))
+        events.extend(_card_events(card, style, base_name, box_name, width, height, pinned, word_styles))
     return header + "\n".join(events) + ("\n" if events else "")
 
 
@@ -133,11 +148,13 @@ def write_ass(
     *,
     play_res: tuple[int, int] | None = None,
     anchor: tuple[float, float] | None = None,
+    word_styles: WordStyles | None = None,
 ):
-    """``render_ass`` to a file. ``play_res``/``anchor`` as for ``render_ass``."""
+    """``render_ass`` to a file. ``play_res``/``anchor``/``word_styles`` as
+    for ``render_ass``."""
     from pathlib import Path
 
-    content = render_ass(cards, style, play_res=play_res, anchor=anchor)
+    content = render_ass(cards, style, play_res=play_res, anchor=anchor, word_styles=word_styles)
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content, encoding="utf-8")
@@ -200,17 +217,24 @@ def _card_events(
     width: int,
     height: int,
     anchor: tuple[float, float] | None = None,
+    word_styles: WordStyles | None = None,
 ) -> list[str]:
     effect = style.active_word.effect
     if effect == "karaoke":
-        return _karaoke_events(card, style, base_name, width, height, anchor)
+        return _karaoke_events(card, style, base_name, width, height, anchor, word_styles)
     if effect in ("box", "scale_box"):
-        return _box_events(card, style, box_name, width, height, anchor)
-    return _standard_events(card, style, base_name, width, height, anchor)
+        return _box_events(card, style, box_name, width, height, anchor, word_styles)
+    return _standard_events(card, style, base_name, width, height, anchor, word_styles)
 
 
 def _standard_events(
-    card: Card, style: Style, style_name: str, width: int, height: int, anchor: tuple[float, float] | None = None
+    card: Card,
+    style: Style,
+    style_name: str,
+    width: int,
+    height: int,
+    anchor: tuple[float, float] | None = None,
+    word_styles: WordStyles | None = None,
 ) -> list[str]:
     words = card.words
     count = len(words)
@@ -223,7 +247,7 @@ def _standard_events(
         if end <= start:
             end = start + 0.01
         event_ms = max(1, round((end - start) * 1000))
-        text = _line_text(words, active_index=i, style=style)
+        text = line_text(words, active_index=i, style=style, word_styles=word_styles)
         leading = _leading_override(
             style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms, pinned=anchor is not None
         )
@@ -231,8 +255,11 @@ def _standard_events(
         if glow:
             # Halo first (layer 0), the crisp pop-style text over it (layer
             # 1); both carry the same entrance/exit block -- see render_glow.
-            prepared = [_prepare_word_text(w.text, style) for w in words]
-            halo = halo_line_text(prepared, i, style)
+            prepared = [prepare_word_text(w.text, style) for w in words]
+            # The halo carries the same per-word metrics as the text layer,
+            # or it slides off its word -- see render_glow.halo_line_text.
+            overrides = [word_style_for(w, word_styles) for w in words] if word_styles else None
+            halo = halo_line_text(prepared, i, style, overrides)
             lines.append(_dialogue_line(start, end, style_name, prefix + halo, layer=HALO_LAYER))
             lines.append(_dialogue_line(start, end, style_name, prefix + text, layer=TEXT_LAYER))
         else:
@@ -241,7 +268,13 @@ def _standard_events(
 
 
 def _box_events(
-    card: Card, style: Style, style_name: str, width: int, height: int, anchor: tuple[float, float] | None = None
+    card: Card,
+    style: Style,
+    style_name: str,
+    width: int,
+    height: int,
+    anchor: tuple[float, float] | None = None,
+    word_styles: WordStyles | None = None,
 ) -> list[str]:
     """One word at a time, boxed -- see the module docstring for why."""
     words = card.words
@@ -254,8 +287,15 @@ def _box_events(
         if end <= start:
             end = start + 0.01
         event_ms = max(1, round((end - start) * 1000))
-        text = _prepare_word_text(word.text, style)
-        scale_tags = _pop_scale_tags(style, event_ms) if style.active_word.effect == "scale_box" else ""
+        text = prepare_word_text(word.text, style)
+        ws = word_style_for(word, word_styles)
+        scaled = style.active_word.effect == "scale_box"
+        # One word per event, so nothing after it needs restoring: only the
+        # opening half of the word's own override is emitted.
+        inline = (pop_scale_tags(style, event_ms, scale_pct(ws)) if scaled else "") + override_tags(
+            ws, include_scale=not scaled
+        )[0]
+        scale_tags = f"{{{inline}}}" if inline else ""
         leading = _leading_override(
             style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms, pinned=anchor is not None
         )
@@ -266,7 +306,13 @@ def _box_events(
 
 
 def _karaoke_events(
-    card: Card, style: Style, style_name: str, width: int, height: int, anchor: tuple[float, float] | None = None
+    card: Card,
+    style: Style,
+    style_name: str,
+    width: int,
+    height: int,
+    anchor: tuple[float, float] | None = None,
+    word_styles: WordStyles | None = None,
 ) -> list[str]:
     """One Dialogue event for the whole card: ``\\kf`` needs a single run
     of text so libass can sweep the fill across it (spec 7A.1)."""
@@ -283,7 +329,11 @@ def _karaoke_events(
         # runs progressively ahead of the audio across the card.
         run_end = words[i + 1].start if i < count - 1 else card.end
         duration_cs = max(1, round((run_end - word.start) * 100))
-        parts.append(f"{{\\kf{duration_cs}}}{_prepare_word_text(word.text, style)}")
+        # A per-word colour has to set the swept-from colour too, or it
+        # would only appear once the fill reaches the word -- render_word.
+        open_tags, close_tags = karaoke_override_tags(word_style_for(word, word_styles), style)
+        part = f"{{\\kf{duration_cs}{open_tags}}}{prepare_word_text(word.text, style)}"
+        parts.append(part + (f"{{{close_tags}}}" if close_tags else ""))
     body = " ".join(parts)
     leading = _leading_override(style, x, y, is_first=True, is_last=True, event_ms=event_ms, pinned=anchor is not None)
     dialogue_text = f"{{{leading}}}{body}" if leading else body
@@ -292,78 +342,6 @@ def _karaoke_events(
 
 def _dialogue_line(start: float, end: float, style_name: str, text: str, layer: int = 0) -> str:
     return f"Dialogue: {layer},{format_ass_time(start)},{format_ass_time(end)},{style_name},,0,0,0,,{text}"
-
-
-# ---------------------------------------------------------------------------
-# per-word text and inline effect tags
-# ---------------------------------------------------------------------------
-
-
-def _escape_ass_text(text: str) -> str:
-    return "".join(_ESCAPE_MAP.get(ch, ch) for ch in text)
-
-
-def _prepare_word_text(text: str, style: Style) -> str:
-    if style.uppercase:
-        text = text.upper()
-    return _escape_ass_text(text)
-
-
-def _line_text(words: tuple, *, active_index: int, style: Style) -> str:
-    """Full sentence, active word wrapped with colour + its effect tags."""
-    text_colour = ass_inline_colour(style.colors.text)
-    active_colour = ass_inline_colour(style.colors.active)
-    parts = []
-    for i, word in enumerate(words):
-        word_text = _prepare_word_text(word.text, style)
-        if i == active_index:
-            open_tags, close_tags = _active_word_tags(style, active_colour, text_colour)
-            parts.append(f"{{{open_tags}}}{word_text}{{{close_tags}}}")
-        else:
-            parts.append(f"{{\\c{text_colour}}}{word_text}")
-    return "".join(_join_words(parts))
-
-
-def _join_words(parts: list[str]) -> list[str]:
-    # Interleave a plain space between word runs so override blocks stay
-    # adjacent to their word (a space inside an override block is inert,
-    # but keeping it outside is simpler to read in the raw .ass).
-    joined = []
-    for i, part in enumerate(parts):
-        if i > 0:
-            joined.append(" ")
-        joined.append(part)
-    return joined
-
-
-def _active_word_tags(style: Style, active_colour: str, text_colour: str) -> tuple[str, str]:
-    effect = style.active_word.effect
-    if effect in ("pop", "glow"):
-        # glow's visible text is the pop rendering; its halo is a separate
-        # layer-0 event built by render_glow.halo_line_text.
-        open_tags = f"\\c{active_colour}{scale_transform_tags(style.active_word.scale)}"
-        close_tags = f"\\c{text_colour}\\fscx100\\fscy100"
-    elif effect == "shake":
-        q = _SHAKE_QUARTER_MS
-        open_tags = (
-            f"\\c{active_colour}"
-            f"\\t(0,{q},\\frz-4)\\t({q},{2 * q},\\frz4)"
-            f"\\t({2 * q},{3 * q},\\frz-2)\\t({3 * q},{4 * q},\\frz0)"
-        )
-        close_tags = f"\\c{text_colour}\\frz0"
-    else:  # "none" -- colour swap only
-        open_tags = f"\\c{active_colour}"
-        close_tags = f"\\c{text_colour}"
-    return open_tags, close_tags
-
-
-_SHAKE_QUARTER_MS = 45
-
-
-def _pop_scale_tags(style: Style, event_ms: int) -> str:
-    scale = round(style.active_word.scale * 100)
-    d = min(POP_HALF_MS, max(1, event_ms // 2))
-    return f"{{\\t(0,{d},\\fscx{scale}\\fscy{scale})\\t({d},{2 * d},\\fscx100\\fscy100)}}"
 
 
 # ---------------------------------------------------------------------------

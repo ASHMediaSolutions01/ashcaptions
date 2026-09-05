@@ -1,0 +1,35 @@
+/* Style one word (studio_word.js): the toolbar under the transcript, and
+   the dot that marks a word carrying an override. The stylesheet is loaded
+   by the script itself, so this track adds only two lines to studio.html.
+   Tokens come from theme.css. */
+.word-toolbar { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.word-toolbar[hidden] { display: none; }
+.word-toolbar.busy { opacity: 0.6; pointer-events: none; }
+
+/* The blast radius, named at the moment of editing rather than left to a
+   setting on another page. */
+.word-scope { margin: 0; font-size: 12px; color: var(--muted); }
+.word-scope strong { color: var(--ink); }
+.word-scope a { color: var(--accent); text-decoration: none; margin-left: 4px; }
+.word-scope a:hover { text-decoration: underline; }
+
+.word-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; }
+.word-which { font-weight: 600; color: var(--ink); }
+.word-which.has-override::after { content: "•"; color: var(--accent); margin-left: 4px; font-size: 16px; line-height: 0; }
+.word-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.word-field input[type="color"] { inline-size: 34px; block-size: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; }
+.word-field input[type="number"] { inline-size: 66px; font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--ink); }
+
+.word-toggle { font: inherit; inline-size: 28px; block-size: 26px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--ink); cursor: pointer; }
+.word-toggle.word-bold { font-weight: 800; }
+.word-toggle.word-italic { font-style: italic; font-family: Georgia, "Times New Roman", serif; }
+.word-toggle:hover { border-color: var(--accent); }
+.word-toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.word-close { margin-left: auto; }
+
+/* In the transcript: a word with an override carries a dot, and the one the
+   toolbar is editing is outlined. Applies to track A's data-word-index
+   elements and to the caption-check panel's own spans alike. */
+.word-override { position: relative; }
+.word-override::after { content: "•"; color: var(--accent); font-size: 16px; line-height: 0; vertical-align: super; margin-left: 1px; }
+.word-selected { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
