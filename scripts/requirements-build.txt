@@ -3,6 +3,10 @@
 #     .venv\Scripts\python.exe -m pip install -r scripts\requirements-build.txt -e .
 # Regenerate after any dependency change so the shipped bundle is reproducible.
 # The editable install of ash-captions itself is deliberately not listed.
+# Nor is anything that only helps while developing: ruff and playwright are
+# in the `dev` extra of pyproject.toml, and a build box does not need them.
+# So this is a freeze with those pruned, not a raw `pip freeze` -- check the
+# diff before pasting one in.
 altgraph==0.17.5
 annotated-doc==0.0.5
 annotated-types==0.8.0
