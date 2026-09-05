@@ -41,6 +41,7 @@ from typing import Protocol
 from ..engine.rules import Card
 from ..engine.transcribe import Word
 from .ass_format import ass_inline_colour, outline_width
+from .render_word import prepare_word_text
 from .schema import Slot, Style
 
 # Entrance geometry, from the reference frames (see the module docstring).
@@ -193,11 +194,12 @@ def free_events(
     absolutely, without ``offset``, because the editor chose that point
     on the frame itself.
 
-    ``render.py``'s branch does not pass ``word_styles`` yet: track B is
-    adding it to ``render_ass`` and ``_card_events``, and forwarding it
-    here is a one-argument change once that lands.
+    ``prepare_word_text`` comes from ``render_word`` (the module every
+    renderer shares); ``_dialogue_line`` and ``_num`` are still in
+    ``render``, which imports this module, so they are fetched inside the
+    call to keep the import one-way.
     """
-    from .render import _dialogue_line, _num, _prepare_word_text
+    from .render import _dialogue_line, _num
 
     slots = style.layout.slots
     if not slots:
@@ -213,8 +215,9 @@ def free_events(
         end = card.end if card.end > start else start + 0.01
         event_ms = max(1, round((end - start) * 1000))
         x, y = _slot_point(slot, width, height, offset, _placement_for(word_styles, word))
-        tags = _word_tags(style, slot, x, y, event_ms=event_ms, exit_ms=exit_ms, num=_num)
-        text = _prepare_word_text(word.text, style)
+        tags = _word_tags(style, slot, x, y, event_ms=event_ms, exit_ms=exit_ms, num=_num,
+                          override=_placement_for(word_styles, word))
+        text = prepare_word_text(word.text, style)
         lines.append(_dialogue_line(start, end, style_name, f"{{{tags}}}{text}"))
     return lines
 
@@ -242,9 +245,13 @@ def _slot_point(
 
 
 def _word_tags(
-    style: Style, slot: Slot, x: float, y: float, *, event_ms: int, exit_ms: int, num
+    style: Style, slot: Slot, x: float, y: float, *, event_ms: int, exit_ms: int, num,
+    override: Placement | None = None,
 ) -> str:
-    scale = round(slot.scale * 100)
+    # A per-word override (v0.6 section 2) beats the slot: an editor who
+    # picked this word out by hand meant it, and the slot is only ever a
+    # guess the layout made from the word's length and its role.
+    scale = round(slot.scale * _override_scale(override) * 100)
     enter_ms = min(_ENTRANCE_MS.get(slot.entrance, 0), event_ms)
     tags = ["\\an5"]  # \pos is the word's centre, whatever the look's align is
 
@@ -256,8 +263,11 @@ def _word_tags(
         tags.append(f"\\pos({num(x)},{num(y)})")
 
     tags.append(f"\\fn{slot.font or style.font}")
-    if slot.italic:
+    italic = slot.italic if _attr(override, "italic") is None else bool(_attr(override, "italic"))
+    if italic:
         tags.append("\\i1")
+    if _attr(override, "bold") is not None:
+        tags.append("\\b1" if _attr(override, "bold") else "\\b0")
     # libass does not scale the border with \fscx/\fscy -- it is a Style
     # line property in outline units, and a burned frame confirmed it: at
     # size 200 every slot came out with the same 11px border whatever its
@@ -266,13 +276,25 @@ def _word_tags(
     tags.append(f"\\bord{_border(style, slot)}")
     if style.letter_spacing:
         tags.append(f"\\fsp{num(style.letter_spacing)}")
-    tags.append(f"\\c{ass_inline_colour(getattr(style.colors, slot.role))}")
+    colour = _attr(override, "colour") or getattr(style.colors, slot.role)
+    tags.append(f"\\c{ass_inline_colour(colour)}")
     tags.extend(_scale_tags(slot.entrance, scale, enter_ms))
 
     fade = _fade_tag(enter_ms if slot.entrance != "none" else 0, exit_ms, event_ms)
     if fade:
         tags.append(fade)
     return "".join(tags)
+
+
+def _attr(override: Placement | None, name: str):
+    """One value off a per-word override, or None. ``Placement`` is a
+    Protocol here, so this module never imports the app's dataclass."""
+    return None if override is None else getattr(override, name, None)
+
+
+def _override_scale(override: Placement | None) -> float:
+    value = _attr(override, "scale")
+    return 1.0 if value is None else float(value)
 
 
 def _border(style: Style, slot: Slot) -> int:

@@ -226,7 +226,7 @@ def _card_events(
         # whole cluster rather than collapsing it onto one point.
         base = _anchor_xy(style, width, height, None)
         offset = (0.0, 0.0) if anchor is None else (anchor[0] - base[0], anchor[1] - base[1])
-        return free_events(card, style, base_name, width, height, offset=offset)
+        return free_events(card, style, base_name, width, height, offset=offset, word_styles=word_styles)
     effect = style.active_word.effect
     if effect == "karaoke":
         return _karaoke_events(card, style, base_name, width, height, anchor, word_styles)
