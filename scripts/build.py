@@ -486,6 +486,35 @@ def assemble_pyinstaller_args(args: argparse.Namespace) -> list[str]:
     )
 
 
+def check_installed_metadata(version: str) -> None:
+    """The app reports its version from the *installed distribution*
+    metadata, not from pyproject, and PyInstaller collects that dist-info
+    into the bundle. So an editable install left over from the last release
+    ships a bundle that calls itself by the old version: the updater never
+    offers it to anybody, and nothing anywhere fails.
+
+    That happened once, on 0.6.0, and was caught only by installing the
+    bundle and reading the version off the page. It fails here now.
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as installed_version
+
+    try:
+        found = installed_version("ash-captions")
+    except PackageNotFoundError as exc:  # pragma: no cover - needs a bare venv
+        raise BuildError(
+            "ash-captions is not installed in this venv, so the bundle would "
+            r"carry no version. Run: .venv\Scripts\python.exe -m pip install -e ."
+        ) from exc
+    if found != version:
+        raise BuildError(
+            f"pyproject says {version} but the installed package says {found}. "
+            "The bundle takes its version from the installed metadata, so it "
+            f"would ship calling itself {found} and no editor would ever be "
+            r"offered the update. Run: .venv\Scripts\python.exe -m pip install -e ."
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     version = read_project_version(PYPROJECT_PATH)
@@ -494,6 +523,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print("pyinstaller " + " ".join(pyinstaller_args))
         return 0
+
+    check_installed_metadata(version)
 
     if not ENTRY_SCRIPT.is_file():
         raise BuildError(f"entry point not found: {ENTRY_SCRIPT}")

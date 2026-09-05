@@ -207,6 +207,7 @@ def free_events(
         return []
     words = card.words
     assignment = assign_slots(words, slots)
+    points = reading_order_points(slots, assignment)
     exit_ms = style.exit.duration_ms if style.exit.effect == "fade" else 0
 
     lines: list[str] = []
@@ -215,7 +216,8 @@ def free_events(
         start = word.start
         end = card.end if card.end > start else start + 0.01
         event_ms = max(1, round((end - start) * 1000))
-        x, y = _slot_point(slot, width, height, offset, _placement_for(word_styles, word))
+        point = _at_intensity(points[index], style.layout.intensity)
+        x, y = _slot_point(point, width, height, offset, _placement_for(word_styles, word))
         tags = _word_tags(style, slot, x, y, event_ms=event_ms, exit_ms=exit_ms, num=_num,
                           override=_placement_for(word_styles, word),
                           size_factor=_size_factor(height))
@@ -244,6 +246,30 @@ def _at_intensity(slot: Slot, intensity: float) -> Slot:
     )
 
 
+def reading_order_points(slots: Sequence[Slot], assignment: Sequence[int]) -> tuple[Slot, ...]:
+    """The slot whose *position* each word takes, in spoken order.
+
+    ``assign_slots`` decides how each word looks -- its size, colour, face
+    and entrance -- by how much the word matters. That must not decide
+    where it sits, or a phrase lands on the frame out of order and cannot
+    be read: "She was proud of" came out of a real burn as "of" on top and
+    "was" at the bottom.
+
+    So the positions of the slots in play are sorted down the frame (top to
+    bottom, then left to right) and handed to the words in the order they
+    are spoken. Every other property stays with the word's own slot.
+
+    The slots handed back are the raw ones; the caller applies the layout's
+    intensity to the position slot as well, or turning the dial down would
+    pull the sizes toward the centre column and leave the positions behind.
+    """
+    if not assignment:
+        return ()
+    chosen = [slots[index] for index in assignment]
+    ordered = sorted(chosen, key=lambda slot: (slot.y, slot.x))
+    return tuple(ordered)
+
+
 def _placement_for(
     word_styles: Mapping[tuple[float, float], Placement] | None, word: Word
 ) -> Placement | None:
@@ -253,16 +279,19 @@ def _placement_for(
 
 
 def _slot_point(
-    slot: Slot,
+    point: Slot,
     width: int,
     height: int,
     offset: tuple[float, float],
     placement: Placement | None,
 ) -> tuple[float, float]:
+    """``point`` is the slot this word takes its *position* from, which is
+    not always the slot it takes its size and colour from -- see
+    ``reading_order_points``."""
     override_x = getattr(placement, "x", None) if placement is not None else None
     override_y = getattr(placement, "y", None) if placement is not None else None
-    x = slot.x * width + offset[0] if override_x is None else float(override_x) * width
-    y = slot.y * height + offset[1] if override_y is None else float(override_y) * height
+    x = point.x * width + offset[0] if override_x is None else float(override_x) * width
+    y = point.y * height + offset[1] if override_y is None else float(override_y) * height
     return x, y
 
 

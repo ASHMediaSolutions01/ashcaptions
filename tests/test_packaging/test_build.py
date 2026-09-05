@@ -378,3 +378,16 @@ def test_main_dry_run_does_not_require_pyinstaller_or_entry_point(tmp_path, caps
     out = capsys.readouterr().out
     assert "pyinstaller" in out
     assert "--onedir" in out
+
+
+def test_the_build_refuses_a_stale_editable_install():
+    """The bundle takes its version from the installed distribution
+    metadata, not pyproject. A 0.6.0 build once shipped calling itself
+    0.5.1 because the editable install was never refreshed after the bump,
+    and nothing failed -- the updater simply would never have offered it."""
+    import pytest
+
+    build.check_installed_metadata(build.read_project_version(build.PYPROJECT_PATH))  # the real one agrees
+    with pytest.raises(build.BuildError) as excinfo:
+        build.check_installed_metadata("99.0.0")
+    assert "pip install -e ." in str(excinfo.value)

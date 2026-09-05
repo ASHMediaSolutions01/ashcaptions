@@ -116,3 +116,32 @@ def test_the_vertical_frame_the_looks_were_designed_for_is_untouched():
     assert _size_factor(1920) == 1.0
     assert _size_factor(2160) == 1.0  # taller than the reference: never grow
     assert _size_factor(1080) == 0.5625
+
+
+# ---------------------------------------------------------------------------
+# reading order
+# ---------------------------------------------------------------------------
+
+
+def _y_of(line: str) -> float:
+    tag = r"\pos(" if r"\pos(" in line else r"\move("
+    return float(line.split(tag)[1].split(")")[0].split(",")[1])
+
+
+def test_words_run_down_the_frame_in_the_order_they_are_spoken():
+    """Found on a burned frame from the installed bundle: "She was proud of"
+    came out with "of" at the top and "was" at the bottom. The sizes were
+    right -- the important word was biggest -- but the phrase could not be
+    read. How a word looks follows what it means; where it sits follows
+    when it is said."""
+    events = free_events_for()
+    ys = [_y_of(event_for(word)) for word in ("the", "2nd", "Highest")]
+    assert ys == sorted(ys), ys
+    assert len(events) == 3
+
+
+def test_the_biggest_treatment_still_goes_to_the_word_that_earns_it():
+    """Reading order must not cost us the prominence ranking: "2nd" carries
+    a digit, so it takes the 2.2x slot wherever that slot happens to sit."""
+    assert "\\fscy220" in event_for("2nd")
+    assert "\\fscy220" not in event_for("the")
