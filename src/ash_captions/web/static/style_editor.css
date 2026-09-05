@@ -37,6 +37,7 @@
   color: var(--ink-soft);
 }
 .style-item:hover { background: var(--raised); color: var(--ink); }
+.style-item-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .style-item.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
 .style-item .tag { font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap; }
 .style-item .tag.custom { color: var(--accent); }
@@ -62,6 +63,23 @@
 .sample.left { justify-content: flex-start; }
 .sample.right { justify-content: flex-end; }
 .sample .w { display: inline-block; padding: 2px 6px; border-radius: 5px; }
+
+/* Scope notice: "saving changes this for every job on this PC" */
+.scope-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+}
+.scope-notice p { margin: 0; font-size: 13px; color: var(--ink-soft); }
+.scope-notice .btn { flex: 0 0 auto; }
+
+.field-row { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.speed-field { max-width: 140px; }
 
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
 .tab {

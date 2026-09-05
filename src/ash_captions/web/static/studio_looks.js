@@ -19,7 +19,9 @@
     return span;
   }
 
-  function sampleFor(d) {
+  // Static fallback, shown until look_card.js finishes loading (see
+  // ensureLookCard below) or if JASSUB can't start at all.
+  function staticSampleFor(d) {
     const colors = d.colors || {};
     const active = d.active_word || {};
     const sample = document.createElement("div");
@@ -45,6 +47,49 @@
     return sample;
   }
 
+  // look_card.js (spec 4) is shared with the Styles page but studio.html
+  // is off limits to this track, so it's loaded here at runtime instead
+  // of with a <script> tag. jassub.umd.js is already on the Studio page.
+  let lookCardPromise = null;
+  function ensureLookCard() {
+    if (window.AshLookCard) return Promise.resolve(true);
+    if (lookCardPromise) return lookCardPromise;
+    lookCardPromise = new Promise((resolve) => {
+      if (!document.querySelector('link[data-ash-look-card]')) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = "/static/look_card.css";
+        link.dataset.ashLookCard = "1";
+        document.head.appendChild(link);
+      }
+      const assScript = document.createElement("script");
+      assScript.src = "/static/look_card_ass.js";
+      assScript.onload = () => {
+        const script = document.createElement("script");
+        script.src = "/static/look_card.js";
+        script.onload = () => resolve(!!window.AshLookCard);
+        script.onerror = () => resolve(false);
+        document.head.appendChild(script);
+      };
+      assScript.onerror = () => resolve(false);
+      document.head.appendChild(assScript);
+    });
+    return lookCardPromise;
+  }
+
+  function sampleFor(style, lookCardReady) {
+    const d = style.definition || {};
+    if (!lookCardReady || !window.AshLookCard) return staticSampleFor(d);
+    // A plain .look-sample wrapper, sized by studio.css exactly as the
+    // static version was, with the animated card filling it -- kept as
+    // two elements rather than one so look_card.css's generic sizing
+    // never has to fight studio.css's fixed height for the same element.
+    const wrap = document.createElement("div");
+    wrap.className = "look-sample";
+    wrap.appendChild(window.AshLookCard.create(d, { fontDivisor: 3.8, fontMin: 15, fontMax: 24 }));
+    return wrap;
+  }
+
   // refs: { list, filter, hint, compareBtn }; onApply(name) -> Promise
   function createLooks(refs, onApply) {
     const { list, filter, hint, compareBtn } = refs;
@@ -54,6 +99,13 @@
     let focused = null; // keyboard cursor (a style name)
     let previous = null; // for Compare: the look before `current`
     let rows = []; // [[name, ...]] per group, in display order, after filtering
+    let lookCardReady = false;
+    let sampleCards = []; // AshLookCard elements from the current render(), for dispose before the next one
+
+    ensureLookCard().then((ok) => {
+      lookCardReady = ok;
+      if (ok) render(); // upgrade whatever's on screen from the static fallback
+    });
 
     function card(style) {
       const d = style.definition || {};
@@ -77,8 +129,11 @@
         name.appendChild(document.createTextNode(" "));
         name.appendChild(tag);
       }
+      const sample = sampleFor(style, lookCardReady);
+      const lookCard = sample.querySelector(".ash-look-card");
+      if (lookCard) sampleCards.push(lookCard);
       foot.append(name, glyph(d.layout || {}));
-      el.append(sampleFor(d), foot);
+      el.append(sample, foot);
       el.addEventListener("click", () => { focused = style.name; apply(style.name); });
       return el;
     }
@@ -92,6 +147,8 @@
 
     function render() {
       const query = filter.value.trim().toLowerCase();
+      if (window.AshLookCard) for (const el of sampleCards) window.AshLookCard.dispose(el);
+      sampleCards = [];
       list.innerHTML = "";
       rows = [];
       const groups = new Map(POSITION_ORDER.map((p) => [p, []]));
