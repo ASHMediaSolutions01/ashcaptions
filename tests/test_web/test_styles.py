@@ -4,9 +4,11 @@ against fakes -- no ffmpeg, no whisper, no real `ash_captions.styles`
 rendering, no network (see fakes.py)."""
 from __future__ import annotations
 
+import pytest
+
 from ash_captions.web.models import PreviewStatus
 
-from .fakes import default_style_definition
+from .fakes import FakeStyleProvider, default_style_definition
 
 
 def test_list_styles_distinguishes_shipped_from_user(client, fake_style_provider):
@@ -371,3 +373,83 @@ def test_editor_page_has_the_alignment_and_card_box_controls(client):
     for value in ("left", "center", "right"):
         assert f'["{value}", ' in js
     assert "draft.layout.align = value" in js
+
+
+class TestSounds:
+    """GET /api/sounds and GET /api/sounds/{name} (v0.7 section 1).
+
+    The Styles page can play a sound before an editor commits a look to
+    it, which is the whole reason the file is served at all.
+    """
+
+    def test_lists_the_library_with_a_url_for_each(self, client, tmp_path):
+        directory = tmp_path / "sounds"
+        directory.mkdir()
+        for name in ("pop", "whoosh"):
+            (directory / f"{name}.wav").write_bytes(b"RIFF....WAVEfmt ")
+        client.app.state.style_provider = FakeStyleProvider(sounds_dir=directory)
+
+        res = client.get("/api/sounds")
+        assert res.status_code == 200
+        assert res.json() == [
+            {"name": "pop", "label": "Pop", "description": "The pop.",
+             "duration_seconds": 0.2, "url": "/api/sounds/pop"},
+            {"name": "whoosh", "label": "Whoosh", "description": "The whoosh.",
+             "duration_seconds": 0.2, "url": "/api/sounds/whoosh"},
+        ]
+
+    def test_serves_a_listed_sound_as_audio(self, client, tmp_path):
+        directory = tmp_path / "sounds"
+        directory.mkdir()
+        (directory / "pop.wav").write_bytes(b"RIFF....WAVEfmt ")
+        client.app.state.style_provider = FakeStyleProvider(sounds_dir=directory)
+
+        res = client.get("/api/sounds/pop")
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "audio/wav"
+        assert res.content.startswith(b"RIFF")
+
+    def test_a_listed_sound_whose_file_vanished_is_404(self, client, tmp_path):
+        client.app.state.style_provider = FakeStyleProvider(sounds_dir=tmp_path / "empty")
+        res = client.get("/api/sounds/pop")
+        assert res.status_code == 404
+        assert "not installed" in res.json()["detail"]
+
+    def test_refuses_any_name_the_library_does_not_list(self, client, tmp_path):
+        directory = tmp_path / "sounds"
+        directory.mkdir()
+        (directory / "pop.wav").write_bytes(b"RIFF")
+        (tmp_path / "secret.txt").write_text("nope")
+        client.app.state.style_provider = FakeStyleProvider(sounds_dir=directory)
+        for name in ("secret.txt", "airhorn", "..%2Fsecret.txt", "%2E%2E%2Fsecret.txt"):
+            res = client.get(f"/api/sounds/{name}")
+            assert res.status_code == 404, name
+            assert b"nope" not in res.content
+
+    def test_a_provider_with_no_sound_library_lists_nothing(self, client):
+        """A bundle from before v0.7. An empty list, not a 500 -- the
+        Styles page then says the build carries no sounds."""
+        client.app.state.style_provider = FakeStyleProvider()
+        assert client.get("/api/sounds").json() == []
+        assert client.get("/api/sounds/pop").status_code == 404
+
+    def test_a_provider_predating_the_method_entirely_lists_nothing(self, client):
+        class Older(FakeStyleProvider):
+            list_sounds = None
+
+        client.app.state.style_provider = Older()
+        assert client.get("/api/sounds").json() == []
+
+    def test_the_real_adapter_lists_exactly_what_is_on_disk(self):
+        """The one that would have caught a bundle shipping the manifest
+        without the .wav files: entries whose file is missing are dropped
+        rather than offered."""
+        from ash_captions.styles.sounds import assets_sounds_dir
+        from ash_captions.web.styles_adapter import StylesPackageAdapter
+
+        if not (assets_sounds_dir() / "manifest.json").is_file():
+            pytest.skip("assets/sounds is not generated in this checkout")
+        entries = StylesPackageAdapter().list_sounds()
+        assert [entry.name for entry in entries] == ["pop", "click", "whoosh", "impact", "riser"]
+        assert all(entry.path.is_file() for entry in entries)
+        assert all(entry.label and entry.description for entry in entries)

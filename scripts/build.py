@@ -48,6 +48,7 @@ PKGTOOLS_DIR = Path(__file__).resolve().parent / "pkgtools"
 # `app_root()`, same as bin/ and models/, so both must ship the same way.
 STYLES_DIR = REPO_ROOT / "styles"
 FONTS_DIR = REPO_ROOT / "assets" / "fonts"
+SOUNDS_DIR = REPO_ROOT / "assets" / "sounds"
 
 APP_NAME = "AshCaptions"
 
@@ -70,7 +71,10 @@ PKGTOOLS_DEST = "scripts/pkgtools"
 # styles/fonts.py's assets_fonts_dir() == app_root() / "assets" / "fonts".
 STYLES_DEST = "styles"
 FONTS_DEST = "assets/fonts"
+# styles/sounds.py's assets_sounds_dir() == app_root() / "assets" / "sounds".
+SOUNDS_DEST = "assets/sounds"
 FONT_MANIFEST_FILENAME = "manifest.json"
+SOUND_MANIFEST_FILENAME = "manifest.json"
 
 FFMPEG_BINARIES = ("ffmpeg.exe", "ffprobe.exe")
 # fetch_ffmpeg.py extracts BtbN's licence text beside the binaries; we
@@ -192,6 +196,39 @@ def validate_fonts_assets(fonts_dir: Path = FONTS_DIR) -> None:
         )
 
 
+def validate_sounds_assets(sounds_dir: Path = SOUNDS_DIR) -> None:
+    """Fail loudly if a sound the manifest promises is not there.
+
+    This is stricter than the font check, and deliberately so. A missing
+    font is loud -- libass substitutes a face and the captions look
+    wrong on the first frame anyone watches. A missing sound is silent
+    in the exact sense: the look still validates, the burn still
+    succeeds, the editor still gets a video, and the only symptom is
+    that nothing goes whoosh. Nobody would report that as a bug against
+    the build; they would report it as "the sound feature doesn't work".
+
+    The .wav files are committed (unlike the fonts, which are fetched),
+    so their absence means a truncated checkout, not a missing setup
+    step.
+    """
+    sounds_dir = Path(sounds_dir)
+    manifest = sounds_dir / SOUND_MANIFEST_FILENAME
+    if not sounds_dir.is_dir() or not manifest.is_file():
+        raise BuildError(
+            f"{manifest} not found -- every look that fires a sound would burn silent, "
+            "and nothing would fail. Run scripts/make_sounds.py."
+        )
+    rows = json.loads(manifest.read_text(encoding="utf-8")).get("sounds", [])
+    if not rows:
+        raise BuildError(f"{manifest} lists no sounds.")
+    missing = sorted(row["file"] for row in rows if not (sounds_dir / row["file"]).is_file())
+    if missing:
+        raise BuildError(
+            f"{sounds_dir} is missing sound file(s) its manifest promises: {', '.join(missing)}. "
+            "Run scripts/make_sounds.py."
+        )
+
+
 def validate_notice_files(paths: Sequence[Path] = NOTICE_FILES) -> None:
     """LICENSE and NOTICES.md ship at the bundle root; a bundle without
     them redistributes GPL/OFL/MIT components with no notice at all."""
@@ -287,6 +324,7 @@ def build_pyinstaller_args(
     pkgtools_dir: Path = PKGTOOLS_DIR,
     styles_dir: Path = STYLES_DIR,
     fonts_dir: Path = FONTS_DIR,
+    sounds_dir: Path = SOUNDS_DIR,
     ffmpeg_binaries: list[Path] | None = None,
     ffmpeg_license: Path | None = None,
     model_dir: Path | None = None,
@@ -333,6 +371,7 @@ def build_pyinstaller_args(
         # styles/library.py and styles/fonts.py read these from app_root().
         "--add-data", f"{styles_dir};{STYLES_DEST}",
         "--add-data", f"{fonts_dir};{FONTS_DEST}",
+        "--add-data", f"{sounds_dir};{SOUNDS_DEST}",
     ]
     for notice in notice_files:
         args += ["--add-data", f"{notice};."]
@@ -450,6 +489,7 @@ def assemble_pyinstaller_args(args: argparse.Namespace) -> list[str]:
     validate_pkgtools_assets(PKGTOOLS_DIR)
     validate_styles_assets(STYLES_DIR)
     validate_fonts_assets(FONTS_DIR)
+    validate_sounds_assets(SOUNDS_DIR)
     validate_notice_files(NOTICE_FILES)
     if not args.dry_run:
         validate_licenses_dir(args.licenses_dir)

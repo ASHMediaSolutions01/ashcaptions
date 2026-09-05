@@ -545,7 +545,48 @@ on hour-long files and costs almost no extra render time.
 
 ---
 
-## Part 15 — Problems and fixes
+## Part 15 — Sound effects
+
+A look can fire a short sound on the word the caption lands on — a pop, a
+whoosh, a low impact. It is the same idea as the punch-in: the captions say
+what is being said, and the sound says it matters. Five sounds ship with the
+app; nothing is downloaded and nothing needs a licence.
+
+Unlike the punch-in, this belongs to the **look**, not to a settings file.
+Open **Styles**, pick a look, and go to the **Sound** tab.
+
+1. **Play them first.** Every sound has a **Play** button. The volume you set
+   is the volume you hear, so set it before you judge.
+2. **Choose when it fires.** *Each sentence* is the safe one on a talking
+   head. *Keywords* uses the same word list the punch-in uses. *Every word*
+   only works with a very short sound — use Click — and a look that shows
+   one word at a time.
+3. **Pick up to four sounds.** They play in the order you picked them and
+   then start again, so two sounds alternate. The number on the left is the
+   play order.
+4. **Nudge** is a fine offset in milliseconds. Negative starts the sound
+   slightly *before* the word, which usually sounds better: the ear places a
+   sound by its attack.
+
+| Sound | When to use it |
+| --- | --- |
+| Pop | The default. Reads on a phone speaker without covering the voice. |
+| Click | Barely there. The only one that survives firing on every word. |
+| Whoosh | The transition sound. Best where captions arrive a line at a time. |
+| Impact | A low thump. Keep it for keywords; on every sentence it becomes exhausting. |
+| Riser | Points at the word after it. The last line before a punchline, not everywhere. |
+
+**Sound belongs to the look, so it follows the look everywhere.** Adding a
+sound to a built-in look changes every job on this PC that uses it, including
+old jobs if they are restyled or burned again — the same warning the Styles
+page shows. If only one client wants sound, **Save as…** a copy and put the
+sound on that.
+
+Sound is only mixed in when **Burn captions into the video** is ticked — an
+`.srt` cannot carry a whoosh. The video keeps its original length and its
+dialogue; the sounds are added underneath, nothing is replaced or ducked.
+
+## Part 16 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
@@ -572,7 +613,7 @@ C:\AshCaptions\ash-captions.log
 
 ---
 
-## Part 16 — Uninstalling
+## Part 17 — Uninstalling
 
 Double-click `Uninstall-AshCaptions.bat`. It sits beside
 `Install-AshCaptions.bat`, wherever Ghazi gave you that; if you no longer
@@ -588,7 +629,7 @@ back up.
 
 ---
 
-## Part 17 — Worth knowing
+## Part 18 — Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
   languages very good. **Arabic**: the `.srt` and transcript are fine; for a

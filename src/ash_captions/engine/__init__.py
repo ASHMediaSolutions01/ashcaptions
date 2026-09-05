@@ -13,6 +13,7 @@ without breaking callers:
         render_srt, write_srt, render_ass, write_ass, render_txt, write_txt, AssPreset, CLEAN, POP,
         probe_video, VideoInfo, ProbeError,
         select_punch_moments, build_punch_filter,
+        select_sfx_hits, build_sfx_plan, SfxTrigger, SfxHit, SfxPlan,
         detect_nvenc, build_burn_command, burn_captions, BurnInError, BurnCancelled,
         active_processes, kill_active_processes,
     )
@@ -52,6 +53,15 @@ from .burn import (
     select_video_encoder,
 )
 from .rules import Card, build_cards
+from .sfx import (
+    MAX_HITS,
+    SfxHit,
+    SfxPlan,
+    SfxTrigger,
+    build_sfx_filter,
+    build_plan as build_sfx_plan,
+    select_sfx_hits,
+)
 from .transcribe import (
     Segment,
     Transcriber,
@@ -78,6 +88,13 @@ __all__ = [
     "AudioExtractionError",
     "DEFAULT_FFMPEG_PATH",
     "Word",
+    "select_sfx_hits",
+    "build_sfx_plan",
+    "build_sfx_filter",
+    "SfxTrigger",
+    "SfxHit",
+    "SfxPlan",
+    "MAX_HITS",
     "Segment",
     "TranscriptionResult",
     "Transcriber",

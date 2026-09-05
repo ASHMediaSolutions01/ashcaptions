@@ -458,6 +458,130 @@ _WORD_STYLE_FIELDS = ("colour", "scale", "bold", "italic", "x", "y")
 
 
 # ---------------------------------------------------------------------------
+# sound (v0.7 section 1)
+# ---------------------------------------------------------------------------
+
+# Kept in step with ``engine.sfx.SfxTrigger`` by
+# ``tests/test_styles/test_sound_schema.py``; duplicated rather than
+# imported because ``styles`` must not depend on ``engine``.
+SOUND_TRIGGERS = frozenset({"off", "sentence", "keyword", "both", "word"})
+
+# Four is SubKick's cap and it is the right one: past four, a cycling
+# list stops reading as a pattern and starts reading as randomness.
+_MAX_SOUNDS = 4
+_MIN_GAIN_DB, _MAX_GAIN_DB = -40.0, 6.0
+_MIN_OFFSET_MS, _MAX_OFFSET_MS = -500, 500
+_MIN_SOUND_SPACING, _MAX_SOUND_SPACING = 0.05, 60.0
+
+
+@dataclass(frozen=True, slots=True)
+class Sound:
+    """The sounds a look fires, and when.
+
+    Sound belongs to the look rather than to the job, for the same reason
+    the font does: a look is a complete treatment, and "REEL POP with the
+    whoosh" is not a different look from "REEL POP". The consequence is
+    the one the Styles page already warns about -- editing a look changes
+    every job that uses it -- and it is why every shipped look defaults to
+    ``trigger="off"``.
+    """
+
+    trigger: str = "off"
+    sounds: tuple[str, ...] = ()
+    gain_db: float = -8.0
+    offset_ms: int = 0
+    min_spacing_seconds: float = 0.35
+
+    @property
+    def enabled(self) -> bool:
+        return self.trigger != "off" and bool(self.sounds)
+
+    @classmethod
+    def from_dict(cls, data: dict, *, check_sounds: bool = True) -> "Sound":
+        _reject_unknown_keys(
+            "sound", data,
+            {"trigger", "sounds", "gain_db", "offset_ms", "min_spacing_seconds"},
+        )
+        defaults = cls()
+        trigger = _require_choice("sound.trigger", data.get("trigger", defaults.trigger), SOUND_TRIGGERS)
+
+        raw = data.get("sounds", list(defaults.sounds))
+        if not isinstance(raw, (list, tuple)):
+            raise StyleValidationError(f"sound.sounds: {raw!r} is not a list of sound names")
+        if len(raw) > _MAX_SOUNDS:
+            raise StyleValidationError(
+                f"sound.sounds: {len(raw)} sounds is more than the {_MAX_SOUNDS} a look may cycle"
+            )
+        names: list[str] = []
+        for index, value in enumerate(raw):
+            if not isinstance(value, str) or not value.strip():
+                raise StyleValidationError(f"sound.sounds[{index}]: {value!r} is not a sound name")
+            names.append(value)
+
+        if check_sounds:
+            _reject_unbundled_sounds(names)
+
+        if trigger != "off" and not names:
+            raise StyleValidationError(
+                f"sound.trigger is {trigger!r} but sound.sounds is empty -- a look that fires "
+                "nothing should have trigger 'off', so the Styles page can say so"
+            )
+
+        gain_db = _require_number(
+            "sound.gain_db", data.get("gain_db", defaults.gain_db), lo=_MIN_GAIN_DB, hi=_MAX_GAIN_DB
+        )
+        offset_ms = _require_number(
+            "sound.offset_ms", data.get("offset_ms", defaults.offset_ms),
+            lo=_MIN_OFFSET_MS, hi=_MAX_OFFSET_MS,
+        )
+        spacing = _require_number(
+            "sound.min_spacing_seconds",
+            data.get("min_spacing_seconds", defaults.min_spacing_seconds),
+            lo=_MIN_SOUND_SPACING, hi=_MAX_SOUND_SPACING,
+        )
+        return cls(
+            trigger=trigger,
+            sounds=tuple(names),
+            gain_db=float(gain_db),
+            offset_ms=int(offset_ms),
+            min_spacing_seconds=float(spacing),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "trigger": self.trigger,
+            "sounds": list(self.sounds),
+            "gain_db": self.gain_db,
+            "offset_ms": self.offset_ms,
+            "min_spacing_seconds": self.min_spacing_seconds,
+        }
+
+
+def _reject_unbundled_sounds(names: list[str]) -> None:
+    """Reject a sound name the manifest does not list -- but only when
+    there *is* a manifest.
+
+    An empty library means the sounds have not been generated (a fresh
+    checkout that has not run ``scripts/make_sounds.py``) or the bundle
+    predates them. Rejecting then would make every look carrying a sound
+    unloadable, which is a far worse failure than a look that quietly
+    burns without one: ``engine.sfx`` already treats a sound it cannot
+    find on disk as no sound at all.
+    """
+    from .sounds import list_sound_names
+
+    available = list_sound_names()
+    if not available:
+        return
+    unknown = [name for name in names if name not in available]
+    if unknown:
+        raise StyleValidationError(
+            f"sound.sounds: {', '.join(repr(n) for n in unknown)} is not a bundled sound -- "
+            f"available: {', '.join(available)}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # the style itself
 # ---------------------------------------------------------------------------
 
@@ -472,6 +596,7 @@ _TOP_LEVEL_FIELDS = {
     "entrance",
     "exit",
     "layout",
+    "sound",
 }
 
 
@@ -487,6 +612,7 @@ class Style:
     entrance: Transition = field(default_factory=lambda: Transition(effect="fade", duration_ms=120))
     exit: Transition = field(default_factory=lambda: Transition(effect="none", duration_ms=0))
     layout: Layout = field(default_factory=Layout)
+    sound: Sound = field(default_factory=Sound)
 
     @classmethod
     def from_dict(cls, data: dict, *, check_font: bool = True) -> "Style":
@@ -538,6 +664,10 @@ class Style:
             default_duration_ms=defaults.exit.duration_ms,
         )
         layout = Layout.from_dict(_require_dict("layout", data.get("layout", {})), check_font=check_font)
+        # ``check_font`` doubles as "check the bundled asset libraries": a
+        # test that does not want a fonts manifest does not want a sounds
+        # one either.
+        sound = Sound.from_dict(_require_dict("sound", data.get("sound", {})), check_sounds=check_font)
 
         return cls(
             name=name,
@@ -550,6 +680,7 @@ class Style:
             entrance=entrance,
             exit=exit_,
             layout=layout,
+            sound=sound,
         )
 
     def to_dict(self) -> dict:
@@ -566,6 +697,7 @@ class Style:
             "entrance": {f.name: getattr(self.entrance, f.name) for f in fields(Transition)},
             "exit": {f.name: getattr(self.exit, f.name) for f in fields(Transition)},
             "layout": self.layout.to_dict(),
+            "sound": self.sound.to_dict(),
         }
 
 

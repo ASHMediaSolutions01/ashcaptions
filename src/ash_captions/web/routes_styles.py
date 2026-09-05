@@ -5,6 +5,8 @@ its dependency getters and mounts it, same as `routes_updates.py`.
 """
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
@@ -18,7 +20,7 @@ from .interfaces import (
     StyleProvider,
     StyleValidationFailedError,
 )
-from .models import PreviewJob, PreviewRequest, PreviewStatus, StyleSummary
+from .models import PreviewJob, PreviewRequest, PreviewStatus, SoundSummary, StyleSummary
 from .validation import validate_local_path
 
 
@@ -89,6 +91,41 @@ def build_styles_router(get_style_provider, get_preview_renderer) -> APIRouter: 
     async def list_fonts(style_provider: StyleProvider = Depends(get_style_provider)) -> list[str]:
         return style_provider.list_fonts()
 
+    @router.get("/api/sounds", response_model=list[SoundSummary])
+    async def list_sounds(style_provider: StyleProvider = Depends(get_style_provider)) -> list[SoundSummary]:
+        """The bundled sound library, with a URL for each so the page can
+        play it. An empty list is a real answer, not an error: a bundle
+        from before v0.7 carries no sounds."""
+        entries = await run_in_threadpool(_bundled_sounds, style_provider)
+        return [
+            SoundSummary(
+                name=entry.name, label=entry.label, description=entry.description,
+                duration_seconds=entry.duration_seconds,
+                url=f"/api/sounds/{quote(entry.name)}",
+            )
+            for entry in entries
+        ]
+
+    @router.get("/api/sounds/{name}")
+    async def serve_sound(
+        name: str, style_provider: StyleProvider = Depends(get_style_provider)
+    ) -> FileResponse:
+        """Serve one bundled sound so the Styles page can play it.
+
+        The name is matched against the library and the *library's* own
+        path is served; nothing the browser sent is ever joined onto a
+        directory. Same rule as ``serve_font_file``.
+        """
+        entry = next((e for e in _bundled_sounds(style_provider) if e.name == name), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"{name!r} is not a bundled sound.")
+        if not await run_in_threadpool(entry.path.is_file):
+            raise HTTPException(status_code=404, detail=f"The sound {name!r} is not installed.")
+        return FileResponse(
+            entry.path, media_type="audio/wav", filename=entry.path.name,
+            content_disposition_type="inline",
+        )
+
     @router.post("/api/styles/preview", response_model=PreviewJob, status_code=202)
     async def submit_preview(
         body: PreviewRequest,
@@ -135,3 +172,16 @@ def build_styles_router(get_style_provider, get_preview_renderer) -> APIRouter: 
         return FileResponse(job.clip_path, media_type="video/mp4")
 
     return router
+
+
+def _bundled_sounds(style_provider: StyleProvider) -> list:
+    """The provider's sound library, or nothing.
+
+    Probed with ``getattr`` like the queue's optional methods: a provider
+    written before v0.7 (and every test fake) has no ``list_sounds``, and
+    must give an empty library rather than a 500.
+    """
+    lister = getattr(style_provider, "list_sounds", None)
+    if not callable(lister):
+        return []
+    return list(lister())

@@ -1,0 +1,56 @@
+{
+  "generated_by": "scripts/make_sounds.py",
+  "license": "Synthesised for ASH Captions; distributed under the app's own licence.",
+  "sounds": [
+    {
+      "name": "pop",
+      "label": "Pop",
+      "description": "A short bright blip that drops in pitch. The default: it reads on a phone speaker without covering the voice.",
+      "file": "pop.wav",
+      "duration_seconds": 0.16,
+      "bytes": 30798,
+      "sample_rate": 48000,
+      "peak_dbfs": -1.5
+    },
+    {
+      "name": "click",
+      "label": "Click",
+      "description": "A tick, barely there. For a look where every word fires and anything longer would turn into a drum solo.",
+      "file": "click.wav",
+      "duration_seconds": 0.05,
+      "bytes": 9678,
+      "sample_rate": 48000,
+      "peak_dbfs": -1.5
+    },
+    {
+      "name": "whoosh",
+      "label": "Whoosh",
+      "description": "Filtered noise that swells and goes. The transition sound; best on a look where captions arrive a line at a time.",
+      "file": "whoosh.wav",
+      "duration_seconds": 0.45,
+      "bytes": 86478,
+      "sample_rate": 48000,
+      "peak_dbfs": -1.5
+    },
+    {
+      "name": "impact",
+      "label": "Impact",
+      "description": "A low thump with a transient on the front. Reserve it for keywords; on every sentence it becomes exhausting.",
+      "file": "impact.wav",
+      "duration_seconds": 0.5,
+      "bytes": 96078,
+      "sample_rate": 48000,
+      "peak_dbfs": -1.5
+    },
+    {
+      "name": "riser",
+      "label": "Riser",
+      "description": "A tone that climbs. It points at the word after it, so it belongs on the last line before a punchline, not everywhere.",
+      "file": "riser.wav",
+      "duration_seconds": 0.6,
+      "bytes": 115278,
+      "sample_rate": 48000,
+      "peak_dbfs": -1.5
+    }
+  ]
+}

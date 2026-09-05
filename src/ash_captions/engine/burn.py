@@ -68,6 +68,7 @@ from .ffmpeg_process import (
     run_ffmpeg,
 )
 from .probe import ProbeError, VideoInfo, ffprobe_beside, probe_video
+from .sfx import SfxPlan
 
 
 # Fixed names inside the per-burn work directory. Fixed is the point: the
@@ -141,6 +142,8 @@ def build_burn_command(
     height: int = 0,
     matte_path: Path | str | None = None,
     fps: float = 0.0,
+    sfx: SfxPlan | None = None,
+    duration_seconds: float | None = None,
 ) -> list[str]:
     """Stage ``work_dir`` and return the ffmpeg argv that burns the captions.
 
@@ -182,16 +185,44 @@ def build_burn_command(
             caption_filter=caption_filter, width=width, height=height, fps=fps, punch_filter=punch_filter
         )
         inputs = ["-i", str(video_path), "-i", str(Path(os.path.abspath(matte_path)))]
-        maps = ["-map", "[out]", "-map", "0:a:0?"]
-        filter_args = [filter_file_option(ffmpeg_path, complex_graph=True), FILTER_SCRIPT_FILENAME]
+        video_map = "[out]"
+        complex_graph = True
     else:
         graph = build_filtergraph(fontsdir=fontsdir, punch_filter=punch_filter)
         inputs = ["-i", str(video_path)]
         # Exactly the first video and (if present) first audio stream: a
         # camera file's data/timecode tracks would otherwise fail the mux
         # and a second audio track would be picked by "best", not "first".
-        maps = ["-map", "0:v:0", "-map", "0:a:0?"]
-        filter_args = [filter_file_option(ffmpeg_path), FILTER_SCRIPT_FILENAME]
+        video_map = "0:v:0"
+        complex_graph = False
+
+    audio_map = "0:a:0?"
+    audio_options = audio_args(audio_codec)
+    if sfx is not None:
+        # Sound effects mix the dialogue with extra inputs, which is a
+        # complex graph by definition -- so a plain burn's simple ``-vf``
+        # chain is promoted to one and given a label to map. Doing that
+        # here, rather than in two half-parallel code paths, is what keeps
+        # the matte case and the sound case from knowing about each other.
+        sfx_graph = sfx.filtergraph(
+            base_input_index=len(inputs) // 2,
+            source_audio=audio_codec is not None,
+            duration_seconds=duration_seconds,
+        )
+        if sfx_graph:
+            if not complex_graph:
+                graph = f"[0:v]{graph}[vout]"
+                video_map = "[vout]"
+                complex_graph = True
+            graph = f"{graph};{sfx_graph}"
+            inputs += [arg for path in sfx.files for arg in ("-i", path)]
+            audio_map = "[aout]"
+            # A filtered audio stream cannot be stream-copied, whatever
+            # codec the source carried.
+            audio_options = ["-c:a", "aac", "-b:a", "192k"]
+
+    maps = ["-map", video_map, "-map", audio_map]
+    filter_args = [filter_file_option(ffmpeg_path, complex_graph=complex_graph), FILTER_SCRIPT_FILENAME]
     (work_dir / FILTER_SCRIPT_FILENAME).write_text(graph, encoding="utf-8")
 
     encoder = select_video_encoder(ffmpeg_path, use_nvenc=use_nvenc)
@@ -206,7 +237,7 @@ def build_burn_command(
         *maps,
         *filter_args,
         *encoder_args(encoder, width=width, height=height),
-        *audio_args(audio_codec),
+        *audio_options,
         "-progress", "pipe:1",
         "-nostats",
         str(part_path_for(output_path)),
@@ -265,11 +296,15 @@ def burn_captions(
     video_info: VideoInfo | None = None,
     work_dir: Path | str | None = None,
     matte_path: Path | str | None = None,
+    sfx: SfxPlan | None = None,
 ) -> Path:
     """Burn ``ass_path``'s captions into ``video_path``, writing an MP4.
 
     ``matte_path`` (from ``engine.matte.render_matte``) puts the captions
-    behind the speaker; see ``build_burn_command``.
+    behind the speaker; see ``build_burn_command``. ``sfx`` (from
+    ``engine.sfx.build_plan``) mixes the look's sounds in at the word
+    timestamps; ``None`` leaves the audio exactly as it is today, copied
+    rather than re-encoded.
 
     Args:
         duration_seconds: total video duration, used to turn ffmpeg's raw
@@ -325,6 +360,8 @@ def burn_captions(
             height=video_info.height if video_info else 0,
             matte_path=matte_path,
             fps=video_info.fps if video_info else 0.0,
+            sfx=sfx,
+            duration_seconds=duration_seconds,
         )
         try:
             run = run_ffmpeg(

@@ -12,6 +12,7 @@ from typing import Any, AsyncIterator
 
 from ash_captions.web.interfaces import (
     BundledFontFile,
+    BundledSound,
     JobNotFoundError,
     JobNotRemovableError,
     JobNotRetryableError,
@@ -346,6 +347,8 @@ class FakeStyleProvider:
         shipped: dict[str, dict[str, Any]] | None = None,
         fonts: tuple[str, ...] = DEFAULT_BUNDLED_FONTS,
         fonts_dir: Path | None = None,
+        sounds: tuple[str, ...] = ("pop", "whoosh"),
+        sounds_dir: Path | None = None,
     ) -> None:
         self._shipped: dict[str, dict[str, Any]] = shipped if shipped is not None else {
             name: default_style_definition(name) for name in DEFAULT_SHIPPED_STYLE_NAMES
@@ -356,6 +359,10 @@ class FakeStyleProvider:
         # writes real bytes there to exercise the font-file routes. None
         # means "no files": the routes then list nothing.
         self._fonts_dir = fonts_dir
+        self._sounds = sounds
+        # Same contract as `_fonts_dir`: None means the provider carries
+        # no sound library.
+        self._sounds_dir = sounds_dir
 
     def list_styles(self) -> list[StyleSummary]:
         merged = {**self._shipped, **self._user}
@@ -413,6 +420,20 @@ class FakeStyleProvider:
         return [
             BundledFontFile(family=family, path=self._fonts_dir / f"{family.replace(' ', '')}-Regular.ttf")
             for family in self._fonts
+        ]
+
+    def list_sounds(self) -> list[BundledSound]:
+        # None means "this provider has no sound library at all" -- the
+        # shape of a bundle built before v0.7, which the routes must
+        # answer with an empty list rather than a 500.
+        if self._sounds_dir is None:
+            return []
+        return [
+            BundledSound(
+                name=name, label=name.title(), description=f"The {name}.",
+                duration_seconds=0.2, path=self._sounds_dir / f"{name}.wav",
+            )
+            for name in self._sounds
         ]
 
     def _validate(self, definition: dict[str, Any]) -> None:

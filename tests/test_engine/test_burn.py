@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from ash_captions.engine import burn, encoders
+from ash_captions.engine.sfx import SfxHit, SfxPlan
 from ash_captions.engine.burn import (
     BITRATE_1080P,
     BITRATE_4K,
@@ -345,3 +346,98 @@ def test_parse_progress_line_ignores_unrelated_lines():
 
 def test_parse_progress_line_returns_none_for_zero_duration():
     assert _parse_progress_line("out_time_us=1000000", duration_seconds=0.0) is None
+
+
+# ---------------------------------------------------------------------------
+# sound effects in the burn command (v0.7 section 1)
+# ---------------------------------------------------------------------------
+
+
+def _plan(*sounds: str) -> SfxPlan:
+    return SfxPlan(
+        hits=tuple(SfxHit(time=n * 1.0, sound=name, trigger="word") for n, name in enumerate(sounds)),
+        sounds=tuple(dict.fromkeys((name, f"C:/s/{name}.wav") for name in sounds)),
+        gain_db=-8.0,
+    )
+
+
+def test_without_sound_the_command_is_exactly_what_it_was(tmp_path):
+    """The whole feature has to be invisible when a look does not use it:
+    same simple ``-vf``, same stream maps, and -- the one that would cost
+    quality silently -- the same ``-c:a copy`` on the client's dialogue."""
+    args = _command(tmp_path, audio_codec="aac")
+    assert args == _command(tmp_path, audio_codec="aac", sfx=None)
+    assert "-map" in args and args[args.index("-map") + 1] == "0:v:0"
+    assert "-/filter:v" in args
+    assert "-filter_complex" not in " ".join(args)
+    assert args[args.index("-c:a") + 1] == "copy"
+
+
+def test_sound_promotes_the_simple_chain_to_a_complex_one(tmp_path):
+    """A mix needs extra inputs, which is a complex graph by definition,
+    so the video chain has to be named and mapped rather than left as a
+    per-stream filter."""
+    args = _command(tmp_path, audio_codec="aac", sfx=_plan("pop", "pop"), duration_seconds=30.0)
+    assert "-/filter_complex" in args
+    assert "-/filter:v" not in args
+    maps = [args[i + 1] for i, a in enumerate(args) if a == "-map"]
+    assert maps == ["[vout]", "[aout]"]
+
+    graph = (tmp_path / "work" / FILTER_SCRIPT_FILENAME).read_text(encoding="utf-8")
+    assert graph.startswith("[0:v]")
+    assert f"ass={CAPTIONS_FILENAME}" in graph
+    assert "[vout]" in graph and "[aout]" in graph
+
+
+def test_the_sound_files_become_inputs_after_the_video(tmp_path):
+    args = _command(tmp_path, audio_codec="aac", sfx=_plan("pop", "whoosh"), duration_seconds=30.0)
+    inputs = [args[i + 1] for i, a in enumerate(args) if a == "-i"]
+    assert inputs[1:] == ["C:/s/pop.wav", "C:/s/whoosh.wav"]
+    graph = (tmp_path / "work" / FILTER_SCRIPT_FILENAME).read_text(encoding="utf-8")
+    assert "[1:a]" in graph and "[2:a]" in graph
+
+
+def test_a_matte_pushes_the_sounds_to_input_two(tmp_path):
+    """Captions behind the speaker already own input 1. Getting this
+    wrong would mix the matte's (absent) audio and fail the burn."""
+    matte = tmp_path / "matte.mp4"
+    matte.write_bytes(b"")
+    args = _command(
+        tmp_path, audio_codec="aac", matte_path=matte, width=1080, height=1920, fps=30.0,
+        sfx=_plan("pop"), duration_seconds=30.0,
+    )
+    inputs = [args[i + 1] for i, a in enumerate(args) if a == "-i"]
+    assert len(inputs) == 3 and inputs[2] == "C:/s/pop.wav"
+    maps = [args[i + 1] for i, a in enumerate(args) if a == "-map"]
+    assert maps == ["[out]", "[aout]"]
+    graph = (tmp_path / "work" / FILTER_SCRIPT_FILENAME).read_text(encoding="utf-8")
+    assert "[2:a]" in graph and "[1:a]" not in graph
+
+
+def test_filtered_audio_is_re_encoded_never_copied(tmp_path):
+    """``-c:a copy`` with an audio filter is not a quality choice, it is
+    an ffmpeg error. Both copyable and non-copyable sources must land on
+    AAC once a sound is mixed in."""
+    for codec in ("aac", "pcm_s16le", None):
+        args = _command(tmp_path, audio_codec=codec, sfx=_plan("pop"), duration_seconds=30.0)
+        assert args[args.index("-c:a") + 1] == "aac"
+
+
+def test_a_video_with_no_audio_still_gets_the_sounds(tmp_path):
+    """``audio_codec=None`` is how a probe reports no audio stream. The
+    hits then play over a generated silence, so a screen recording still
+    comes back with one audio track rather than none."""
+    args = _command(tmp_path, audio_codec=None, sfx=_plan("pop"), duration_seconds=12.0)
+    graph = (tmp_path / "work" / FILTER_SCRIPT_FILENAME).read_text(encoding="utf-8")
+    assert "anullsrc" in graph and "atrim=end=12.000" in graph
+    assert "[0:a]" not in graph
+    assert args[args.index("-c:a") + 1] == "aac"
+
+
+def test_a_plan_whose_graph_comes_out_empty_leaves_the_command_alone(tmp_path):
+    """No audio stream and no known duration: there is nothing to mix
+    into. The burn must fall back to the ordinary command rather than
+    emitting a graph that references a stream it never created."""
+    args = _command(tmp_path, audio_codec=None, sfx=_plan("pop"), duration_seconds=None)
+    assert args == _command(tmp_path, audio_codec=None)
+    assert "-/filter:v" in args

@@ -1,4 +1,4 @@
-/* Style editor (spec 7A): the picker, the form in four tabs, the live
+/* Style editor (spec 7A): the picker, the form in five tabs, the live
    sample set in the real font, and Save / Save as / Duplicate / Delete /
    Reset with inline prompts. The preview on real footage is
    style_editor_preview.js. */
@@ -253,6 +253,9 @@
     copy.name = name;
     copy.layout = copy.layout || {};
     if (!copy.layout.align) copy.layout.align = DEFAULT_ALIGN;
+    // Styles saved before v0.7 have no sound block at all; the Sound tab
+    // owns its shape, so ask it rather than repeating the defaults here.
+    if (!copy.sound && window.AshStyleSound) copy.sound = AshStyleSound.defaults();
     return copy;
   }
 
@@ -274,6 +277,7 @@
     exitDurationInput.value = draft.exit.duration_ms;
     setRadioValue(positionGroup, draft.layout.position);
     setRadioValue(alignGroup, draft.layout.align || DEFAULT_ALIGN);
+    if (window.AshStyleSound) AshStyleSound.apply();
     renderSample();
   }
 
@@ -416,4 +420,5 @@
   loadFonts();
   loadStyles();
   AshEditorPreview.init({ getDraft: () => draft });
+  if (window.AshStyleSound) AshStyleSound.init({ getDraft: () => draft });
 })();

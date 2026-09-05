@@ -4,10 +4,12 @@ B consumes, the line-break markers ``build_cards`` takes, and the rewrite of
 ``.ass``/``.srt``/``.txt`` the transcript PATCH runs."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from ash_captions import engine
 from ash_captions.app import runner_util
+from ash_captions.app.runner_util import plan_sound_effects
 from ash_captions.app.transcript import TranscriptRecord, merge, set_style, set_text, split
 from ash_captions.engine import Segment, Word
 
@@ -106,3 +108,85 @@ class TestRewriteOutputs:
         monkeypatch.setattr(engine, "write_ass", newer_write_ass)
         runner_util.rewrite_outputs(record, output_dir=tmp_path, stem="f", preset="CLEAN")
         assert list(seen["word_styles"]) == [(0.55, 1.10)]
+
+
+# ---------------------------------------------------------------------------
+# sound effects (v0.7 section 1)
+# ---------------------------------------------------------------------------
+
+
+class _Sound:
+    def __init__(self, **kwargs):
+        self.trigger = kwargs.get("trigger", "sentence")
+        self.sounds = kwargs.get("sounds", ("pop",))
+        self.gain_db = kwargs.get("gain_db", -8.0)
+        self.offset_ms = kwargs.get("offset_ms", 0)
+        self.min_spacing_seconds = kwargs.get("min_spacing_seconds", 0.35)
+
+    @property
+    def enabled(self):
+        return self.trigger != "off" and bool(self.sounds)
+
+
+class _Look:
+    def __init__(self, sound=None):
+        self.name = "TEST"
+        if sound is not None:
+            self.sound = sound
+
+
+SPOKEN = (
+    Word(text="Look.", start=0.0, end=0.4),
+    Word(text="this", start=1.0, end=1.3),
+    Word(text="matters.", start=1.4, end=2.0),
+)
+
+
+def test_a_look_with_no_sound_block_at_all_plans_nothing():
+    """A style loaded from a v0.6 file. It must not raise, and it must
+    not silently start making noise."""
+    assert plan_sound_effects(_Look(), SPOKEN) is None
+
+
+def test_a_silent_look_plans_nothing():
+    assert plan_sound_effects(_Look(_Sound(trigger="off")), SPOKEN) is None
+
+
+def test_a_look_with_sound_plans_its_hits():
+    plan = plan_sound_effects(_Look(_Sound(trigger="sentence", sounds=("pop",))), SPOKEN)
+    assert plan is not None
+    assert [round(hit.time, 2) for hit in plan.hits] == [0.0, 1.0]
+    assert plan.gain_db == -8.0
+    assert plan.files and plan.files[0].endswith("pop.wav")
+
+
+def test_the_keyword_list_the_caller_passes_is_the_one_that_fires():
+    plan = plan_sound_effects(
+        _Look(_Sound(trigger="keyword", sounds=("impact",))), SPOKEN, keywords=("matters",)
+    )
+    assert [round(hit.time, 2) for hit in plan.hits] == [1.4]
+
+
+def test_a_sound_this_build_does_not_carry_costs_the_sound_not_the_job(caplog):
+    with caplog.at_level(logging.WARNING):
+        assert plan_sound_effects(_Look(_Sound(sounds=("airhorn",))), SPOKEN) is None
+    assert "does not carry" in caplog.text
+
+
+def test_anything_that_throws_inside_costs_the_sound_not_the_job(monkeypatch, caplog):
+    """The burn is the deliverable; sound is a flourish. Every failure
+    path here has to end in None."""
+    monkeypatch.setattr(
+        "ash_captions.engine.select_sfx_hits",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    with caplog.at_level(logging.WARNING):
+        assert plan_sound_effects(_Look(_Sound()), SPOKEN) is None
+    assert "burning without them" in caplog.text
+
+
+def test_an_engine_without_sound_support_plans_nothing(monkeypatch, caplog):
+    monkeypatch.delattr("ash_captions.engine.select_sfx_hits", raising=False)
+    with caplog.at_level(logging.WARNING):
+        assert plan_sound_effects(_Look(_Sound()), SPOKEN) is None
+    assert "no sound support" in caplog.text

@@ -174,6 +174,17 @@ class LanguageCatalogueProvider(Protocol):
 # production wiring needs no changes, but tests inject fakes instead.
 
 
+class BundledSound(NamedTuple):
+    """One bundled sound with the file behind it, so the route can serve
+    it without ever joining a browser-supplied name onto a path."""
+
+    name: str
+    label: str
+    description: str
+    duration_seconds: float
+    path: "Path"
+
+
 class BundledFontFile(NamedTuple):
     """One bundled face and where its file lives -- what the optional
     ``StyleProvider.list_font_files()`` returns so the Studio page can serve
@@ -251,6 +262,15 @@ class StyleProvider(Protocol):
 
     def list_fonts(self) -> list[str]:
         """Every bundled font family, for the font dropdown (spec 7A.4)."""
+        ...
+
+    def list_sounds(self) -> list["BundledSound"]:
+        """Every bundled sound effect, for the Styles page's sound picker.
+
+        Returning ``[]`` is a valid answer -- a bundle built before v0.7
+        carries no sounds -- and the page then says the library is empty
+        rather than offering names that would burn silent.
+        """
         ...
 
     # Optional extra, probed with getattr() like the queue's:

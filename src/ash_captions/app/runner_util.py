@@ -37,6 +37,64 @@ _BASE_WEIGHTS = {
 
 GB = 1024 ** 3
 
+
+def plan_sound_effects(
+    style: Any,
+    words: Iterable[Any],
+    *,
+    keywords: tuple[str, ...] = (),
+    duration_seconds: float | None = None,
+) -> Any | None:
+    """The look's sounds, placed on its words -- or ``None`` for silence.
+
+    A flourish, handled the way punch-in is: every failure path here
+    returns ``None`` and the burn goes ahead without sound, because the
+    captions are the deliverable. The three ways it comes back empty are
+    worth telling apart in the log, and are:
+
+    * the look does not ask for sound (much the commonest -- every
+      shipped look defaults to ``trigger="off"``);
+    * it asks for a sound this build does not carry, which is what an
+      old bundle opening a new look looks like;
+    * ``engine.sfx`` is missing entirely, which is a source tree part-way
+      through an upgrade.
+    """
+    sound = getattr(style, "sound", None)
+    if sound is None or not getattr(sound, "enabled", False):
+        return None
+    select = getattr(engine, "select_sfx_hits", None)
+    build = getattr(engine, "build_sfx_plan", None)
+    if select is None or build is None:
+        log.warning("this engine has no sound support; burning without it")
+        return None
+    try:
+        from ash_captions import styles
+
+        hits = select(
+            words,
+            trigger=sound.trigger,
+            sounds=sound.sounds,
+            keywords=keywords,
+            min_spacing=sound.min_spacing_seconds,
+            offset_ms=sound.offset_ms,
+            video_duration=duration_seconds or None,
+        )
+        plan = build(hits, styles.sound_path, gain_db=sound.gain_db)
+    except Exception:  # noqa: BLE001 - a flourish never fails a job
+        log.warning("sound effects unavailable; burning without them", exc_info=True)
+        return None
+    if plan is None:
+        log.warning(
+            "look %r asks for sound(s) %s, which this build does not carry; burning silent",
+            getattr(style, "name", "?"), ", ".join(sound.sounds),
+        )
+    else:
+        log.info(
+            "sound: %d hit(s) of %s at %+.1f dB (%s)",
+            len(plan.hits), "/".join(sound.sounds), sound.gain_db, sound.trigger,
+        )
+    return plan
+
 # The engine's cancellation exceptions, when this tree's engine has them.
 # Both the full runner (runner.py) and the translate-only runner
 # (runner_translate.py) map these to ``pipeline.queue.JobCancelled``.

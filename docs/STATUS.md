@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **1956 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2055 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -20,6 +20,28 @@ running it, not inferred.
 ---
 
 ## Where the project is
+
+**On master, not yet released: sound effects locked to the caption word.**
+The first piece of v0.7, and the one idea in all the competitor research
+nobody else has. A look can fire a short sound on the word its caption
+lands on -- on each sentence, on the client's keywords, or on every word.
+Five sounds ship (pop, click, whoosh, impact, riser), **synthesised by
+`scripts/make_sounds.py`** rather than sampled, so there is no third-party
+licence travelling with the product and the whole library is 339 KB. The
+Styles page gains a Sound tab where each one can be played before it is
+chosen, at the volume it will be burned at.
+
+Verified by burning, not by asserting: on a synthetic silent clip the hits
+land **0 ms** from the word, measured off the decoded waveform; on the
+client's real reel through the real queue, every sentence start came out
+6-9x louder while the dialogue between them was untouched and the file kept
+its exact length. Sound belongs to the look, like the font -- so every
+shipped look defaults to `trigger: "off"`, and a test fails if one ever
+does not.
+
+One judgement is still Ghazi's and cannot be made from here: **the default
+volume.** It is -8 dB under a sound normalised to -1.5 dBFS, which on the
+test reel put the impact well above the dialogue. It needs an ear.
 
 **v0.6.0 is what master is now, and what is published** (2026-09-05). It is
 the build the six editors install and test. Built by five agents in five

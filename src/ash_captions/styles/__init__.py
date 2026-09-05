@@ -21,6 +21,15 @@ from .fonts import (
     list_font_families,
     load_manifest,
 )
+from .sounds import (
+    SoundEntry,
+    assets_sounds_dir,
+    find_sound_entry,
+    is_sound_bundled,
+    list_sound_names,
+    load_manifest as load_sound_manifest,
+    sound_path,
+)
 from .library import (
     DEFAULT_STYLE,
     delete_user_style,
@@ -35,7 +44,7 @@ from .library import (
 )
 from .preview import DEFAULT_PREVIEW_DURATION_SECONDS, build_preview_command
 from .render import DEFAULT_PLAY_RES, render_ass, write_ass
-from .schema import ActiveWord, Colors, Layout, Style, StyleValidationError, Transition
+from .schema import ActiveWord, Colors, Layout, Sound, Style, StyleValidationError, Transition
 
 __all__ = [
     "Style",
@@ -62,6 +71,14 @@ __all__ = [
     "load_manifest",
     "fontsdir_arg",
     "assets_fonts_dir",
+    "Sound",
+    "SoundEntry",
+    "sound_path",
+    "list_sound_names",
+    "is_sound_bundled",
+    "find_sound_entry",
+    "load_sound_manifest",
+    "assets_sounds_dir",
     "download_fonts",
     "build_preview_command",
     "DEFAULT_PREVIEW_DURATION_SECONDS",

@@ -56,6 +56,7 @@ from .runner_util import (  # noqa: F401 - re-exported for tests and callers
     check_free_space,
     load_glossary_entries,
     load_glossary_entries_for,
+    plan_sound_effects,
 )
 
 log = logging.getLogger(__name__)
@@ -287,7 +288,7 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
 
             if job.options.burn:
                 set_stage("burn")
-                _burn(job, video_path, output_dir, stem, words, segments, info, budget["burn"], report, should_stop)
+                _burn(job, video_path, output_dir, stem, words, segments, info, style, budget["burn"], report, should_stop)
         except _CANCEL_EXCEPTIONS as exc:
             raise JobCancelled(str(exc)) from exc
         finally:
@@ -352,6 +353,7 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
         words: tuple,
         segments: tuple,
         info: "engine.VideoInfo | None",
+        style: Any,
         span: tuple[int, int],
         report: Callable[[int], None],
         should_stop: Callable[[], bool] | None,
@@ -414,6 +416,15 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
                 log.warning("punch-in unavailable; burning without it", exc_info=True)
                 punch_filter = None
 
+        # Sound effects (engine/sfx.py). The keyword list is punch-in's,
+        # on purpose: "the words that matter to this client" is one list,
+        # and an editor should not have to keep two of them in step.
+        sfx_plan = plan_sound_effects(
+            style, words,
+            keywords=tuple(settings.punch_keywords),
+            duration_seconds=duration,
+        )
+
         # Captions behind the speaker: a person matte first (about the
         # video's own length on a CPU), then a two-input burn. The matte is
         # the first 40% of the burn's progress span. Any failure here is a
@@ -458,7 +469,7 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
             fontsdir=styles.fontsdir_arg(),
             punch_filter=punch_filter,
             on_progress=on_burn_progress,
-            optional={"should_stop": should_stop, "matte_path": matte_path},
+            optional={"should_stop": should_stop, "matte_path": matte_path, "sfx": sfx_plan},
         )
         report(end)
 

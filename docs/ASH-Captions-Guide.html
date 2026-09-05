@@ -486,9 +486,10 @@ details.fix p { margin: 8px 0 2px; }
     <li><a href="#behind">12 · Behind the speaker</a></li>
     <li><a href="#clients">13 · Clients and glossaries</a></li>
     <li><a href="#punch">14 · Punch-in</a></li>
-    <li><a href="#problems">15 · Problems and fixes</a></li>
-    <li><a href="#uninstall">16 · Uninstalling</a></li>
-    <li><a href="#worth">17 · Worth knowing</a></li>
+    <li><a href="#sound">15 · Sound effects</a></li>
+    <li><a href="#problems">16 · Problems and fixes</a></li>
+    <li><a href="#uninstall">17 · Uninstalling</a></li>
+    <li><a href="#worth">18 · Worth knowing</a></li>
   </ol>
   <div class="guide-progress">
     <strong id="progress-label">Setup: 0 of 6 steps done</strong>
@@ -856,8 +857,30 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p>For keyword mode add the words worth emphasising: <code>"punch_keywords": ["free", "guarantee", "today"]</code>. Punch-in only applies when <strong>Burn captions into the video</strong> is ticked. It works on hour-long files and costs almost no extra render time.</p>
 </section>
 
+<section id="sound">
+  <h2>Part 15 · Sound effects</h2>
+  <p>A look can fire a short sound on the word the caption lands on — a pop, a whoosh, a low impact. It is the same idea as the punch-in: the captions say what is being said, and the sound says it matters. Five sounds ship with the app; nothing is downloaded and nothing needs a licence.</p>
+  <p>Unlike the punch-in, this belongs to the <strong>look</strong>, not to a settings file. Open <strong>Styles</strong>, pick a look, and go to the <strong>Sound</strong> tab.</p>
+  <ol class="steps">
+    <li><strong>Play them first.</strong> Every sound has a <strong>Play</strong> button. The volume you set is the volume you hear, so set it before you judge.</li>
+    <li><strong>Choose when it fires.</strong> <em>Each sentence</em> is the safe one on a talking head. <em>Keywords</em> uses the same word list the punch-in uses. <em>Every word</em> only works with a very short sound — use Click — and a look that shows one word at a time.</li>
+    <li><strong>Pick up to four sounds.</strong> They play in the order you picked them and then start again, so two sounds alternate. The number on the left is the play order.</li>
+    <li><strong>Nudge</strong> is a fine offset in milliseconds. Negative starts the sound slightly <em>before</em> the word, which usually sounds better: the ear places a sound by its attack.</li>
+  </ol>
+  <table class="plain">
+    <tr><th>Sound</th><th>When to use it</th></tr>
+    <tr><td>Pop</td><td>The default. Reads on a phone speaker without covering the voice.</td></tr>
+    <tr><td>Click</td><td>Barely there. The only one that survives firing on every word.</td></tr>
+    <tr><td>Whoosh</td><td>The transition sound. Best where captions arrive a line at a time.</td></tr>
+    <tr><td>Impact</td><td>A low thump. Keep it for keywords; on every sentence it becomes exhausting.</td></tr>
+    <tr><td>Riser</td><td>Points at the word after it. The last line before a punchline, not everywhere.</td></tr>
+  </table>
+  <p class="note"><strong>Sound belongs to the look, so it follows the look everywhere.</strong> Adding a sound to a built-in look changes every job on this PC that uses it, including old jobs if they are restyled or burned again — the same warning the Styles page shows. If only one client wants sound, <strong>Save as…</strong> a copy and put the sound on that.</p>
+  <p>Sound is only mixed in when <strong>Burn captions into the video</strong> is ticked — an <code>.srt</code> cannot carry a whoosh. The video keeps its original length and its dialogue; the sounds are added underneath, nothing is replaced or ducked.</p>
+</section>
+
 <section id="problems">
-  <h2>Part 15 · Problems and fixes</h2>
+  <h2>Part 16 · Problems and fixes</h2>
   <details class="fix"><summary>'python' is not recognised</summary><p>Python isn't on PATH. Re-run the installer, choose Modify, tick "Add python.exe to PATH".</p></details>
   <details class="fix"><summary>The browser page won't load, or an amber "Lost contact" banner appears</summary><p>The terminal window was closed or the app crashed. Start it again with the Step 6 command. A job that was running restarts from the beginning.</p></details>
   <details class="fix"><summary>"ASH Captions is already running"</summary><p>It's already open. Look for the icon near the clock, or another terminal window.</p></details>
@@ -876,14 +899,14 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="uninstall">
-  <h2>Part 16 · Uninstalling</h2>
+  <h2>Part 17 · Uninstalling</h2>
   <p>Double-click <code>Uninstall-AshCaptions.bat</code>. It sits beside <code>Install-AshCaptions.bat</code>, wherever Ghazi gave you that; if you no longer have it, ask for it again. Windows may show the same blue "protected your PC" box as at install time: <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
   <p>It quits the app, removes the logon task and the Desktop and Start Menu icons, and deletes the program folder. <strong>Your captions stay:</strong> <code>C:\AshCaptions</code> (the <code>in</code>, <code>out</code> and <code>glossaries</code> folders, the settings and the log) is kept, and the script says so when it finishes. Delete that folder yourself if you want it gone.</p>
   <p>Reinstalling later with <code>Install-AshCaptions.bat</code> picks the kept folder straight back up.</p>
 </section>
 
 <section id="worth">
-  <h2>Part 17 · Worth knowing</h2>
+  <h2>Part 18 · Worth knowing</h2>
   <ul>
     <li><strong>Accuracy.</strong> English, Spanish and Portuguese are excellent; most European languages very good. <strong>Arabic</strong>: the <code>.srt</code> and transcript are fine; for a styled look use CLEAN or POP, not the karaoke looks (the sweep runs the wrong way for right-to-left text). <strong>Always skim the result before delivering.</strong> Names, brands and technical words are where mistakes hide.</li>
     <li><strong>Apostrophes, commas and accents in file names are fine.</strong> So are network drives, as long as they stay connected for the whole job.</li>

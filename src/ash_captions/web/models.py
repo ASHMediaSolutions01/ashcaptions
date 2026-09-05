@@ -178,6 +178,21 @@ class StyleSummary(BaseModel):
     definition: dict[str, Any]
 
 
+class SoundSummary(BaseModel):
+    """One bundled sound, as returned by GET /api/sounds.
+
+    ``url`` is included so the Styles page can play it. Choosing a sound
+    you have never heard is the same mistake as choosing a motion effect
+    from a still picture, which is what v0.6 had to go back and fix.
+    """
+
+    name: str
+    label: str
+    description: str = ""
+    duration_seconds: float = 0.0
+    url: str
+
+
 class PreviewRequest(BaseModel):
     """Body of POST /api/styles/preview (spec 7A.3)."""
 

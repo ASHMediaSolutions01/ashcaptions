@@ -25,7 +25,7 @@ from ash_captions.styles import (
 # from `ash_captions.styles` so it no longer has to.
 from ash_captions.styles import assets_fonts_dir, load_manifest
 
-from .interfaces import BundledFontFile, StyleIsShippedError, StyleNotFoundError, StyleValidationFailedError
+from .interfaces import BundledFontFile, BundledSound, StyleIsShippedError, StyleNotFoundError, StyleValidationFailedError
 from .models import StyleSummary
 
 # `get_style(shipped_only=True)` needs `list_styles()` to see *only* the
@@ -112,6 +112,26 @@ class StylesPackageAdapter:
 
     def list_fonts(self) -> list[str]:
         return list(list_font_families())
+
+    def list_sounds(self) -> list[BundledSound]:
+        """The bundled sound library, manifest order.
+
+        Entries whose .wav is not on disk are dropped rather than listed:
+        a name the editor can pick but the burn cannot find is the exact
+        shape of a silent failure.
+        """
+        from ash_captions.styles.sounds import assets_sounds_dir, load_manifest as load_sound_manifest
+
+        directory = assets_sounds_dir()
+        found = []
+        for entry in load_sound_manifest():
+            path = directory / entry.file
+            if path.is_file():
+                found.append(BundledSound(
+                    name=entry.name, label=entry.label, description=entry.description,
+                    duration_seconds=entry.duration_seconds, path=path,
+                ))
+        return found
 
     def list_font_files(self) -> list[BundledFontFile]:
         """Every manifest face with the path its file is expected at (the

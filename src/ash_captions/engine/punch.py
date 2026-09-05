@@ -53,7 +53,12 @@ class PunchMoment:
         return self.end - self.start
 
 
-def _is_sentence_start(index: int, words: list[Word], sentence_gap: float) -> bool:
+def is_sentence_start(index: int, words: list[Word], sentence_gap: float) -> bool:
+    """True when this word begins a new thought.
+
+    Public because ``engine.sfx`` fires a sound on exactly the same
+    moments a punch-in zooms on; two copies of this rule would drift and
+    the two effects would stop landing together."""
     if index == 0:
         return True
     previous = words[index - 1]
@@ -62,6 +67,9 @@ def _is_sentence_start(index: int, words: list[Word], sentence_gap: float) -> bo
     # A long pause starts a new thought even without punctuation, which is
     # common in speech Whisper transcribes without a full stop.
     return (words[index].start - previous.end) >= sentence_gap
+
+
+_is_sentence_start = is_sentence_start  # the name this had before v0.7
 
 
 def _normalise(text: str) -> str:
@@ -97,7 +105,7 @@ def select_punch_moments(
 
     for index, word in enumerate(word_list):
         trigger: str | None = None
-        if mode in (PunchMode.SENTENCE, PunchMode.BOTH) and _is_sentence_start(
+        if mode in (PunchMode.SENTENCE, PunchMode.BOTH) and is_sentence_start(
             index, word_list, sentence_gap
         ):
             trigger = "sentence"
