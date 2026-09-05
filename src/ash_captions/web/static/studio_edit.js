@@ -414,7 +414,7 @@
         return clampRetime(state.words, index, edge === "start" ? { start: seconds } : { end: seconds });
       };
       let moved = false;
-      grip.setPointerCapture(e.pointerId);
+      try { grip.setPointerCapture(e.pointerId); } catch (err) { /* a synthetic event */ }
       grip.classList.add("dragging");
       const move = (ev) => {
         moved = true;
