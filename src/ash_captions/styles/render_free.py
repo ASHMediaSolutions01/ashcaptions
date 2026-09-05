@@ -216,7 +216,8 @@ def free_events(
         event_ms = max(1, round((end - start) * 1000))
         x, y = _slot_point(slot, width, height, offset, _placement_for(word_styles, word))
         tags = _word_tags(style, slot, x, y, event_ms=event_ms, exit_ms=exit_ms, num=_num,
-                          override=_placement_for(word_styles, word))
+                          override=_placement_for(word_styles, word),
+                          size_factor=_size_factor(height))
         text = prepare_word_text(word.text, style)
         lines.append(_dialogue_line(start, end, style_name, f"{{{tags}}}{text}"))
     return lines
@@ -247,11 +248,12 @@ def _slot_point(
 def _word_tags(
     style: Style, slot: Slot, x: float, y: float, *, event_ms: int, exit_ms: int, num,
     override: Placement | None = None,
+    size_factor: float = 1.0,
 ) -> str:
     # A per-word override (v0.6 section 2) beats the slot: an editor who
     # picked this word out by hand meant it, and the slot is only ever a
     # guess the layout made from the word's length and its role.
-    scale = round(slot.scale * _override_scale(override) * 100)
+    scale = max(1, round(slot.scale * _override_scale(override) * size_factor * 100))
     enter_ms = min(_ENTRANCE_MS.get(slot.entrance, 0), event_ms)
     tags = ["\\an5"]  # \pos is the word's centre, whatever the look's align is
 
@@ -273,7 +275,7 @@ def _word_tags(
     # size 200 every slot came out with the same 11px border whatever its
     # scale, so a 0.5x word wore an outline twice as heavy, relatively, as
     # a normal caption's. Scale it here, so small words look small.
-    tags.append(f"\\bord{_border(style, slot)}")
+    tags.append(f"\\bord{_border(style, slot, size_factor)}")
     if style.letter_spacing:
         tags.append(f"\\fsp{num(style.letter_spacing)}")
     colour = _attr(override, "colour") or getattr(style.colors, slot.role)
@@ -284,6 +286,21 @@ def _word_tags(
     if fade:
         tags.append(fade)
     return "".join(tags)
+
+
+# The looks are drawn against a 9:16 reel: 1920 tall. ASS font size is in
+# PlayRes units, so on a 1920x1080 frame the same size is 1.8x as tall
+# relative to the picture while the slot rows -- fractions of the height --
+# sit that much closer together, and the words run into each other. Scaling
+# by the frame's height keeps a look's proportions on any shape of video,
+# and is exactly 1.0 on the vertical frame the looks were measured against.
+_REFERENCE_HEIGHT = 1920
+
+
+def _size_factor(height: int) -> float:
+    if height <= 0:
+        return 1.0
+    return min(1.0, height / _REFERENCE_HEIGHT)
 
 
 def _attr(override: Placement | None, name: str):
@@ -297,14 +314,14 @@ def _override_scale(override: Placement | None) -> float:
     return 1.0 if value is None else float(value)
 
 
-def _border(style: Style, slot: Slot) -> int:
+def _border(style: Style, slot: Slot, size_factor: float = 1.0) -> int:
     """The slot's outline width in pixels. ``slot.border`` of 0 means no
     outline at all -- what a word drawn in the look's *outline* colour
     needs, since a black fill inside a black border is a slab, not a
     word (seen on a burned frame, not guessed)."""
     if not slot.border:
         return 0
-    return max(1, round(outline_width(style) * slot.scale * slot.border))
+    return max(1, round(outline_width(style) * slot.scale * slot.border * size_factor))
 
 
 def _scale_tags(entrance: str, scale: int, enter_ms: int) -> list[str]:

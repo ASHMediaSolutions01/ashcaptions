@@ -87,3 +87,32 @@ def test_bold_and_italic_are_applied_and_can_switch_a_slot_back_off():
 def test_a_words_own_position_overrides_its_slot():
     moved = event_for("2nd", word_styles={SECOND: WordStyle(x=0.1, y=0.9)})
     assert "\\pos(108,1728)" in moved or "\\move(108," in moved
+
+
+# ---------------------------------------------------------------------------
+# frame shape
+# ---------------------------------------------------------------------------
+
+
+def test_a_reel_look_keeps_its_proportions_on_a_landscape_frame():
+    """Found by burning a frame, not by a test: the looks are drawn against
+    a 9:16 reel, and ASS font size is in PlayRes units, so on a 1920x1080
+    frame the same size is nearly twice as tall relative to the picture
+    while the slot rows -- fractions of the height -- sit that much closer
+    together. "los" ran straight through "intereses"."""
+    portrait = render_ass([CARD], reel_look(), play_res=(1080, 1920))
+    landscape = render_ass([CARD], reel_look(), play_res=(1920, 1080))
+    big_portrait = next(line for line in portrait.splitlines() if line.rstrip().endswith("2nd"))
+    big_landscape = next(line for line in landscape.splitlines() if line.rstrip().endswith("2nd"))
+    assert "\\fscy220" in big_portrait  # the reference frame: the slot's own 2.2x
+    assert "\\fscy124" in big_landscape  # 2.2 x (1080/1920), rounded
+
+
+def test_the_vertical_frame_the_looks_were_designed_for_is_untouched():
+    """1080x1920 must render exactly what it rendered before the fix, or
+    every frame track F measured stops meaning anything."""
+    from ash_captions.styles.render_free import _size_factor
+
+    assert _size_factor(1920) == 1.0
+    assert _size_factor(2160) == 1.0  # taller than the reference: never grow
+    assert _size_factor(1080) == 0.5625
