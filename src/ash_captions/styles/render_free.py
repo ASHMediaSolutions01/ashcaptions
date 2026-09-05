@@ -192,6 +192,10 @@ def free_events(
     ``x``/``y`` are read here, and a word that sets them is placed
     absolutely, without ``offset``, because the editor chose that point
     on the frame itself.
+
+    ``render.py``'s branch does not pass ``word_styles`` yet: track B is
+    adding it to ``render_ass`` and ``_card_events``, and forwarding it
+    here is a one-argument change once that lands.
     """
     from .render import _dialogue_line, _num, _prepare_word_text
 

@@ -203,15 +203,12 @@ def _card_events(
     anchor: tuple[float, float] | None = None,
 ) -> list[str]:
     if style.layout.mode == "free":
-        # Free placement (design 2026-09-05, section 5): one event per
-        # word at its own slot, all ending together. The Studio's drag
-        # moves the whole cluster, so the anchor arrives as an offset
-        # from where this look would sit undragged.
-        base_x, base_y = _anchor_xy(style, width, height, None)
-        moved_x, moved_y = _anchor_xy(style, width, height, anchor)
-        return free_events(
-            card, style, base_name, width, height, offset=(moved_x - base_x, moved_y - base_y)
-        )
+        # Free placement (design 2026-09-05, section 5): one event per word at
+        # its own slot, all ending together, and the Studio's drag moves the
+        # whole cluster rather than collapsing it onto one point.
+        base = _anchor_xy(style, width, height, None)
+        offset = (0.0, 0.0) if anchor is None else (anchor[0] - base[0], anchor[1] - base[1])
+        return free_events(card, style, base_name, width, height, offset=offset)
     effect = style.active_word.effect
     if effect == "karaoke":
         return _karaoke_events(card, style, base_name, width, height, anchor)

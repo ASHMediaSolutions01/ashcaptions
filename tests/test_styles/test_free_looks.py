@@ -101,3 +101,21 @@ def test_the_looks_list_still_holds_every_line_look(shipped):
     line_looks = [name for name, style in shipped.items() if style.layout.mode == "line"]
     assert len(line_looks) >= 36
     assert len(shipped) == len(line_looks) + len(FREE_LOOKS)
+
+
+def test_the_free_looks_reach_the_web_layer_with_no_code_change():
+    """A look is data: the styles adapter the app really uses picks the
+    three of them up from the directory, and the whole payload is still
+    JSON -- which a tuple of Slot dataclasses would not have been."""
+    import json
+
+    from ash_captions.web.styles_adapter import StylesPackageAdapter
+
+    rows = {row.name: row for row in StylesPackageAdapter().list_styles()}
+    for name in FREE_LOOKS:
+        assert name in rows, sorted(rows)
+        assert rows[name].shipped is True
+        layout = rows[name].definition["layout"]
+        assert layout["mode"] == "free"
+        assert layout["slots"] and isinstance(layout["slots"], list)
+    json.dumps([row.model_dump() for row in rows.values()])
