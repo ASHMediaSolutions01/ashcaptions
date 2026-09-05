@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2055 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2063 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -42,6 +42,21 @@ does not.
 One judgement is still Ghazi's and cannot be made from here: **the default
 volume.** It is -8 dB under a sound normalised to -1.5 dBFS, which on the
 test reel put the impact well above the dialogue. It needs an ear.
+
+**Also on master: the look cards can no longer drift from the burn.**
+`web/static/look_card_ass.js` is a hand-kept JavaScript port of the tag
+formulas in `render.py`, `ass_format.py` and `render_word.py` -- the
+Styles page has to animate 36 cards without a server round trip per
+keystroke. Its existing test asserted against tag strings a person typed
+into it, so a change on the Python side would have left it passing while
+every card previewed something the burn would not produce.
+`tests/test_web/test_look_card_drift.py` now runs the same inputs through
+both and demands the same answer, over the whole matrix of effects,
+durations, positions, alignments and colours. **It found a real
+divergence on its first run**: Python's `round()` breaks an exact .5 tie
+to even, JavaScript's `Math.round` breaks it upwards, so at 12.345s the
+card and the burn disagreed by a centisecond. The JavaScript now rounds
+the way Python does.
 
 **v0.6.0 is what master is now, and what is published** (2026-09-05). It is
 the build the six editors install and test. Built by five agents in five

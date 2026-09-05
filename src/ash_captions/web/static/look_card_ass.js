@@ -55,9 +55,23 @@
     const [r, g, b] = parseHex(colour);
     return `&H${hex2(b)}${hex2(g)}${hex2(r)}&`;
   }
+  // Python's round() breaks an exact .5 tie to the *even* number;
+  // Math.round breaks it upwards. At 12.345s that is a whole centisecond
+  // of disagreement between what a look card shows and what the burn
+  // writes -- found by tests/test_web/test_look_card_drift.py, which is
+  // the only thing that compares the two rather than comparing this file
+  // to numbers a person typed. ass_format.py is the source of truth.
+  function roundHalfToEven(value) {
+    const below = Math.floor(value);
+    const fraction = value - below;
+    if (fraction > 0.5) return below + 1;
+    if (fraction < 0.5) return below;
+    return below % 2 === 0 ? below : below + 1;
+  }
+
   function formatAssTime(seconds) {
     seconds = Math.max(seconds, 0);
-    const totalCs = Math.round(seconds * 100);
+    const totalCs = roundHalfToEven(seconds * 100);
     const hours = Math.floor(totalCs / 360000);
     const remH = totalCs % 360000;
     const minutes = Math.floor(remH / 6000);
@@ -331,6 +345,7 @@
     assInlineColour,
     formatAssTime,
     assAlignment,
+    roundHalfToEven,
     entranceTag,
     exitTag,
     leadingOverride,
