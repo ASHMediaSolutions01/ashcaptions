@@ -106,14 +106,32 @@ def normalise_word(text: str) -> str:
     return _EDGE_PUNCTUATION.sub("", text.strip().lower())
 
 
+FIGURE, CONTENT, CONNECTOR = 0, 1, 2
+
+
+def prominence_rank(text: str) -> int:
+    """How much of the frame a word deserves: ``FIGURE`` (0) for anything
+    carrying a digit, ``CONNECTOR`` (2) for a closed-class function word,
+    ``CONTENT`` (1) for everything else.
+
+    Figures outrank ordinary content on purpose. "$4.2m", "2nd", "24/7"
+    are the words these looks exist to enlarge, and burning "worth
+    $4.2m in Malibu" through the big-number look with figures merely
+    counted as content put "worth" on the 2.85x slot -- which is not the
+    look anybody asked for."""
+    normalised = normalise_word(text)
+    if any(character.isdigit() for character in normalised):
+        return FIGURE
+    if normalised and normalised in CONNECTOR_WORDS:
+        return CONNECTOR
+    return CONTENT
+
+
 def is_connector(text: str) -> bool:
     """True for the short function words that take the small italic
     treatment. A token carrying a digit is never one, whatever it looks
     like: "2nd" is the word the big-number look exists for."""
-    normalised = normalise_word(text)
-    if not normalised or any(character.isdigit() for character in normalised):
-        return False
-    return normalised in CONNECTOR_WORDS
+    return prominence_rank(text) == CONNECTOR
 
 
 def assign_slots(words: Sequence[Word], slots: Sequence[Slot]) -> tuple[int, ...]:
@@ -122,12 +140,13 @@ def assign_slots(words: Sequence[Word], slots: Sequence[Slot]) -> tuple[int, ...
 
     The first ``len(words)`` slots are the ones in play (declaration
     order is the look author's reading order). They are ranked by
-    ``scale``, largest first, ties broken by declaration index. Content
-    words, in the order they are spoken, take the most prominent slots;
-    the connectors take what is left, also in order. So a card reading
-    "the 2nd Highest residential" puts "2nd" on the biggest slot,
-    "Highest" on the next, "residential" on the next, and "the" on the
-    small italic one -- which is the reference frame.
+    ``scale``, largest first, ties broken by declaration index. The words
+    are ranked by ``prominence_rank`` -- figures, then content, then
+    connectors -- each group in the order it is spoken, and the two
+    rankings are zipped together. So a card reading "the 2nd Highest
+    residential" puts "2nd" on the biggest slot, "Highest" on the next,
+    "residential" on the next, and "the" on the small italic one -- which
+    is the reference frame.
 
     Deterministic: the same phrase always lays out the same way. A card
     with more words than the look has slots cycles through them; a
@@ -141,13 +160,11 @@ def assign_slots(words: Sequence[Word], slots: Sequence[Slot]) -> tuple[int, ...
         return tuple(index % len(slots) for index in range(count))
 
     by_prominence = sorted(range(count), key=lambda index: (-slots[index].scale, index))
-    content = [i for i, word in enumerate(words) if not is_connector(word.text)]
-    connectors = [i for i, word in enumerate(words) if is_connector(word.text)]
-    queue = content + connectors
+    ranked = sorted(range(count), key=lambda index: (prominence_rank(words[index].text), index))
 
     assignment = [0] * count
     for rank, slot_index in enumerate(by_prominence):
-        assignment[queue[rank]] = slot_index
+        assignment[ranked[rank]] = slot_index
     return tuple(assignment)
 
 
@@ -242,7 +259,7 @@ def _word_tags(
     # size 200 every slot came out with the same 11px border whatever its
     # scale, so a 0.5x word wore an outline twice as heavy, relatively, as
     # a normal caption's. Scale it here, so small words look small.
-    tags.append(f"\\bord{max(1, round(outline_width(style) * slot.scale))}")
+    tags.append(f"\\bord{_border(style, slot)}")
     if style.letter_spacing:
         tags.append(f"\\fsp{num(style.letter_spacing)}")
     tags.append(f"\\c{ass_inline_colour(getattr(style.colors, slot.role))}")
@@ -252,6 +269,16 @@ def _word_tags(
     if fade:
         tags.append(fade)
     return "".join(tags)
+
+
+def _border(style: Style, slot: Slot) -> int:
+    """The slot's outline width in pixels. ``slot.border`` of 0 means no
+    outline at all -- what a word drawn in the look's *outline* colour
+    needs, since a black fill inside a black border is a slab, not a
+    word (seen on a burned frame, not guessed)."""
+    if not slot.border:
+        return 0
+    return max(1, round(outline_width(style) * slot.scale * slot.border))
 
 
 def _scale_tags(entrance: str, scale: int, enter_ms: int) -> list[str]:

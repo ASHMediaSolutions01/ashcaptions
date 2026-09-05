@@ -10,7 +10,15 @@ from __future__ import annotations
 import pytest
 
 from ash_captions.engine.transcribe import Word
-from ash_captions.styles.render_free import assign_slots, is_connector, normalise_word
+from ash_captions.styles.render_free import (
+    CONNECTOR,
+    CONTENT,
+    FIGURE,
+    assign_slots,
+    is_connector,
+    normalise_word,
+    prominence_rank,
+)
 from ash_captions.styles.schema import Slot
 
 
@@ -144,3 +152,50 @@ def test_more_words_than_slots_cycles_rather_than_failing():
 def test_no_words_and_no_slots_are_both_empty():
     assert assign_slots((), REEL_SLOTS) == ()
     assert assign_slots(_words("kitchen"), ()) == ()
+
+
+# ---------------------------------------------------------------------------
+# figures outrank ordinary content
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,rank",
+    [
+        ("$4.2m", FIGURE), ("2nd", FIGURE), ("24/7", FIGURE), ("1,200", FIGURE),
+        ("worth", CONTENT), ("Malibu", CONTENT), ("Westbrook's", CONTENT),
+        ("in", CONNECTOR), ("The,", CONNECTOR), ("of", CONNECTOR),
+        ("", CONTENT), ("...", CONTENT),
+    ],
+)
+def test_prominence_rank_is_figure_then_content_then_connector(text, rank):
+    assert prominence_rank(text) == rank
+
+
+def test_a_figure_beats_a_plain_content_word_to_the_biggest_slot():
+    """Burned through the big-number look with figures merely counted as
+    content, "worth $4.2m in Malibu" put *worth* on the 2.85x slot."""
+    words = _words("worth", "$4.2m", "in", "Malibu")
+    slots = _slots(0.52, 2.85, 0.95, 0.52)
+    assignment = assign_slots(words, slots)
+    assert slots[assignment[1]].scale == 2.85  # $4.2m
+    assert slots[assignment[0]].scale == 0.95  # worth
+    assert slots[assignment[3]].scale == 0.52  # Malibu
+    assert slots[assignment[2]].scale == 0.52  # in, the connector
+
+
+def test_two_figures_keep_their_spoken_order():
+    words = _words("3", "beds", "2", "baths")
+    slots = _slots(0.5, 2.0, 1.4, 0.6)
+    assignment = assign_slots(words, slots)
+    assert slots[assignment[0]].scale == 2.0  # the first figure
+    assert slots[assignment[2]].scale == 1.4  # the second
+    assert slots[assignment[1]].scale == 0.6  # beds
+    assert slots[assignment[3]].scale == 0.5  # baths
+
+
+def test_the_reference_phrase_is_unchanged_by_the_figure_rule():
+    words = _words("the", "2nd", "Highest", "residential")
+    assignment = assign_slots(words, REEL_SLOTS)
+    assert REEL_SLOTS[assignment[1]].scale == 1.70
+    assert REEL_SLOTS[assignment[0]].scale == 0.55

@@ -123,6 +123,19 @@ def test_the_slot_carries_scale_colour_font_and_lean():
     assert "\\c&H0A0A0A&" in events["Highest"]  # role: outline
 
 
+def test_the_border_scales_with_the_slot_and_can_be_switched_off():
+    """libass does not scale the border with ``\\fscx``, so a free event
+    emits its own ``\\bord``; a slot drawn in the look's outline colour
+    needs to switch it off or it renders as a slab."""
+    # outline_width for size 90 is round(90 * 0.055) = 5.
+    events = _by_word(_events())
+    assert "\\bord10" in events["2nd"]  # 5 x the 2.00 slot
+    assert "\\bord2" in events["the"]  # 5 x 0.50, banker-rounded from 2.5
+    slots = FREE_STYLE["layout"]["slots"]
+    off = _style(layout={**FREE_STYLE["layout"], "slots": [{**slots[0], "border": 0.0}, *slots[1:]]})
+    assert "\\bord0" in _by_word(_events(off))["the"]
+
+
 def test_a_line_mode_look_never_reaches_the_free_renderer():
     line = Style.from_dict({"name": "LINE", "font": "Anton"}, check_font=False)
     rendered = render_ass([_card()], line, play_res=PLAY_RES)

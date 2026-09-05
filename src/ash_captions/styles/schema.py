@@ -87,6 +87,7 @@ _MIN_DURATION_MS, _MAX_DURATION_MS = 0, 2000
 _MIN_MAX_WORDS, _MAX_MAX_WORDS = 1, 8
 _MIN_MARGIN, _MAX_MARGIN = 0, 2000
 _MIN_SLOT_SCALE, _MAX_SLOT_SCALE = 0.2, 3.0
+_MIN_SLOT_BORDER, _MAX_SLOT_BORDER = 0.0, 3.0
 _MAX_SLOTS = _MAX_MAX_WORDS  # a card can never be wider than max_words
 
 
@@ -223,11 +224,17 @@ class Slot:
     italic: bool = False
     font: str | None = None  # None: the look's own font
     entrance: str = "stretch_collapse"
+    # Multiplier on the look's outline width. 0.0 draws no outline at
+    # all, which a slot whose colour role *is* the outline colour needs:
+    # a black word wearing a black border renders as an unreadable slab.
+    border: float = 1.0
 
     @classmethod
     def from_dict(cls, path: str, data: dict, *, check_font: bool = True) -> "Slot":
         data = _require_dict(path, data)
-        _reject_unknown_keys(path, data, {"x", "y", "scale", "role", "italic", "font", "entrance"})
+        _reject_unknown_keys(
+            path, data, {"x", "y", "scale", "role", "italic", "font", "entrance", "border"}
+        )
         defaults = cls(x=0.0, y=0.0)
         for name in ("x", "y"):
             if name not in data:
@@ -241,6 +248,9 @@ class Slot:
         italic = _require_bool(f"{path}.italic", data.get("italic", defaults.italic))
         entrance = _require_choice(
             f"{path}.entrance", data.get("entrance", defaults.entrance), FREE_ENTRANCES
+        )
+        border = _require_number(
+            f"{path}.border", data.get("border", defaults.border), lo=_MIN_SLOT_BORDER, hi=_MAX_SLOT_BORDER
         )
         font = data.get("font", defaults.font)
         if font is not None:
@@ -259,6 +269,7 @@ class Slot:
             italic=italic,
             font=font,
             entrance=entrance,
+            border=float(border),
         )
 
     def to_dict(self) -> dict:

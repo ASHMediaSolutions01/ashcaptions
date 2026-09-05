@@ -77,6 +77,7 @@ def test_a_full_free_layout_parses():
     assert layout.slots[2].italic is False
     assert layout.slots[2].font is None
     assert layout.slots[2].entrance == "stretch_collapse"
+    assert layout.slots[2].border == 1.0
 
 
 def test_a_slot_needs_both_x_and_y():
@@ -99,6 +100,8 @@ def test_a_slot_needs_both_x_and_y():
         ({"x": 0.5, "y": 0.5, "italic": "yes"}, r"layout\.slots\[0\]\.italic"),
         ({"x": 0.5, "y": 0.5, "entrance": "explode"}, r"layout\.slots\[0\]\.entrance"),
         ({"x": 0.5, "y": 0.5, "font": ""}, r"layout\.slots\[0\]\.font"),
+        ({"x": 0.5, "y": 0.5, "border": 4.0}, r"layout\.slots\[0\]\.border"),
+        ({"x": 0.5, "y": 0.5, "border": -0.5}, r"layout\.slots\[0\]\.border"),
         ({"x": 0.5, "y": 0.5, "wobble": 1}, r"layout\.slots\[0\]"),
     ],
 )
