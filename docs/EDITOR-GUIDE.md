@@ -365,7 +365,11 @@ position you see, and so does the `.ass` in the output folder.
 ## Part 7 — Checking captions in a language you don't speak
 
 A Spanish interview for a client, and nobody on the desk speaks Spanish. The
-transcript panel under the video tells you *where to look*.
+**Check** tab beside the video tells you *where to look*.
+
+The panel beside the video has two tabs: **Words**, for fixing what was
+heard (Part 8), and **Check**, for reading each line against its English.
+A dot on the **Check** tab means the model was unsure of something in there.
 ![The transcript panel: Spanish lines with the English underneath and uncertain words underlined](images/check-captions.png)
 
 
@@ -394,7 +398,7 @@ Click the word in the transcript and type the right one. Nothing is
 transcribed again: the captions redraw in about a quarter of a second, and
 the `.srt`, `.ass` and `.txt` in the output folder are rewritten with it.
 
-1. In the Studio, click the word in the transcript panel under the video.
+1. In the Studio, click the word in the **Words** panel beside the video.
 2. Type the correction, then choose:
    - **Fix this one** changes this occurrence.
    - **Fix every "haramienta"** changes all of them in this video, and says

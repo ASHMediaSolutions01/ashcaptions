@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2063 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2076 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -21,7 +21,34 @@ running it, not inferred.
 
 ## Where the project is
 
-**On master, not yet released: sound effects locked to the caption word.**
+**On master, not yet released: the Studio gets its picture back.**
+Reported from real use, not by a test: "the studio was too short with
+caption and correction I couldn't see", and "when clicking on the captions
+it takes them out of the screen". Both were one fault. The left column
+held the stage, the transport, the word toolbar, the editable transcript
+and the caption check, and the stage was the only row that could give way,
+so every panel took its height from the video. Measured on a 1366x768
+laptop: **the picture was 105px tall, and clicking a word cut it to 11** --
+a black line where the thing being judged should be. Two panels were also
+showing the same lines twice, taking 491 of the column's 677 pixels to do
+it.
+
+The words now have a column of their own, and Words and Check are two tabs
+of one panel rather than two stacked. The video is **613px** on that same
+laptop and 925px on a desktop; nothing that appears can shrink it, the
+stage has a floor, and the tabs sit above the word toolbar so that
+revealing it cannot move them (it could, and a click on Check then landed
+on whatever slid under the pointer). The word popup flips above its word
+rather than off the foot of the window, and follows the column when it
+scrolls. Checked at 1024, 1366, 1600 and 1920 with the console watched.
+
+The lesson is the one this file already carries, and it caught us again:
+the sound work below was verified by burning files and driving the Styles
+page, and the Studio was never opened. Nothing failed. Six editors would
+have found it in a minute. `tests/test_web/test_studio.py` now fails if
+anything but the video and its transport is put in that column.
+
+**Also on master: sound effects locked to the caption word.**
 The first piece of v0.7, and the one idea in all the competitor research
 nobody else has. A look can fire a short sound on the word its caption
 lands on -- on each sentence, on the client's keywords, or on every word.

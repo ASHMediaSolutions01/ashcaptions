@@ -296,7 +296,8 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 
 <section id="check">
   <h2>Part 7 · Checking captions in a language you don't speak</h2>
-  <p class="lede">A Spanish interview for a client, and nobody on the desk speaks Spanish. The transcript panel under the video tells you <em>where to look</em>: which words the speech model was unsure of, and what each line says in English.</p>
+  <p class="lede">A Spanish interview for a client, and nobody on the desk speaks Spanish. The <strong>Check</strong> tab beside the video tells you <em>where to look</em>: which words the speech model was unsure of, and what each line says in English.</p>
+  <p>The panel beside the video has two tabs: <strong>Words</strong>, for fixing what was heard (Part 8), and <strong>Check</strong>, for reading each line against its English. A dot on the <strong>Check</strong> tab means the model was unsure of something in there.</p>
   <figure><img src="/static/guide/check-captions.png" alt="The transcript panel: Spanish lines with the English underneath, one word underlined in amber, and a chip counting the uncertain words"><figcaption>Spanish above, English below, and the words the model was unsure of underlined. The chip counts them and jumps to the next one.</figcaption></figure>
   <ul>
     <li><strong>Uncertain words</strong> are underlined: amber when the model was unsure, red when it was guessing. The chip above the panel says how many there are; click it to jump to the next one, and the video seeks there so you can listen.</li>
@@ -311,7 +312,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <h2>Part 8 · Fixing a word</h2>
   <p class="lede">The speech model gets a name wrong, or hears "haramienta" for "herramienta". Click the word in the transcript and type the right one. Nothing is transcribed again: the captions redraw in about a quarter of a second, and the <code>.srt</code>, <code>.ass</code> and <code>.txt</code> in the output folder are rewritten with it.</p>
   <ol>
-    <li>In the Studio, click the word in the transcript panel under the video.</li>
+    <li>In the Studio, click the word in the <strong>Words</strong> panel beside the video.</li>
     <li>Type the correction and choose one of the two buttons:
       <ul>
         <li><strong>Fix this one</strong> changes this occurrence.</li>

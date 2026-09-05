@@ -294,7 +294,7 @@
       act("merge").hidden = index === 0 || !first;
       pop.querySelector(".tedit-times").textContent = `${formatSeconds(word.s)} – ${formatSeconds(word.e)}`;
       pop.hidden = false;
-      placePopup(index);
+      placePopup(index, true);
       input.focus();
       input.select();
       clearOpen();
@@ -303,14 +303,12 @@
       if (window.AshStudioWord && typeof AshStudioWord.select === "function") AshStudioWord.select(index);
     }
 
-    function placePopup(index) {
+    // Geometry: studio_edit_pop.js. `settle` re-places it after the reflow.
+    function placePopup(index, settle) {
       const span = state.spans[index];
-      if (!span) return;
-      const box = span.getBoundingClientRect();
-      const width = pop.offsetWidth || 280;
-      const left = Math.max(8, Math.min(window.innerWidth - width - 8, box.left + window.scrollX));
-      pop.style.left = `${Math.round(left)}px`;
-      pop.style.top = `${Math.round(box.bottom + window.scrollY + 6)}px`;
+      if (!span || !window.AshEditPopup) return;
+      AshEditPopup.place(pop, span);
+      if (settle) requestAnimationFrame(() => { if (state.selected === index) placePopup(index); });
     }
 
     function closePopup() {
@@ -457,7 +455,10 @@
       if (pop.hidden || pop.contains(e.target) || (e.target.closest && e.target.closest(".tw"))) return;
       closePopup();
     });
-    window.addEventListener("resize", () => { if (state.selected >= 0) placePopup(state.selected); });
+    if (window.AshEditPopup) {
+      AshEditPopup.follow(pop, () => (state.selected >= 0 ? state.spans[state.selected] : null),
+        [document.getElementById("edit-column"), list]);
+    }
 
     (async () => { await loadLook(); await reload(); })();
     return { reload, refreshLook: async () => { await loadLook(); render(); } };

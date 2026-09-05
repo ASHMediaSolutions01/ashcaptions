@@ -350,6 +350,12 @@ def fig_moving_caption(s: Session) -> None:
 def fig_check_captions(s: Session) -> None:
     open_studio(s)
     seek_to_spoken_moment(s)
+    # Words and Check are two tabs of one panel now (v0.7); this figure is
+    # the Check one, and Words is what opens by default.
+    tab = s.page.locator("#pane-tabs .pane-tab", has_text="Check")
+    if tab.count() and tab.first.is_enabled():
+        tab.first.click()
+        s.page.wait_for_timeout(300)
     # The panel that shipped uses its own class names (studio_check.js);
     # the older `.transcript-panel` markup is only a fallback for a build
     # without it.
@@ -371,7 +377,9 @@ def fig_check_captions(s: Session) -> None:
     s.page.mouse.move(4, 4)
     s.page.evaluate("document.activeElement && document.activeElement.blur()")
     s.page.wait_for_timeout(300)
-    shoot(s, "check-captions.png", selector=".stage-column")
+    # The words moved out of the stage column and into their own, so
+    # this shot follows them.
+    shoot(s, "check-captions.png", selector=".edit-column")
 
 
 def fig_export_menu(s: Session) -> None:

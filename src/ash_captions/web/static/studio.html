@@ -67,10 +67,24 @@
       <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek">
       <button type="button" class="ctl" id="mute-btn" aria-label="Mute"></button>
     </div>
-    <div class="word-toolbar" id="word-toolbar" hidden></div>
+  </section>
+
+  <!-- The words live beside the video, not under it. Stacked, every panel
+       that appeared (the word toolbar most of all) took its height from
+       the stage, because the stage was the only row that could give: on a
+       1366x768 laptop the video was 105px tall, and clicking a word cut it
+       to 11. -->
+  <section class="edit-column" id="edit-column">
     <div class="transcript" id="transcript" aria-label="Transcript" hidden></div>
-    <div id="transcript-edit"></div>
-    <section class="check" id="check" aria-label="Caption check" hidden></section>
+    <div class="panes" id="panes" data-pane="words">
+      <div class="pane-tabs" id="pane-tabs" role="tablist" aria-label="Transcript"></div>
+      <!-- Under the tabs, not above them. Above, its appearing and
+           disappearing moved the tabs, and a click on one landed on
+           whatever slid under the pointer instead. -->
+      <div class="word-toolbar" id="word-toolbar" hidden></div>
+      <div id="transcript-edit"></div>
+      <section class="check" id="check" aria-label="Caption check" hidden></section>
+    </div>
   </section>
 
   <aside class="looks" id="looks">
@@ -94,8 +108,10 @@
 <script src="/static/studio_check.js?v=__VERSION__"></script>
 <script src="/static/studio.js?v=__VERSION__"></script>
 <script src="/static/studio_drag.js?v=__VERSION__"></script>
+<script src="/static/studio_edit_pop.js?v=__VERSION__"></script>
 <script src="/static/studio_edit.js?v=__VERSION__"></script>
 <script src="/static/studio_word.js?v=__VERSION__"></script>
+<script src="/static/studio_panes.js?v=__VERSION__"></script>
 <script src="/static/export.js?v=__VERSION__"></script>
 </body>
 </html>

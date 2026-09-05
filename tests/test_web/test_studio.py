@@ -416,3 +416,75 @@ class TestRestylePosition:
         body = {"preset": "CLEAN", "caption_x": 0.5, "caption_y": 0.25}
         assert foreign.post(f"/api/jobs/{finished_job.id}/restyle", json=body).status_code == 403
         assert fake_queue.positions == []
+
+
+class TestStageIsNotSqueezed:
+    """The Studio's left column may hold the video and its transport, and
+    nothing else.
+
+    Everything used to be stacked there: the stage, the transport, the
+    word toolbar, the editable transcript and the caption check. The stage
+    was the only row that could give way, so each panel that appeared took
+    its height from the video. On a 1366x768 laptop that left the picture
+    105px tall, and clicking a word -- which reveals the word toolbar --
+    cut it to 11: a black line where the thing being judged should be.
+    Both were reported from real use, and neither failed a test.
+
+    These are structural, so they hold without a browser: the measurements
+    that found the bug are in the session's Studio audit, but what stops it
+    coming back is that no fourth thing can be dropped into that column.
+    """
+
+    def page(self) -> str:
+        return (STATIC_DIR / "studio.html").read_text(encoding="utf-8")
+
+    def stage_column(self) -> str:
+        page = self.page()
+        start = page.index('<section class="stage-column">')
+        return page[start:page.index("</section>", start)]
+
+    def test_only_the_video_and_its_transport_share_a_column_with_the_stage(self):
+        column = self.stage_column()
+        assert 'id="stage"' in column and 'id="controls"' in column
+        for panel in ('id="word-toolbar"', 'id="transcript-edit"', 'id="check"', 'id="panes"'):
+            assert panel not in column, f"{panel} is back in the stage column"
+
+    def test_the_words_have_a_column_of_their_own(self):
+        page = self.page()
+        start = page.index('<section class="edit-column"')
+        column = page[start:page.index("</section>", start)]
+        for panel in ('id="word-toolbar"', 'id="transcript-edit"', 'id="check"', 'id="pane-tabs"'):
+            assert panel in column, panel
+
+    def test_the_tabs_come_before_the_word_toolbar(self):
+        """The toolbar appears when a word is selected. Above the tabs it
+        moved them, and a click on one landed on whatever slid under the
+        pointer -- so the Check tab did nothing until the second try."""
+        page = self.page()
+        assert page.index('id="pane-tabs"') < page.index('id="word-toolbar"')
+
+    def test_the_stage_has_a_floor_no_panel_can_push_it_through(self):
+        css = (STATIC_DIR / "studio.css").read_text(encoding="utf-8")
+        stage = css[css.index(".stage {"):css.index("}", css.index(".stage {"))]
+        assert "min-height" in stage and "0" != stage.split("min-height:")[1].split("px")[0].strip()
+
+    def test_neither_transcript_panel_is_capped_at_a_slice_of_the_window_any_more(self):
+        """`max-height: 34vh` and `30vh` were what made two panels and a
+        video fight over one screen. In their own column they fill it."""
+        for name in ("studio_edit.css", "studio_check.css"):
+            css = (STATIC_DIR / name).read_text(encoding="utf-8")
+            assert "vh" not in css, f"{name} still sizes a panel against the window"
+
+    def test_the_page_loads_the_tab_script(self, client, app):
+        page = client.get("/studio/any-id").text
+        assert f"/static/studio_panes.js?v={app.state.version}" in page
+        panes = (STATIC_DIR / "studio_panes.js").read_text(encoding="utf-8")
+        # The tabs must not fight the two scripts that own those panels:
+        # they hide with the `hidden` attribute, the tabs with a data
+        # attribute the stylesheet reads.
+        assert "dataset.pane" in panes
+        assert 'panes.dataset.pane = pane' in panes
+
+    def test_the_popup_geometry_is_loaded_before_the_editor_that_uses_it(self, client, app):
+        page = client.get("/studio/any-id").text
+        assert page.index("/static/studio_edit_pop.js?v=") < page.index("/static/studio_edit.js?v=")

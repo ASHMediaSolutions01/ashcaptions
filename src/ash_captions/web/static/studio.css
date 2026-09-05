@@ -41,24 +41,35 @@ body.studio {
 .topbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 #burn-btn { min-width: 132px; }
 
-/* Workspace: stage on the left, looks on the right */
+/* Workspace: the video on the left, the words in the middle, the looks on
+   the right.
+
+   Three columns, not two, because of what two cost. Everything used to be
+   stacked in the left column -- stage, transport, word toolbar, the
+   editable transcript, the caption check -- and the stage was the only row
+   that could give way. On a 1366x768 laptop that left the video 105px
+   tall, and clicking a word (which reveals the word toolbar) cut it to 11:
+   a black line where the thing you are judging should be. Anything that
+   appears now grows the middle column, which scrolls, and the video keeps
+   its height. */
 .workspace {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 480px) 280px;
 }
 .stage-column {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 8px;
   padding: 12px 16px 10px;
 }
 .stage {
   position: relative;
-  min-height: 0;
+  /* A floor, so no future panel can squeeze the video to a line again. */
+  min-height: 180px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -175,8 +186,78 @@ body.studio {
 .look-glyph.align-right i { left: auto; right: 1px; }
 .looks-empty { padding: 20px 8px; color: var(--muted); font-size: 13px; text-align: center; }
 
-@media (max-width: 900px) {
-  .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+/* The words: their own column, their own scroll. */
+.edit-column {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Words and Check are the same lines twice until something is translated,
+   which is why they used to eat two thirds of the screen between them.
+   One at a time now, each filling the column, chosen by the tabs. */
+.panes {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  /* tabs, then the word toolbar, then whichever pane is showing. The tabs
+     are first so that nothing appearing below can move them. */
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 6px;
+}
+.panes > #transcript-edit,
+.panes > .check { grid-row: 3; min-height: 0; }
+.panes > #transcript-edit { display: flex; }
+.panes[data-pane="words"] > .check { display: none; }
+.panes[data-pane="check"] > #transcript-edit { display: none; }
+/* The tab already names the pane; the heading inside it would say it
+   twice. Both class names are their scripts' documented contract. */
+.panes .tedit-head h2,
+.panes .check-head h2 { display: none; }
+
+.pane-tabs { display: flex; gap: 4px; align-items: center; }
+.pane-tab {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pane-tab:hover:not(:disabled) { color: var(--ink); }
+.pane-tab[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.pane-tab:disabled { opacity: 0.45; cursor: default; }
+/* A dot when the transcriber was unsure of something in there: the reason
+   to open the tab has to be visible from the other tab. */
+.pane-tab .pane-dot { color: var(--warn); margin-left: 5px; font-size: 15px; line-height: 0; vertical-align: middle; }
+
+@media (min-width: 1700px) {
+  /* Wide enough for the check panel to put the English beside the source
+     rather than under it -- see its own container query. */
+  .workspace { grid-template-columns: minmax(0, 1fr) minmax(560px, 740px) 300px; }
+}
+
+@media (max-width: 1200px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) 300px 240px; }
+  .edit-column { padding: 12px 10px 10px; }
+}
+
+@media (max-width: 980px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 1fr) auto auto;
+    overflow-y: auto;
+  }
+  .edit-column { max-height: 46vh; border-left: none; border-top: 1px solid var(--line); }
   .looks { max-height: 42vh; border-left: none; border-top: 1px solid var(--line); }
   .topbar { flex-wrap: wrap; }
 }

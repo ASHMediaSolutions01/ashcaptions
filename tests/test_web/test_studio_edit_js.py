@@ -152,3 +152,69 @@ def test_the_page_still_has_no_hand_typed_version(client, app):
 
 def test_the_panel_stays_under_the_five_hundred_line_ceiling():
     assert len(SCRIPT.read_text(encoding="utf-8").splitlines()) < 500
+
+
+POP_SCRIPT = STATIC_DIR / "studio_edit_pop.js"
+
+
+def place(word_box, *, window=(1366, 768), pop=(280, 150)):
+    """Where studio_edit_pop.js puts the popup for a word at `word_box`.
+
+    Run under Node with the handful of browser things the module touches
+    stubbed out -- it does geometry and nothing else, which is why it is
+    its own file.
+    """
+    stub = f"""
+      const box = {json.dumps(word_box)};
+      global.window = {{ innerWidth: {window[0]}, innerHeight: {window[1]}, scrollX: 0, scrollY: 0 }};
+      const pop = {{ offsetWidth: {pop[0]}, offsetHeight: {pop[1]}, hidden: false, style: {{}} }};
+      const span = {{ getBoundingClientRect: () => box }};
+      const m = require({json.dumps(str(POP_SCRIPT))});
+      m.place(pop, span);
+      process.stdout.write(JSON.stringify(pop.style));
+    """
+    done = subprocess.run([NODE, "-e", stub], capture_output=True, text=True, encoding="utf-8", check=True)
+    style = json.loads(done.stdout)
+    return int(style["left"].rstrip("px")), int(style["top"].rstrip("px"))
+
+
+@needs_node
+class TestWhereThePopupGoes:
+    """The editor for one word, positioned in the page so the scrolling
+    list cannot clip it -- which means it has to mind the window itself."""
+
+    def test_it_sits_just_under_its_word(self):
+        left, top = place({"left": 700, "top": 300, "bottom": 320, "right": 740})
+        assert (left, top) == (700, 326)
+
+    def test_it_flips_above_the_word_rather_than_off_the_bottom(self):
+        """On the last lines of a long transcript the buttons were simply
+        unreachable: the popup was drawn past the foot of the window."""
+        left, top = place({"left": 700, "top": 700, "bottom": 720, "right": 740})
+        assert top == 700 - 150 - 6
+        assert top + 150 < 768
+
+    def test_a_word_too_near_the_top_to_flip_still_lands_on_screen(self):
+        _, top = place({"left": 700, "top": 40, "bottom": 700, "right": 740})
+        assert top >= 8
+
+    def test_it_never_runs_off_the_right_edge(self):
+        left, _ = place({"left": 1300, "top": 300, "bottom": 320, "right": 1340})
+        assert left == 1366 - 280 - 8
+
+    def test_it_never_runs_off_the_left_edge(self):
+        left, _ = place({"left": -40, "top": 300, "bottom": 320, "right": 10})
+        assert left == 8
+
+    def test_the_page_scroll_is_added_because_the_popup_is_absolute(self):
+        stub = """
+          global.window = { innerWidth: 1366, innerHeight: 768, scrollX: 5, scrollY: 60 };
+          const pop = { offsetWidth: 280, offsetHeight: 150, hidden: false, style: {} };
+          const span = { getBoundingClientRect: () => ({ left: 700, top: 300, bottom: 320, right: 740 }) };
+        """
+        code = stub + (f"const m = require({json.dumps(str(POP_SCRIPT))}); m.place(pop, span);"
+                       " process.stdout.write(JSON.stringify(pop.style));")
+        done = subprocess.run([NODE, "-e", code], capture_output=True, text=True, encoding="utf-8", check=True)
+        style = json.loads(done.stdout)
+        assert style["top"] == "386px"  # 320 + 6 + 60
+        assert style["left"] == "705px"  # 700 + 5

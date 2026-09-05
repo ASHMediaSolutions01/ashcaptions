@@ -2,7 +2,9 @@
    and may fold these rules in; the ids/classes are the script's contract
    (see docs/superpowers/plans/2026-09-04-v0.5-B-caption-check.md). Tokens
    come from theme.css. */
-.check { display: flex; flex-direction: column; gap: 6px; min-height: 0; max-height: 30vh; }
+/* Fills the edit column; see studio.css on why it is no longer under
+   the video. */
+.check { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1 1 auto; }
 .check[hidden] { display: none; }
 .check-head { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .check-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -15,6 +17,8 @@
 .check-list {
   position: relative;
   align-self: stretch;          /* the panel is a flex column that would otherwise size this to its content */
+  flex: 1 1 auto;
+  min-height: 0;
   container-type: inline-size;  /* the row layout below follows the panel's width, not the window's */
   overflow-y: auto;
   scrollbar-width: thin;
