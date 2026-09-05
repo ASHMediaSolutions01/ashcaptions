@@ -117,3 +117,102 @@ class TestAss:
     def test_no_ass_yet_is_404(self, client, finished_job):
         (Path(finished_job.output_dir) / "interview.ass").unlink()
         assert client.get(f"/api/jobs/{finished_job.id}/ass").status_code == 404
+
+
+class TestDownload:
+    """GET /api/jobs/{id}/files/{name}: v0.6 §3's actual download. The name
+    is matched against the same listing /files returns, never joined onto
+    output_dir -- so every traversal shape below is just "not a match,"
+    proven by asserting the real secret bytes never come back, the same
+    property `test_refuses_names_not_in_the_manifest` pins for the font
+    file route this one is modelled on."""
+
+    def test_downloads_a_listed_text_file(self, client, finished_job):
+        res = client.get(f"/api/jobs/{finished_job.id}/files/interview.srt")
+        assert res.status_code == 200
+        assert res.content == b"1\n00:00:00,000 --> 00:00:01,000\nhi\n"
+        assert res.headers["content-type"].startswith("text/plain")
+        assert res.headers["content-disposition"].startswith("attachment")
+        assert 'filename="interview.srt"' in res.headers["content-disposition"]
+
+    def test_downloads_the_ass_file(self, client, finished_job):
+        res = client.get(f"/api/jobs/{finished_job.id}/files/interview.ass")
+        assert res.status_code == 200
+        assert res.content == ASS_BYTES
+        assert res.headers["content-type"].startswith("text/plain")
+
+    def test_downloads_the_captioned_video_as_an_attachment_with_video_media_type(self, client, fake_queue, tmp_path):
+        video = tmp_path / "footage" / "reel.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(VIDEO)
+        job = fake_queue.submit(video, JobOptions(language="en", preset="POP"))
+        out = Path(job.output_dir)
+        out.mkdir(parents=True)
+        (out / "reel.captioned.mp4").write_bytes(VIDEO)
+        res = client.get(f"/api/jobs/{job.id}/files/reel.captioned.mp4")
+        assert res.status_code == 200
+        assert res.content == VIDEO
+        assert res.headers["content-type"] == "video/mp4"
+        assert res.headers["content-disposition"].startswith("attachment")
+
+    def test_unknown_job_is_404(self, client):
+        assert client.get("/api/jobs/nope/files/whatever.srt").status_code == 404
+
+    def test_queue_without_output_dir_is_404(self, client, tmp_path):
+        queue = FakeJobQueue()
+        client.app.state.queue = queue
+        video = tmp_path / "clip.mp4"
+        video.write_bytes(b"x")
+        job = queue.submit(video, JobOptions(language="en", preset="POP"))
+        assert client.get(f"/api/jobs/{job.id}/files/clip.srt").status_code == 404
+
+    def test_a_name_not_in_this_jobs_listing_is_404(self, client, fake_queue, finished_job, tmp_path):
+        # A real file, just not in *this* job's output_dir -- proves the
+        # match is against this job's own listing, not any file that
+        # happens to exist somewhere reachable from the process.
+        other_video = tmp_path / "other.mp4"
+        other_video.write_bytes(b"y")
+        other_job = fake_queue.submit(other_video, JobOptions(language="en", preset="POP"))
+        Path(other_job.output_dir).mkdir(parents=True)
+        (Path(other_job.output_dir) / "other.srt").write_bytes(b"SECRET")
+        res = client.get(f"/api/jobs/{finished_job.id}/files/other.srt")
+        assert res.status_code == 404
+        assert b"SECRET" not in res.content
+
+    def test_a_name_with_no_file_at_all_is_404(self, client, finished_job):
+        res = client.get(f"/api/jobs/{finished_job.id}/files/nope.srt")
+        assert res.status_code == 404
+
+    def test_bare_dot_dot_is_normalized_away_before_it_ever_reaches_the_route(self, client, finished_job):
+        # httpx (like a real browser) collapses ".." during URL resolution
+        # before the request is even sent, so this never reaches our
+        # handler at all -- it lands one segment further up, on the plain
+        # job route. Stronger than a 404: the server never sees a
+        # traversal attempt here in the first place, and what answers it
+        # is a job record, never a file's bytes.
+        res = client.get(f"/api/jobs/{finished_job.id}/files/..")
+        assert res.status_code == 200
+        assert res.json()["id"] == finished_job.id
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "..%2Finterview.srt",
+            "%2E%2E%2Finterview.srt",
+            "..%5Cinterview.srt",
+            "C%3A%5CWindows%5Cwin.ini",
+        ],
+    )
+    def test_traversal_attempts_are_404(self, client, finished_job, name):
+        res = client.get(f"/api/jobs/{finished_job.id}/files/{name}")
+        assert res.status_code == 404
+        assert b"Script Info" not in res.content  # never the .ass file's own bytes either
+
+    def test_absolute_path_style_name_is_404_not_a_file_read_from_elsewhere(self, client, finished_job, tmp_path):
+        secret = tmp_path / "elsewhere.txt"
+        secret.write_text("do not serve me")
+        # The path segment itself (no slash, so it routes here) names a file
+        # that exists on disk, just nowhere near this job's output_dir.
+        res = client.get(f"/api/jobs/{finished_job.id}/files/{secret.name}")
+        assert res.status_code == 404
+        assert b"do not serve me" not in res.content

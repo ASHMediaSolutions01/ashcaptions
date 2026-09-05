@@ -210,6 +210,11 @@
       out.push(studio);
     }
     if (job.status === "failed") out.push(button("Retry", "primary", (e) => retry(job, e.currentTarget)));
+    if (job.status === "done") {
+      const exportSlot = el("span", "job-export");
+      out.push(exportSlot);
+      if (window.AshExport) AshExport.mount(job.id, exportSlot);
+    }
     if (job.status === "done" || job.status === "failed") {
       if (job.output_dir) {
         out.push(button("Open folder", "subtle", (e) => reveal(job, e.currentTarget)));
