@@ -336,7 +336,7 @@ cloud ones do is that client footage never leaves the building.
 
 ## Things Ghazi needs to do
 
-1. **Roll the installer out.** v0.5.0 is published at
+1. **Roll the installer out.** v0.6.0 is published at
    `github.com/ASHMediaSolutions01/ashcaptions-releases` (verified: the real
    installer downloaded it from the manifest, hash-checked it, installed it,
    the installed exe ran a behind-the-speaker client job and a rotated
