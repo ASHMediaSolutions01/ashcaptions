@@ -73,6 +73,8 @@ _MIN_LETTER_SPACING, _MAX_LETTER_SPACING = -5.0, 30.0
 _MIN_DURATION_MS, _MAX_DURATION_MS = 0, 2000
 _MIN_MAX_WORDS, _MAX_MAX_WORDS = 1, 8
 _MIN_MARGIN, _MAX_MARGIN = 0, 2000
+# Fractions of the frame: a per-word free position (v0.6 section 5).
+_MIN_FRACTION, _MAX_FRACTION = 0.0, 1.0
 
 
 def _require_hex_colour(path: str, value: Any) -> str:
@@ -228,6 +230,78 @@ class Layout:
             margin_v=int(margin_v),
             align=align,
         )
+
+
+# ---------------------------------------------------------------------------
+# per-word overrides (v0.6 design, section 2)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class WordStyle:
+    """One word's own colour, size, weight or slant, overriding the look.
+
+    Deliberately *not* font family and *not* outline: those stay
+    properties of the look (v0.6 design, section 2 -- the combinatorial
+    surface is where per-word styling turns into a mess). Every field is
+    optional and ``None`` means "whatever the look does", so an empty
+    ``WordStyle`` renders byte-identically to no override at all.
+
+    ``x``/``y`` are free placement (fractions of the frame), used only by
+    a free-placement look -- v0.6 section 5, track F. They are declared
+    here because the transcript record and the API carry one ``style``
+    key per word for both features; the line renderer ignores them.
+
+    Lives in ``styles`` rather than ``app`` so the renderer never imports
+    from the application layer (spec Interfaces, "Per-word style").
+    """
+
+    colour: str | None = None   # "#RRGGBB" or "#RRGGBBAA"
+    scale: float | None = None  # multiplier on the look's size, 0.5-3.0
+    bold: bool | None = None
+    italic: bool | None = None
+    x: float | None = None      # free placement only, fraction of the frame
+    y: float | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict, *, path: str = "style") -> "WordStyle":
+        """Build and validate one override. Raises ``StyleValidationError``
+        naming the exact field, like every other model here."""
+        data = _require_dict(path, data)
+        _reject_unknown_keys(path, data, set(_WORD_STYLE_FIELDS))
+
+        colour = data.get("colour")
+        if colour is not None:
+            colour = _require_hex_colour(f"{path}.colour", colour)
+        scale = data.get("scale")
+        if scale is not None:
+            scale = float(_require_number(f"{path}.scale", scale, lo=_MIN_SCALE, hi=_MAX_SCALE))
+        bold = data.get("bold")
+        if bold is not None:
+            bold = _require_bool(f"{path}.bold", bold)
+        italic = data.get("italic")
+        if italic is not None:
+            italic = _require_bool(f"{path}.italic", italic)
+        x = data.get("x")
+        if x is not None:
+            x = float(_require_number(f"{path}.x", x, lo=_MIN_FRACTION, hi=_MAX_FRACTION))
+        y = data.get("y")
+        if y is not None:
+            y = float(_require_number(f"{path}.y", y, lo=_MIN_FRACTION, hi=_MAX_FRACTION))
+        return cls(colour=colour, scale=scale, bold=bold, italic=italic, x=x, y=y)
+
+    def to_dict(self) -> dict:
+        """The JSON shape ``from_dict`` accepts, with unset fields left
+        out -- one override rides on a word in the transcript record, so
+        the absent keys should not be written as nulls."""
+        return {name: getattr(self, name) for name in _WORD_STYLE_FIELDS if getattr(self, name) is not None}
+
+    def is_empty(self) -> bool:
+        """True when nothing is overridden -- renders as the look itself."""
+        return all(getattr(self, name) is None for name in _WORD_STYLE_FIELDS)
+
+
+_WORD_STYLE_FIELDS = ("colour", "scale", "bold", "italic", "x", "y")
 
 
 # ---------------------------------------------------------------------------
