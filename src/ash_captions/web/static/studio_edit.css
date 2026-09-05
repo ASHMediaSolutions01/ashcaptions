@@ -1,0 +1,102 @@
+/* The Studio's editable transcript (studio_edit.js, v0.6 §1). Loaded by
+   that script rather than by a <link> in studio.html, so the page keeps a
+   two-line diff for the three-way merge. Tokens come from theme.css; the
+   class names are the script's contract (see
+   docs/superpowers/plans/2026-09-05-v0.6-A-transcript-edits.md). */
+
+.tedit { display: flex; flex-direction: column; gap: 6px; min-height: 0; max-height: 34vh; }
+.tedit[hidden] { display: none; }
+.tedit.busy { opacity: 0.7; pointer-events: none; }
+
+.tedit-head { display: flex; align-items: baseline; gap: 10px; font-size: 13px; color: var(--muted); }
+.tedit-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.tedit-hint { font-size: 12px; }
+.tedit-spacer { flex: 1 1 auto; }
+.tedit-state { font-size: 12px; font-variant-numeric: tabular-nums; }
+.tedit-state.ok { color: var(--ok); }
+.tedit-state.busy { color: var(--accent); }
+
+.tedit-list {
+  align-self: stretch;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+.tedit-line { padding: 5px 12px; border-bottom: 1px solid var(--line); }
+.tedit-line:last-child { border-bottom: none; }
+.tedit-words { font-size: 14px; line-height: 1.7; color: var(--ink); }
+
+/* One word: the text with a narrow grip on each side. The grips are only
+   visible on hover so a page full of words does not look like a fence. */
+.tw { position: relative; display: inline-flex; align-items: stretch; border-radius: 3px; }
+.tw-text {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  cursor: text;
+  border-radius: 3px;
+}
+.tw-text:hover { background: var(--raised); }
+.tw-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tw-grip { width: 5px; cursor: ew-resize; border-radius: 2px; background: transparent; touch-action: none; }
+.tw:hover .tw-grip { background: var(--line-strong); }
+.tw-grip:hover, .tw-grip.dragging { background: var(--accent); }
+.tw.is-open .tw-text { background: var(--accent-soft); }
+
+/* The transcriber's own doubt, the same thresholds the caption check uses. */
+.tw.unsure .tw-text { text-decoration: underline wavy var(--warn); text-underline-offset: 3px; }
+.tw.bad .tw-text { text-decoration: underline wavy var(--bad); text-underline-offset: 3px; }
+
+/* A word somebody has touched says so, quietly and above the baseline. */
+.tw.is-edited .tw-text::after,
+.tw.is-retimed .tw-text::after,
+.tw.is-styled .tw-text::after {
+  font-size: 9px;
+  vertical-align: super;
+  margin-left: 1px;
+  opacity: 0.75;
+}
+.tw.is-edited .tw-text::after { content: "✎"; color: var(--accent); }
+.tw.is-retimed .tw-text::after { content: "◷"; color: var(--muted); }
+.tw.is-styled .tw-text::after { content: "●"; color: var(--warn); }
+.tw.is-edited.is-retimed .tw-text::after { content: "✎◷"; }
+
+.tedit-warn { margin: 2px 0 0; font-size: 12px; color: var(--warn); }
+
+/* The popup sits on the page, not inside the scrolling list, so it is
+   never clipped by it. */
+.tedit-pop {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 260px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+.tedit-pop[hidden] { display: none; }
+.tedit-input {
+  font: inherit;
+  font-size: 14px;
+  padding: 5px 8px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+.tedit-input:focus { outline: none; border-color: var(--accent); }
+.tedit-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.tedit-row .btn { flex: 1 1 auto; }
+.tedit-times { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tedit-list { scroll-behavior: auto; }
+}

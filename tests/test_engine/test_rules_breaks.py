@@ -33,7 +33,7 @@ class TestNothingChangesWithoutMarkers:
             assert [(c.start, c.end) for c in same] == [(c.start, c.end) for c in baseline]
 
     def test_it_holds_over_random_punctuation_and_silences(self):
-        rng = random.Random(20260905)
+        rng = random.Random(20260905)  # noqa: S311 - a fixed-seed corpus, not a secret
         for _ in range(60):
             texts = [
                 w + rng.choice(["", "", "", ",", ".", "?"])
@@ -98,7 +98,7 @@ class TestForcedBreaks:
         assert shapes(build_cards(source, breaks=CardBreaks(before=frozenset({0})))) == shapes(build_cards(source))
 
     def test_a_marker_never_loses_or_reorders_a_word(self):
-        rng = random.Random(4)
+        rng = random.Random(4)  # noqa: S311 - a fixed-seed corpus, not a secret
         source = words()
         for _ in range(40):
             indexes = frozenset(rng.sample(range(len(source)), k=rng.randint(1, 5)))
