@@ -184,11 +184,10 @@
       <p class="hint">This is a 3-second preview. To export the whole video, open the job in the Studio.</p>
     </div>
 
-    <!-- Track C's export control (spec 6.3): mounted only when the chosen
+    <!-- The export control (spec 6.3): mounted only when the chosen
          preview source resolves to a real queued job -- see
-         style_editor_preview.js. Empty until export.js is merged and its
-         <script> tag added below (see the comment near the bottom of
-         this file); the mount call there is already guarded. -->
+         style_editor_preview.js. This page can only render a 3-second
+         preview; the finished file comes from here. -->
     <div id="export"></div>
   </section>
 
@@ -200,14 +199,7 @@
 <script src="/static/vendor/jassub/jassub.umd.js?v=__VERSION__"></script>
 <script src="/static/look_card_ass.js?v=__VERSION__"></script>
 <script src="/static/look_card.js?v=__VERSION__"></script>
-<!-- Track C's export control (spec 6.3) isn't merged into this worktree
-     yet (web/static/export.js doesn't exist). The mount point above and
-     the guarded window.AshExport.mount() call in style_editor_preview.js
-     are already in place; once C merges, the integrator adds a <script>
-     tag for export.js here, the same way the other static/*.js files
-     just above are loaded. Not added unconditionally now because
-     test_studio.py's asset-resolution check would fail on a 404 for a
-     file this track doesn't own. -->
+<script src="/static/export.js?v=__VERSION__"></script>
 <script src="/static/style_editor_preview.js?v=__VERSION__"></script>
 <script src="/static/style_editor.js?v=__VERSION__"></script>
 </body>
