@@ -49,6 +49,27 @@ class Card:
         return " ".join(word.text for word in self.words)
 
 
+@dataclass(frozen=True, slots=True)
+class CardBreaks:
+    """Where the editor has overruled the line breaks this module would
+    pick (v0.6 section 1): word indexes into the list handed to
+    ``build_cards`` that must start a new card, and ones that must not.
+
+    Both empty -- and ``breaks=None`` -- is the behaviour every version
+    before v0.6 had, byte for byte.
+    """
+
+    before: frozenset[int] = frozenset()
+    not_before: frozenset[int] = frozenset()
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.before and not self.not_before
+
+
+_NO_BREAKS = CardBreaks()
+
+
 def build_cards(
     words: list[Word] | tuple[Word, ...],
     *,
@@ -57,17 +78,27 @@ def build_cards(
     min_duration: float = MIN_CARD_DURATION_SECONDS,
     gap_snap_threshold: float = GAP_SNAP_THRESHOLD_SECONDS,
     silence_gap: float = SILENCE_GAP_SECONDS,
+    breaks: CardBreaks | None = None,
 ) -> list[Card]:
     """Turn a flat word list into professionally-timed caption cards.
 
     Applies, in order: punctuation-aware grouping, silence-isolated card
     dropping, gap-snapping between what remains, then the minimum-duration
     floor. Each step is also exposed standalone below for focused testing.
+
+    ``breaks`` carries the editor's own line breaks (``CardBreaks``); the
+    default ``None`` is exactly the behaviour before it existed.
     """
     if not words:
         return []
 
-    groups = _group_words(list(words), min_words=min_words, max_words=max_words, silence_gap=silence_gap)
+    groups = _group_words(
+        list(words),
+        min_words=min_words,
+        max_words=max_words,
+        silence_gap=silence_gap,
+        breaks=breaks or _NO_BREAKS,
+    )
     cards = [Card(words=tuple(group), start=group[0].start, end=group[-1].end) for group in groups]
     cards = _drop_silent_cards(cards, silence_gap=silence_gap)
     if not cards:
@@ -78,7 +109,7 @@ def build_cards(
 
 
 def _group_words(
-    words: list[Word], *, min_words: int, max_words: int, silence_gap: float
+    words: list[Word], *, min_words: int, max_words: int, silence_gap: float, breaks: CardBreaks = _NO_BREAKS
 ) -> list[list[Word]]:
     """Greedily group words into cards of ``min_words``-``max_words`` words.
 
@@ -90,29 +121,40 @@ def _group_words(
     shorter than ``min_words`` is folded into the previous card rather than
     left as a stray one- or two-word caption, unless it is the only group or
     a silence gap separates it from that previous card.
+
+    ``breaks`` overrules all of that for the words it names: one in
+    ``before`` always starts a card, one in ``not_before`` never does. The
+    break a word triggers lands *before the next word*, so it is carried in
+    ``pending`` rather than closing the group on the spot -- that is what
+    lets ``not_before`` veto it.
     """
     groups: list[list[Word]] = []
     current: list[Word] = []
-    for word in words:
-        if current and (word.start - current[-1].end) >= silence_gap:
-            groups.append(current)
-            current = []
+    pending = False  # the word just added asked for a break after it
+    for index, word in enumerate(words):
+        if current and index not in breaks.not_before:
+            gap = (word.start - current[-1].end) >= silence_gap
+            if pending or gap or index in breaks.before:
+                groups.append(current)
+                current = []
+        pending = False
 
         current.append(word)
         at_max = len(current) >= max_words
         stripped = word.text.rstrip()
         at_sentence_end = stripped.endswith(SENTENCE_END)
         at_clause_break = stripped.endswith(CLAUSE_BREAK)
-        should_break = at_max or (
+        pending = at_max or (
             len(current) >= min_words and (at_sentence_end or at_clause_break)
         )
-        if should_break:
-            groups.append(current)
-            current = []
 
     if current:
+        # ``pending`` here means the last word closed its own group, which
+        # before this parameter existed left nothing to fold.
+        first = len(words) - len(current)
         separated_by_silence = groups and (current[0].start - groups[-1][-1].end) >= silence_gap
-        if groups and len(current) < min_words and not separated_by_silence:
+        forced_apart = pending or first in breaks.before
+        if groups and len(current) < min_words and not separated_by_silence and not forced_apart:
             groups[-1] = groups[-1] + current
         else:
             groups.append(current)

@@ -274,3 +274,113 @@ def check_free_space(output_dir: Path, *, input_size_bytes: int, min_free_gb: fl
         raise DiskSpaceError(
             f"Not enough free space on {drive} — need about {format_gb(required)}, have {format_gb(free)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# hand edits (v0.6 section 1): the transcript record -> the renderer
+# ---------------------------------------------------------------------------
+
+
+def word_style_map(record: Any) -> dict[tuple[float, float], Any]:
+    """``{(start, end): WordStyle}`` for every word carrying an override --
+    the mapping ``styles.render.render_ass`` takes as ``word_styles``.
+
+    Keyed by the word's timings rather than its index: timings are unique
+    and survive card building, so nothing can drift out of alignment the
+    way a parallel index array would. ``{}`` for a record nobody has
+    styled, which is the same as passing nothing at all.
+    """
+    from .transcript import styled_words
+
+    return {(word.start, word.end): style for word, style in styled_words(record)}
+
+
+def card_breaks(record: Any) -> Any:
+    """The editor's own line breaks as ``engine.rules.CardBreaks``, or
+    ``None`` when they have not moved any -- so the untouched path is
+    provably the path that existed before this feature."""
+    from ash_captions.engine.rules import CardBreaks
+
+    from .transcript import break_indexes
+
+    before, not_before = break_indexes(record)
+    if not before and not not_before:
+        return None
+    return CardBreaks(before=before, not_before=not_before)
+
+
+def _resolve_style(preset: str | None) -> Any:
+    """The look by name, falling back to the default rather than failing --
+    a job whose look was deleted since must still be able to rewrite its
+    captions."""
+    from ash_captions import styles
+
+    if not preset:
+        return styles.DEFAULT_STYLE
+    try:
+        return styles.resolve_style(preset)
+    except Exception:  # noqa: BLE001 - a missing or broken look degrades, never fails an edit
+        log.warning("look %r could not be resolved; rewriting captions in the default look", preset)
+        return styles.DEFAULT_STYLE
+
+
+def _silence_gap_seconds(explicit: float | None) -> float:
+    if explicit is not None:
+        return float(explicit)
+    from ash_captions.engine.rules import SILENCE_GAP_SECONDS
+
+    try:
+        from ash_captions.config import Settings
+
+        return float(Settings.load().silence_gap_seconds)
+    except Exception:  # noqa: BLE001 - unreadable settings must not block an edit
+        return SILENCE_GAP_SECONDS
+
+
+def rewrite_outputs(
+    record: Any,
+    *,
+    output_dir: Path,
+    stem: str,
+    preset: str | None,
+    position: tuple[float, float] | None = None,
+    silence_gap: float | None = None,
+) -> int:
+    """Re-render this job's ``.ass``, ``.srt`` and ``.txt`` from an edited
+    transcript, in place, and return the card count.
+
+    The same card rules the runner and ``QueueAdapter.restyle`` use, plus
+    the editor's own line breaks. ``word_styles`` is handed to the renderer
+    only when this tree's renderer takes it (track B adds that keyword), so
+    this works before and after that merge with no edit here. ``.en.srt``
+    is left alone: this track never edits ``en_words``.
+    """
+    from ash_captions.styles.render import anchor_pixels
+
+    from ash_captions import styles as styles_pkg
+
+    output_dir = Path(output_dir)
+    style = _resolve_style(preset)
+    max_words = style.layout.max_words
+    cards = engine.build_cards(
+        record.words,
+        max_words=max_words,
+        min_words=min(3, max_words),
+        silence_gap=_silence_gap_seconds(silence_gap),
+        breaks=card_breaks(record),
+    )
+    play_res = record.play_res or styles_pkg.DEFAULT_PLAY_RES
+    optional: dict[str, Any] = {"play_res": play_res}
+    anchor = anchor_pixels(position, play_res)
+    if anchor is not None:
+        optional["anchor"] = anchor
+    word_styles = word_style_map(record)
+    if word_styles:
+        optional["word_styles"] = word_styles
+    accepted = accepted_kwargs(engine.write_ass, optional)
+    extras = {name: value for name, value in optional.items() if name in accepted}
+
+    atomic_write(lambda p: engine.write_srt(cards, p), output_dir / f"{stem}.srt")
+    atomic_write(lambda p: engine.write_ass(cards, p, style, **extras), output_dir / f"{stem}.ass")
+    atomic_write(lambda p: engine.write_txt(record.segments, p), output_dir / f"{stem}.txt")
+    return len(cards)
