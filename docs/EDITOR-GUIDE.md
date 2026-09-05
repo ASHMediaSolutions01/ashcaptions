@@ -380,15 +380,111 @@ transcript panel under the video tells you *where to look*.
   job already has, so it takes seconds, and it writes the `.en.srt` into the
   output folder.
 
-The panel does not edit captions. When a name or a brand is wrong, add it to
-the client's **Glossary** (Part 9) and run the job again; for anything else,
-ask a speaker of the language to check the moments the chip points at.
+When a word is wrong, fix it here: see Part 8. For anything you are unsure
+about, ask a speaker of the language to check the moments the chip points at.
 Underlines mark doubt, not errors: most amber words are right, red ones are
 worth a listen.
 
 ---
 
-## Part 8 — Captions behind the speaker
+## Part 8 — Fixing a word
+
+The speech model gets a name wrong, or hears "haramienta" for "herramienta".
+Click the word in the transcript and type the right one. Nothing is
+transcribed again: the captions redraw in about a quarter of a second, and
+the `.srt`, `.ass` and `.txt` in the output folder are rewritten with it.
+
+1. In the Studio, click the word in the transcript panel under the video.
+2. Type the correction, then choose:
+   - **Fix this one** changes this occurrence.
+   - **Fix every "haramienta"** changes all of them in this video, and says
+     how many that is.
+3. **Always spell it this way** also adds it to the client's glossary
+   (Part 13), so the next job for that client gets it right while it is
+   still transcribing.
+
+- **Splitting and joining lines.** Put the cursor where the line should break
+  and press Enter, or use **Join with the line above**. Use it when a caption
+  breaks mid-phrase.
+- **Timing.** Drag the left or right edge of a word's row to move its start
+  or end. It cannot pass its neighbours.
+- A word you have fixed loses its uncertainty underline: a word you typed has
+  no model confidence to report.
+
+Two Studio tabs open on the same video? The second is told the transcript
+changed and offered a reload, rather than quietly overwriting your work.
+
+---
+
+## Part 9 — Making one word stand out
+
+One word in a sentence deserves to be bigger, or amber, or bold. Click it and
+set it, without touching the look and without affecting any other video.
+
+1. Click a word, on the video or in the transcript. A small toolbar appears.
+2. Set its colour, its size as a percentage of the look's own size, bold or
+   italic. The controls start at whatever the look already gives that word,
+   so you are adjusting rather than starting from nothing.
+3. The line above the controls says what you are changing: **this word only**.
+   To change every caption in every video instead, that is the look, and the
+   link takes you there.
+
+- A word you have changed carries a small dot in the transcript, so you can
+  see later what you touched.
+- **Reset word** puts one back; **Reset all overrides on this job** puts them
+  all back.
+- Font and outline stay properties of the look, on purpose: mixing five
+  typefaces into one caption makes a mess faster than it makes a point.
+
+---
+
+## Part 10 — The reel look
+
+Three looks — **REEL ESTATE**, **QUIET SPLIT** and **BIG NUMBER** — do not
+put the caption on one line. They place each word at its own spot, at its own
+size and colour, and leave it there while the next word arrives. It is the
+treatment on the property and coaching reels that get shared around.
+
+1. Pick one in the Studio like any other look.
+2. The look decides where each word goes, from how long it is and what job it
+   does in the sentence: a number or a long word gets the big treatment,
+   "the" and "and" get the small italic one.
+3. Anything it puts in a bad place, drag. A word you move stays where you put
+   it.
+
+- These looks are built for a vertical reel. They work on a landscape video
+  and keep their proportions, but they are designed for 9:16.
+- They keep clear of the top and bottom of the frame, where TikTok and Reels
+  draw their own buttons over your video.
+- A very long word on the biggest slot can run past the edge of the frame.
+  Drag it, or pick a calmer look.
+
+---
+
+## Part 11 — Getting your files out
+
+**Export** hands you the file. It is in the Studio's top bar, on every
+finished row in the queue, and on the Styles page.
+![The Export menu open in the Studio, listing every file with its size](images/export-menu.png)
+
+- **Video with captions burned in** — the finished MP4. If the job has not
+  been burned yet, this queues the burn and shows you how it is going; you
+  can leave the page and it keeps working.
+- **Subtitles (.srt)** — drags straight into Premiere or Resolve.
+- **Styled subtitles (.ass)** — the animated look, for burning elsewhere.
+- **Transcript (.txt)** — for descriptions and client review.
+- **English subtitles (.en.srt)** — when the job was translated.
+
+**Open folder** and **Copy path** are still there, and are still the quickest
+route when the next thing you do is drag the `.ass` into Premiere.
+
+The **Preview 3 seconds** button on the Styles page is not an export. It
+renders three seconds so you can see a look on real footage. The whole video
+comes from Export.
+
+---
+
+## Part 12 — Captions behind the speaker
 
 For reels: tick **Captions behind the speaker** when you submit, and the
 captions are drawn *behind* the person, so their head and hands pass in front
@@ -405,7 +501,7 @@ the person back on top.
 - The first use downloads the model once (15 MB); the installed version ships
   it.
 
-## Part 9 — Clients and glossaries
+## Part 13 — Clients and glossaries
 
 Every job can carry a **Client**. Type the client's name in the **Client** box
 on the control page (it remembers the last one, and suggests the ones it has
@@ -421,7 +517,7 @@ seen). Then:
 - **Watch folder**: a video dropped into `C:\AshCaptions\in\<Client>\` is a
   job for that client, with that client's glossary.
 
-## Part 10 — Punch-in (zooming the footage)
+## Part 14 — Punch-in (zooming the footage)
 
 A punch-in is the picture pushing in slightly on a word. It is **off by
 default**, because it changes how a client's video is framed. To turn it on,
@@ -449,7 +545,7 @@ on hour-long files and costs almost no extra render time.
 
 ---
 
-## Part 11 — Problems and fixes
+## Part 15 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
@@ -476,7 +572,7 @@ C:\AshCaptions\ash-captions.log
 
 ---
 
-## Part 12 — Uninstalling
+## Part 16 — Uninstalling
 
 Double-click `Uninstall-AshCaptions.bat`. It sits beside
 `Install-AshCaptions.bat`, wherever Ghazi gave you that; if you no longer
@@ -492,7 +588,7 @@ back up.
 
 ---
 
-## Part 13 — Worth knowing
+## Part 17 — Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
   languages very good. **Arabic**: the `.srt` and transcript are fine; for a

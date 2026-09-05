@@ -21,7 +21,7 @@ the live elements (``.caption-drag`` / ``.transcript-panel``). The fallback
 that injects the markup and prints "staged" survives only for a tree where
 those two features are missing; a normal run never reaches it.
 
-All nine figures were last captured for v0.5.1. After changing anything the
+All nine figures were last captured for v0.6.0. After changing anything the
 guide shows, rerun this with ``--job 5`` and then scripts/export_guide.py,
 so the in-app guide and docs/ASH-Captions-Guide.html agree with the build.
 
@@ -334,8 +334,12 @@ def fig_moving_caption(s: Session) -> None:
     open_studio(s)
     seek_to_spoken_moment(s)
     if s.page.locator(".caption-drag").count():
-        s.page.focus(".caption-drag")
-        s.page.hover(".caption-drag")
+        # The drag layer is click-through by design (pointer-events: none);
+        # the handle inside it is the part that takes the pointer. Hovering
+        # the layer retries until it times out, with the video "intercepting
+        # pointer events" -- which is the layer working, not failing.
+        s.page.focus(".caption-handle")
+        s.page.hover(".caption-handle")
     else:
         print("moving-caption.png: staged (.caption-drag not on the page; rerun after track A is merged)")
         s.page.evaluate(STAGED_DRAG_MARKUP)
@@ -370,6 +374,31 @@ def fig_check_captions(s: Session) -> None:
     shoot(s, "check-captions.png", selector=".stage-column")
 
 
+def fig_export_menu(s: Session) -> None:
+    """The Export menu open in the Studio header, with real file sizes."""
+    open_studio(s)
+    s.page.click("#export button")
+    s.page.wait_for_selector("#export a[download]")
+    s.page.wait_for_timeout(250)
+    # The menu is positioned outside its button's box, so an element shot of
+    # #export catches the button alone. Clip the union of the two instead.
+    box = s.page.evaluate(
+        """() => {
+            const parts = [document.querySelector('#export'),
+                           document.querySelector('#export .export-menu')];
+            const rects = parts.filter(Boolean).map((el) => el.getBoundingClientRect());
+            const pad = 12;
+            const left = Math.min(...rects.map((r) => r.left)) - pad;
+            const top = Math.min(...rects.map((r) => r.top)) - pad;
+            const right = Math.max(...rects.map((r) => r.right)) + pad;
+            const bottom = Math.max(...rects.map((r) => r.bottom)) + pad;
+            return {x: Math.max(0, left), y: Math.max(0, top),
+                    width: right - Math.max(0, left), height: bottom - Math.max(0, top)};
+        }"""
+    )
+    shoot(s, "export-menu.png", clip=box)
+
+
 def fig_burned_example(s: Session) -> None:
     open_studio(s)
     apply_look(s, EXAMPLE_LOOK)
@@ -400,6 +429,7 @@ FIGURES: list[Figure] = [
     Figure("studio.png", fig_studio),
     Figure("moving-caption.png", fig_moving_caption),
     Figure("check-captions.png", fig_check_captions),
+    Figure("export-menu.png", fig_export_menu),
     Figure("burned-example.png", fig_burned_example),
     Figure("style-editor.png", fig_style_editor),
 ]
