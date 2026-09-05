@@ -35,14 +35,22 @@ and the upload is the part a client NDA makes awkward.
 
 ## What it does that the paid tools do
 
-- **36 looks**, word-by-word with the spoken word highlighted, grouped by
+- **39 looks**, word-by-word with the spoken word highlighted, grouped by
   where they sit: bottom, centre, top, lower third, with left and right
-  variants. All of them are JSON files, so a new look needs no code.
+  variants. Three of them place each word at its own spot on the frame and
+  leave it there while the next arrives -- the treatment on the reels that
+  get shared around. All of them are JSON files, so a new look needs no code.
 - **The Studio.** The video plays in the browser with the captions rendered
   by the same engine that burns them, so what you see is what you get.
   Clicking a look re-renders it in about a quarter of a second.
 - **Put the caption anywhere.** Drag it off a face or a logo. The position
   belongs to the job, survives changing the look, and is what gets burned.
+- **Fix a wrong word without re-running anything.** Click it in the
+  transcript, type the right one, and the caption files are rewritten in a
+  quarter of a second. Fix every occurrence at once, or teach the client's
+  glossary so the next job gets it right while it is still transcribing.
+- **Make one word stand out.** Its own colour, size, weight or slant,
+  without touching the look or any other video.
 - **Captions behind the speaker.** A person mask is rendered from the frame
   so words pass behind the speaker's head and shoulders. Aimed at reels.
 - **Punch-in**, an optional slow zoom on sentence starts or keywords.
@@ -106,8 +114,9 @@ month, which for six editors is a subscription we do not pay.
 
 ## Where it is going
 
-Shipped: everything above, as v0.5.0. Next, in the order an editor hits the
-gap: turning a landscape interview into a 9:16 reel with the crop following
-the speaker; emoji and sticker bursts; right-to-left looks for Arabic and
-Urdu; speaker names for podcasts. `docs/STATUS.md` holds the current state
-and the full roadmap.
+Shipped: everything above, as v0.6.0. Next, in the order an editor hits the
+gap: sound effects landing on the caption word; a wider animation vocabulary
+(zoom, blur, blink, bounce); turning a landscape interview into a 9:16 reel
+with the crop following the speaker; emoji bursts; right-to-left looks for
+Arabic and Urdu. `docs/STATUS.md` holds the current state and the full
+roadmap.

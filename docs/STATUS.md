@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **1536 passing, 30 skipped** (the skips are the real-ffmpeg and
+- Tests: **1956 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -21,8 +21,41 @@ running it, not inferred.
 
 ## Where the project is
 
-**v0.5.1 is what master is now, and what is published** (2026-09-05). It is
-the build the six editors install and test.
+**v0.6.0 is what master is now, and what is published** (2026-09-05). It is
+the build the six editors install and test. Built by five agents in five
+worktrees from `docs/superpowers/specs/2026-09-05-v0.6-design.md`; the six
+defects that mattered were all found after the merge, by running it.
+
+- **Fix a word.** The transcript panel is editable: correct one occurrence
+  or every one of them, add the correction to the client's glossary, split
+  and merge lines, drag a word's timing. Nothing re-transcribes; the
+  `.srt`, `.ass` and `.txt` are rewritten in about a quarter of a second.
+  A second tab open on the same video is offered a reload rather than
+  clobbering the first. Before this, fixing one misheard word cost a full
+  re-run of the job.
+- **Style one word.** Click a word and give it its own colour, size, weight
+  or slant, with the scope named where you change it ("this word only") and
+  a mark on every word you have overridden. Font and outline stay
+  properties of the look, deliberately -- that is where per-word styling
+  turns into a mess.
+- **The reel look.** Three looks -- REEL ESTATE, QUIET SPLIT, BIG NUMBER --
+  place each word at its own spot, at its own size and colour, and leave it
+  there while the next arrives. Positions run down the frame in the order
+  the words are spoken; sizes follow which word matters. An intensity dial
+  takes a look from a tidy stack to the full scatter. Measured against
+  Ghazi's own reference reels, frame by frame.
+- **Export.** Real downloads of the video, `.srt`, `.ass`, `.txt` and the
+  English file, with sizes, from the Studio, every finished queue row and
+  the Styles page. Before this the product had no download anywhere: every
+  route to a finished file was "Open folder".
+- **The Styles page tells the truth.** It says that saving a look changes
+  every job that uses it, including old ones restyled or re-burned later.
+  The look cards animate instead of showing a still picture -- you could
+  previously choose a motion effect having never seen motion. Exit
+  animations and speeds appear, having been in the format since v0.3 and
+  hidden from the UI all along.
+
+**v0.5.1 was the build before it** (2026-09-05). It is
 
 0.5.1 is 0.5.0 plus what opening the pages on a 1366x768 laptop turned up: a
 dashed rectangle was drawn around every video in the Studio (two of the v0.5
