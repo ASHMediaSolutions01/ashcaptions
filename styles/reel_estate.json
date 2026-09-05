@@ -1,0 +1,42 @@
+{
+  "name": "REEL ESTATE",
+  "font": "Anton",
+  "size": 160,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FFD400",
+    "outline": "#0A0A0A",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "none",
+    "scale": 1.12,
+    "box": false
+  },
+  "entrance": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "exit": {
+    "effect": "fade",
+    "duration_ms": 160
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 4,
+    "margin_l": 60,
+    "margin_r": 60,
+    "margin_v": 0,
+    "align": "center",
+    "mode": "free",
+    "slots": [
+      {"x": 0.30, "y": 0.30, "scale": 0.58, "role": "text", "italic": true, "font": "Poppins", "entrance": "fade_settle"},
+      {"x": 0.50, "y": 0.44, "scale": 2.30, "role": "active", "italic": false, "font": null, "entrance": "stretch_collapse"},
+      {"x": 0.42, "y": 0.60, "scale": 1.15, "role": "outline", "italic": false, "font": null, "entrance": "stretch_collapse", "border": 0.0},
+      {"x": 0.64, "y": 0.71, "scale": 0.62, "role": "text", "italic": true, "font": "Poppins", "entrance": "fade_settle"}
+    ]
+  }
+}
