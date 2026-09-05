@@ -76,8 +76,19 @@ def test_every_event_is_pinned_to_the_anchor(extra):
         assert not (_POS.search(line) and _MOVE.search(line)), f"\\pos and \\move on one line: {line}"
 
 
+def shipped_line_styles():
+    """The shipped looks that lay their words out as a line.
+
+    A free-placement look (v0.6, design 2026-09-05 section 5) puts every
+    word at its own point on purpose, so "one anchor, every event on it"
+    is not its contract: the anchor shifts the whole cluster instead. That
+    behaviour is tested in test_render_free.py."""
+    styles = list_styles(user_dir=shipped_styles_dir().parent / "does-not-exist")
+    return {name: style for name, style in styles.items() if style.layout.mode == "line"}
+
+
 def test_every_shipped_style_is_pinned_when_asked():
-    for name, style in list_styles(user_dir=shipped_styles_dir().parent / "does-not-exist").items():
+    for name, style in shipped_line_styles().items():
         out = render_ass(cards(), style, play_res=(1920, 1080), anchor=(960.0, 270.0))
         for line in dialogue_lines(out):
             assert pinned_to(line, (960.0, 270.0)), (name, line)
@@ -111,7 +122,7 @@ def test_without_an_anchor_output_is_byte_identical_to_today():
         "Dialogue: 0,0:00:00.00,0:00:00.30,X,,0,0,0,,{\\c&H632EFF&}hello{\\c&HFFFFFF&} {\\c&HFFFFFF&}there",
         "Dialogue: 0,0:00:00.30,0:00:00.60,X,,0,0,0,,{\\c&HFFFFFF&}hello {\\c&H632EFF&}there{\\c&HFFFFFF&}",
     ]
-    for name, shipped in list_styles(user_dir=shipped_styles_dir().parent / "does-not-exist").items():
+    for name, shipped in shipped_line_styles().items():
         assert "\\pos(" not in render_ass(cards(), shipped), name
 
 

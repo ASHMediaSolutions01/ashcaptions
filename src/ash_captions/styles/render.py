@@ -77,6 +77,7 @@ from .ass_format import (
     format_ass_time,
     safe_style_name,
 )
+from .render_free import free_events
 from .render_glow import HALO_LAYER, POP_HALF_MS, TEXT_LAYER, halo_line_text, scale_transform_tags
 from .schema import Style
 
@@ -201,6 +202,16 @@ def _card_events(
     height: int,
     anchor: tuple[float, float] | None = None,
 ) -> list[str]:
+    if style.layout.mode == "free":
+        # Free placement (design 2026-09-05, section 5): one event per
+        # word at its own slot, all ending together. The Studio's drag
+        # moves the whole cluster, so the anchor arrives as an offset
+        # from where this look would sit undragged.
+        base_x, base_y = _anchor_xy(style, width, height, None)
+        moved_x, moved_y = _anchor_xy(style, width, height, anchor)
+        return free_events(
+            card, style, base_name, width, height, offset=(moved_x - base_x, moved_y - base_y)
+        )
     effect = style.active_word.effect
     if effect == "karaoke":
         return _karaoke_events(card, style, base_name, width, height, anchor)

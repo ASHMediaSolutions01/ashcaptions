@@ -1,0 +1,42 @@
+{
+  "name": "BIG NUMBER",
+  "font": "Archivo Black",
+  "size": 150,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#FFD166",
+    "outline": "#101010",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "none",
+    "scale": 1.12,
+    "box": false
+  },
+  "entrance": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "exit": {
+    "effect": "fade",
+    "duration_ms": 140
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 4,
+    "margin_l": 60,
+    "margin_r": 60,
+    "margin_v": 0,
+    "align": "center",
+    "mode": "free",
+    "slots": [
+      {"x": 0.32, "y": 0.28, "scale": 0.52, "role": "text", "italic": true, "font": "Manrope", "entrance": "fade_settle"},
+      {"x": 0.50, "y": 0.45, "scale": 2.85, "role": "active", "italic": false, "font": null, "entrance": "stretch_collapse"},
+      {"x": 0.50, "y": 0.62, "scale": 0.95, "role": "text", "italic": false, "font": null, "entrance": "stretch_collapse"},
+      {"x": 0.68, "y": 0.73, "scale": 0.52, "role": "text", "italic": true, "font": "Manrope", "entrance": "fade_settle"}
+    ]
+  }
+}

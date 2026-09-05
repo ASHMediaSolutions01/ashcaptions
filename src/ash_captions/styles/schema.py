@@ -65,6 +65,19 @@ TRANSITION_EFFECTS = frozenset({"none", "fade", "rise", "slide"})
 POSITIONS = frozenset({"bottom", "center", "top", "lower_third"})
 ALIGNS = frozenset({"left", "center", "right"})
 
+# Free placement (design 2026-09-05, section 5). "line" is every look
+# shipped up to v0.5: one band, words laid out as a sentence. "free"
+# gives each word its own slot and keeps it on screen while the next
+# arrives. A slot's colour is a *role* -- the name of a key in the look's
+# own ``colors`` block -- so a slot never carries a raw hex value.
+LAYOUT_MODES = frozenset({"line", "free"})
+SLOT_COLOUR_ROLES = frozenset({"text", "active", "outline", "shadow", "box"})
+# Both entrances were measured off the owner's own reference frames:
+# stretch_collapse enters ~180% wide and snaps to 100% over ~120ms;
+# fade_settle fades in over ~240ms while shrinking from ~110% and
+# dropping a few pixels. See render_free.
+FREE_ENTRANCES = frozenset({"none", "stretch_collapse", "fade_settle"})
+
 _HEX_COLOUR_RE = re.compile(r"^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
 
 _MIN_SIZE, _MAX_SIZE = 10, 300
@@ -73,6 +86,8 @@ _MIN_LETTER_SPACING, _MAX_LETTER_SPACING = -5.0, 30.0
 _MIN_DURATION_MS, _MAX_DURATION_MS = 0, 2000
 _MIN_MAX_WORDS, _MAX_MAX_WORDS = 1, 8
 _MIN_MARGIN, _MAX_MARGIN = 0, 2000
+_MIN_SLOT_SCALE, _MAX_SLOT_SCALE = 0.2, 3.0
+_MAX_SLOTS = _MAX_MAX_WORDS  # a card can never be wider than max_words
 
 
 def _require_hex_colour(path: str, value: Any) -> str:
@@ -186,6 +201,71 @@ class Transition:
 
 
 @dataclass(frozen=True, slots=True)
+class Slot:
+    """One landing spot in a free-placement look (design 2026-09-05, 5).
+
+    A slot is a *treatment*, not a word: a point on the frame, how much
+    bigger or smaller than the look's own size the word is drawn, which
+    of the look's colours it takes, whether it leans, which bundled face
+    it uses, and how it arrives. ``render_free.assign_slots`` decides
+    which word of a card gets which slot.
+
+    ``x``/``y`` are fractions of the frame, so one look renders correctly
+    at any PlayRes; ``role`` names a key of the look's own ``colors``
+    block rather than carrying a hex value, so re-colouring a look moves
+    every slot with it.
+    """
+
+    x: float
+    y: float
+    scale: float = 1.0
+    role: str = "text"
+    italic: bool = False
+    font: str | None = None  # None: the look's own font
+    entrance: str = "stretch_collapse"
+
+    @classmethod
+    def from_dict(cls, path: str, data: dict, *, check_font: bool = True) -> "Slot":
+        data = _require_dict(path, data)
+        _reject_unknown_keys(path, data, {"x", "y", "scale", "role", "italic", "font", "entrance"})
+        defaults = cls(x=0.0, y=0.0)
+        for name in ("x", "y"):
+            if name not in data:
+                raise StyleValidationError(f"{path}.{name}: a slot needs both x and y (fractions of the frame)")
+        x = _require_number(f"{path}.x", data["x"], lo=0.0, hi=1.0)
+        y = _require_number(f"{path}.y", data["y"], lo=0.0, hi=1.0)
+        scale = _require_number(
+            f"{path}.scale", data.get("scale", defaults.scale), lo=_MIN_SLOT_SCALE, hi=_MAX_SLOT_SCALE
+        )
+        role = _require_choice(f"{path}.role", data.get("role", defaults.role), SLOT_COLOUR_ROLES)
+        italic = _require_bool(f"{path}.italic", data.get("italic", defaults.italic))
+        entrance = _require_choice(
+            f"{path}.entrance", data.get("entrance", defaults.entrance), FREE_ENTRANCES
+        )
+        font = data.get("font", defaults.font)
+        if font is not None:
+            if not isinstance(font, str) or not font.strip():
+                raise StyleValidationError(f"{path}.font: {font!r} is not a valid font name")
+            if check_font and not is_font_bundled(font):
+                raise StyleValidationError(
+                    f"{path}.font: {font!r} is not a bundled font -- see assets/fonts/manifest.json "
+                    "for the available faces"
+                )
+        return cls(
+            x=float(x),
+            y=float(y),
+            scale=float(scale),
+            role=role,
+            italic=italic,
+            font=font,
+            entrance=entrance,
+        )
+
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(Slot)}
+
+
+@dataclass(frozen=True, slots=True)
 class Layout:
     position: str = "bottom"
     max_words: int = 4
@@ -196,11 +276,18 @@ class Layout:
     # sit at align=left, margin_l from the edge. Combined with position
     # this maps onto the ASS numpad alignment (1-9).
     align: str = "center"
+    # "line" is every look shipped before v0.6: words laid out as a
+    # sentence in one band. "free" places each word at its own slot and
+    # keeps it there while the next arrives -- see Slot and render_free.
+    mode: str = "line"
+    slots: tuple[Slot, ...] = ()
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Layout":
+    def from_dict(cls, data: dict, *, check_font: bool = True) -> "Layout":
         _reject_unknown_keys(
-            "layout", data, {"position", "max_words", "margin_l", "margin_r", "margin_v", "align"}
+            "layout",
+            data,
+            {"position", "max_words", "margin_l", "margin_r", "margin_v", "align", "mode", "slots"},
         )
         defaults = cls()
         position = _require_choice("layout.position", data.get("position", defaults.position), POSITIONS)
@@ -220,6 +307,8 @@ class Layout:
         margin_v = _require_number(
             "layout.margin_v", data.get("margin_v", defaults.margin_v), lo=_MIN_MARGIN, hi=_MAX_MARGIN
         )
+        mode = _require_choice("layout.mode", data.get("mode", defaults.mode), LAYOUT_MODES)
+        slots = _slots_from_list(data.get("slots", []), mode=mode, max_words=int(max_words), check_font=check_font)
         return cls(
             position=position,
             max_words=int(max_words),
@@ -227,7 +316,45 @@ class Layout:
             margin_r=int(margin_r),
             margin_v=int(margin_v),
             align=align,
+            mode=mode,
+            slots=slots,
         )
+
+    def to_dict(self) -> dict:
+        """The JSON shape ``from_dict`` accepts. ``slots`` needs its own
+        pass because a tuple of dataclasses is not JSON."""
+        return {
+            f.name: [s.to_dict() for s in self.slots] if f.name == "slots" else getattr(self, f.name)
+            for f in fields(Layout)
+        }
+
+
+def _slots_from_list(value: Any, *, mode: str, max_words: int, check_font: bool) -> tuple[Slot, ...]:
+    """Validate ``layout.slots`` against ``layout.mode``.
+
+    Two cross-field rules, both boundary checks rather than renderer
+    surprises: a free look with no slots has nowhere to put a word, and a
+    free look with fewer slots than ``max_words`` would stack two words
+    on one point (``assign_slots`` cycles rather than crashing, but a
+    shipped look should never reach that)."""
+    if not isinstance(value, list):
+        raise StyleValidationError(f"layout.slots: expected a list, got {type(value).__name__}")
+    if len(value) > _MAX_SLOTS:
+        raise StyleValidationError(f"layout.slots: {len(value)} slots is more than the maximum of {_MAX_SLOTS}")
+    slots = tuple(
+        Slot.from_dict(f"layout.slots[{i}]", item, check_font=check_font) for i, item in enumerate(value)
+    )
+    if mode == "free":
+        if not slots:
+            raise StyleValidationError('layout.slots: a layout with mode "free" needs at least one slot')
+        if len(slots) < max_words:
+            raise StyleValidationError(
+                f"layout.slots: {len(slots)} slot(s) cannot hold a card of layout.max_words={max_words} "
+                "words -- give the layout at least as many slots as max_words"
+            )
+    elif slots:
+        raise StyleValidationError('layout.slots: slots are only used by mode "free"')
+    return slots
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +437,7 @@ class Style:
             default_effect=defaults.exit.effect,
             default_duration_ms=defaults.exit.duration_ms,
         )
-        layout = Layout.from_dict(_require_dict("layout", data.get("layout", {})))
+        layout = Layout.from_dict(_require_dict("layout", data.get("layout", {})), check_font=check_font)
 
         return cls(
             name=name,
@@ -338,7 +465,7 @@ class Style:
             "active_word": {f.name: getattr(self.active_word, f.name) for f in fields(ActiveWord)},
             "entrance": {f.name: getattr(self.entrance, f.name) for f in fields(Transition)},
             "exit": {f.name: getattr(self.exit, f.name) for f in fields(Transition)},
-            "layout": {f.name: getattr(self.layout, f.name) for f in fields(Layout)},
+            "layout": self.layout.to_dict(),
         }
 
 

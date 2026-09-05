@@ -1,0 +1,41 @@
+{
+  "name": "QUIET SPLIT",
+  "font": "Figtree",
+  "size": 140,
+  "uppercase": false,
+  "letter_spacing": 0.0,
+  "colors": {
+    "text": "#FFFFFF",
+    "active": "#8FE3C8",
+    "outline": "#0B1A16",
+    "shadow": "#00000000",
+    "box": "#00000000"
+  },
+  "active_word": {
+    "effect": "none",
+    "scale": 1.12,
+    "box": false
+  },
+  "entrance": {
+    "effect": "none",
+    "duration_ms": 0
+  },
+  "exit": {
+    "effect": "fade",
+    "duration_ms": 180
+  },
+  "layout": {
+    "position": "center",
+    "max_words": 3,
+    "margin_l": 80,
+    "margin_r": 80,
+    "margin_v": 0,
+    "align": "center",
+    "mode": "free",
+    "slots": [
+      {"x": 0.34, "y": 0.44, "scale": 0.70, "role": "text", "italic": true, "font": null, "entrance": "fade_settle"},
+      {"x": 0.50, "y": 0.53, "scale": 1.45, "role": "active", "italic": false, "font": null, "entrance": "fade_settle"},
+      {"x": 0.64, "y": 0.62, "scale": 0.70, "role": "text", "italic": true, "font": null, "entrance": "fade_settle"}
+    ]
+  }
+}
