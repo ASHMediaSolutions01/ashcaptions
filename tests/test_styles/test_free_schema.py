@@ -191,3 +191,36 @@ def test_the_enums_are_what_the_renderer_branches_on():
 
     for role in SLOT_COLOUR_ROLES:
         assert hasattr(Colors(), role)
+
+
+# ---------------------------------------------------------------------------
+# the intensity dial
+# ---------------------------------------------------------------------------
+
+
+def test_intensity_defaults_to_the_look_as_drawn():
+    assert Layout.from_dict({}).intensity == 1.0
+    assert Style.from_dict(_free()).layout.intensity == 1.0
+
+
+def test_intensity_parses_and_round_trips():
+    style = Style.from_dict(_free(intensity=0.4))
+    assert style.layout.intensity == 0.4
+    wire = json.loads(json.dumps(style.to_dict()))
+    assert Style.from_dict(wire).layout.intensity == 0.4
+
+
+@pytest.mark.parametrize("bad", [1.5, -0.1, "loud", None])
+def test_an_out_of_range_intensity_is_rejected(bad):
+    with pytest.raises(StyleValidationError, match=r"layout\.intensity"):
+        Style.from_dict(_free(intensity=bad))
+
+
+def test_intensity_is_rejected_on_a_line_layout():
+    """Same rule as slots: a dial that never turns anything is a mistake,
+    not a no-op."""
+    with pytest.raises(StyleValidationError, match=r'layout\.intensity.*mode "free"'):
+        Style.from_dict({"name": "PLAIN", "layout": {"intensity": 0.5}})
+    # ...but the default on a line layout is fine, so every shipped look
+    # and every style-editor round-trip still validates.
+    assert Style.from_dict({"name": "PLAIN", "layout": {"intensity": 1.0}}).layout.intensity == 1.0

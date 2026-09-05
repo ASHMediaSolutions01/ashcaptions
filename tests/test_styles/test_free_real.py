@@ -357,3 +357,57 @@ def test_the_shipped_reel_look_puts_the_number_big_and_yellow(reel_estate, work)
     # the slot's role really resolved through the palette.
     box = (number["x"], number["y"], number["x"] + number["w"], number["y"] + number["h"])
     assert _measure(frame, _exactly((0xFF, 0xFF, 0xFF)), box) is None
+
+
+# ---------------------------------------------------------------------------
+# 5. the platform safe zones
+# ---------------------------------------------------------------------------
+
+# TikTok and Reels lay their own interface over the video: the caption,
+# handle and action rail along the bottom, the search and follow row along
+# the top. A caption drawn under either is a caption nobody can read, so
+# the shipped free looks must keep every pixel of ink out of both bands.
+TOP_RESERVED = 0.10
+BOTTOM_RESERVED = 0.12
+
+
+def _ink_rows(image: Image.Image) -> tuple[int, int]:
+    """First and last row holding a pixel that is not the flat background.
+
+    Whole rows at a time off the raw buffer: a per-pixel scan of a
+    1080x1920 frame in Python is slow enough to be worth avoiding."""
+    data = image.tobytes()
+    width, height = image.size
+    rows = [
+        y
+        for y in range(height)
+        if any(abs(value - BACKGROUND[0]) > 12 for value in data[y * width * 3 : (y + 1) * width * 3])
+    ]
+    assert rows, "the look drew nothing at all"
+    return rows[0], rows[-1]
+
+
+SAFE_ZONE_PHRASES = {
+    "REEL ESTATE": ("the", "2nd", "Highest", "residential"),
+    "QUIET SPLIT": ("on", "a", "renovation"),
+    "BIG NUMBER": ("worth", "$4.2m", "in", "Malibu"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(SAFE_ZONE_PHRASES))
+@pytest.mark.parametrize("intensity", [1.0, 0.0])
+def test_a_shipped_free_look_stays_clear_of_the_platform_interface(name, intensity, work):
+    definition = list_styles(user_dir=shipped_styles_dir().parent / "no-user-styles-here")[name].to_dict()
+    definition["layout"]["intensity"] = intensity
+    style = Style.from_dict(definition)
+
+    texts = SAFE_ZONE_PHRASES[name]
+    words = tuple(Word(text=text, start=0.5 * i, end=0.5 * (i + 1)) for i, text in enumerate(texts))
+    slug = f"{name.replace(' ', '_')}_{intensity}"
+    path = work / f"{slug}.ass"
+    write_ass([Card(words=words, start=0.0, end=3.0)], path, style, play_res=PLAY_RES)
+
+    top, bottom = _ink_rows(_frame(path, 2.8, work))
+    height = PLAY_RES[1]
+    assert top >= TOP_RESERVED * height, (name, intensity, top, top / height)
+    assert bottom <= (1.0 - BOTTOM_RESERVED) * height, (name, intensity, bottom, bottom / height)
