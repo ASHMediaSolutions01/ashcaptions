@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -249,6 +249,27 @@ class UpdateAvailable(BaseModel):
             "rather than let the editor click and get rejected."
         ),
     )
+
+
+class UpdateStatus(BaseModel):
+    """What GET /api/update/status returns: where this install stands,
+    always, rather than only when there is something to download.
+
+    GET /api/update answers "is there an update" and returns null for
+    everything else -- right for the banner, useless for telling an editor
+    anything. With only that, an updater that is working perfectly and one
+    that is completely dead look the same: nothing on screen either way.
+    """
+
+    state: Literal["available", "up_to_date", "unavailable", "unknown"]
+    current_version: str
+    detail: str | None = Field(
+        None, description="Why, in one sentence, for every state but 'available'."
+    )
+    version: str | None = Field(None, description="The newer version, when state is 'available'.")
+    notes: str | None = None
+    size_bytes: int | None = None
+    blocked_reason: str | None = None
 
 
 class UpdateApplyStatus(str, Enum):

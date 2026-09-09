@@ -53,7 +53,12 @@ from .update_flow import (  # noqa: F401 - re-exported: tests and older callers 
     apply_update_when_idle,
     shutdown_with_watchdog as _shutdown_with_watchdog,
 )
-from .updater import MANIFEST_URL, UpdateState, check_for_update_in_background
+from .updater import (
+    MANIFEST_URL,
+    UpdateState,
+    check_for_update_in_background,
+    check_for_update_outcome,
+)
 
 logger = logging.getLogger("ash_captions.app")
 
@@ -413,6 +418,11 @@ def _run(args: argparse.Namespace, settings: Settings) -> None:
 
     update_state = UpdateState()
     app.state.update_state = update_state
+    # "Check now" on the control page: the same check the launch one runs,
+    # synchronously, because the editor is waiting on the answer.
+    app.state.update_recheck = lambda: update_state.set_outcome(
+        check_for_update_outcome(_current_version(), manifest_url=_manifest_url())
+    )
     _start_update_check(update_state)
 
     port = _find_open_port(settings.port, max_probes=MAX_PORT_PROBES)

@@ -40,17 +40,45 @@ class FakeUpdateInfo:
         self.manifest = manifest or {}
 
 
+class FakeCheckOutcome:
+    """Stands in for `ash_captions.app.updater.CheckOutcome`."""
+
+    def __init__(self, info, *, ok: bool = True, latest: str | None = None,
+                 detail: str | None = None) -> None:
+        self.info = info
+        self.ok = ok
+        self.latest = latest
+        self.detail = detail
+
+
 class FakeUpdateState:
-    """Stands in for `ash_captions.app.updater.UpdateState`."""
+    """Stands in for `ash_captions.app.updater.UpdateState`.
+
+    Carries the check *outcome* as well as the info, because the resting
+    state the control page shows turns on the difference between "checked,
+    nothing newer" and "could not check" -- a fake that only remembers the
+    info would make every one of those tests pass for the wrong reason.
+    """
 
     def __init__(self, info: FakeUpdateInfo | None = None) -> None:
         self._info = info
+        self._outcome = None
 
     def get(self) -> FakeUpdateInfo | None:
         return self._info
 
     def set(self, info: FakeUpdateInfo | None) -> None:
         self._info = info
+        self._outcome = FakeCheckOutcome(
+            info, ok=True, latest=getattr(info, "version", None)
+        )
+
+    def set_outcome(self, outcome) -> None:
+        self._info = outcome.info
+        self._outcome = outcome
+
+    def outcome(self):
+        return self._outcome
 
 
 class FakeUpdateApplier:

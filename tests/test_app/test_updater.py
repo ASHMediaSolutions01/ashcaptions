@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from ash_captions.app import updater
+from ash_captions.app import update_check, updater
 
 
 def make_manifest(
@@ -135,7 +135,13 @@ class TestCheckForUpdate:
         def boom():
             raise ImportError("scripts/ not bundled")
 
-        monkeypatch.setattr(updater, "_load_pkgtools_manifest", boom)
+        # Patched on `update_check`, not `updater`: the checking half lives
+        # there now and resolves this name from its own globals, so patching
+        # the re-export would do nothing at all and this test would pass by
+        # never taking the branch it names. The apply half genuinely does
+        # resolve it from `updater` -- see the download test below, which
+        # patches the other module on purpose.
+        monkeypatch.setattr(update_check, "_load_pkgtools_manifest", boom)
         info = updater.check_for_update(
             "0.4.0", fetch=fetch_returning(json.dumps(make_manifest(version="9.9.9")).encode())
         )

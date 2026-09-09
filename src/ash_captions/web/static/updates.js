@@ -16,6 +16,8 @@
   const updateBannerDetail = document.getElementById("update-banner-detail");
   const updateBannerReason = document.getElementById("update-banner-reason");
   const updateNowBtn = document.getElementById("update-now-btn");
+  const statusLine = document.getElementById("update-status");
+  const checkBtn = document.getElementById("update-check-btn");
 
   let queueBusyReason = null; // set from the live job list; overrides the server's snapshot reason
 
@@ -35,24 +37,70 @@
     updateButtonState();
   }
 
+  // The one line at the foot of the page. It is always saying something,
+  // which is the whole point: before this, an updater that was working and
+  // one that was dead both showed nothing at all.
+  function renderStatus(status) {
+    if (!statusLine) return;
+    const name = `ASH Captions ${status.current_version}`;
+    if (status.state === "available") {
+      statusLine.textContent = `${name} — version ${status.version} is available`;
+    } else if (status.state === "up_to_date") {
+      statusLine.textContent = `${name} — up to date`;
+    } else {
+      statusLine.textContent = `${name} — ${status.detail || "update status unknown"}`;
+    }
+    // Nothing to re-check on a copy that can never update itself.
+    if (checkBtn) checkBtn.hidden = status.state === "unavailable";
+  }
+
+  function renderBanner(status) {
+    if (status.state !== "available") {
+      updateBanner.hidden = true;
+      return;
+    }
+    updateBannerDetail.textContent =
+      `Version ${status.version} (${formatMegabytes(status.size_bytes)})` +
+      (status.notes ? ` -- ${status.notes}` : "");
+    if (status.blocked_reason) queueBusyReason = status.blocked_reason;
+    updateBanner.hidden = false;
+    updateButtonState();
+  }
+
+  async function fetchStatus(path, options) {
+    const res = await AshApi.request(path, options);
+    if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't check for updates"));
+    return res.json();
+  }
+
   async function checkForUpdate(onError) {
-    let info;
+    let status;
     try {
-      const res = await AshApi.request("/api/update");
-      if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't check for updates"));
-      info = await res.json();
+      status = await fetchStatus("/api/update/status");
     } catch (err) {
       // A failed check is worth a quiet note, never a broken page.
+      if (statusLine) statusLine.textContent = `Couldn't check for updates: ${err.message}`;
       if (onError) onError(`Couldn't check for updates: ${err.message}`);
       return;
     }
-    if (!info) return;
+    renderStatus(status);
+    renderBanner(status);
+  }
 
-    updateBannerDetail.textContent =
-      `Version ${info.version} (${formatMegabytes(info.size_bytes)})` + (info.notes ? ` -- ${info.notes}` : "");
-    if (info.blocked_reason) queueBusyReason = info.blocked_reason;
-    updateBanner.hidden = false;
-    updateButtonState();
+  if (checkBtn) {
+    checkBtn.addEventListener("click", async () => {
+      checkBtn.disabled = true;
+      if (statusLine) statusLine.textContent = "Checking for updates…";
+      try {
+        const status = await fetchStatus("/api/update/check", { method: "POST" });
+        renderStatus(status);
+        renderBanner(status);
+      } catch (err) {
+        if (statusLine) statusLine.textContent = `Couldn't check for updates: ${err.message}`;
+      } finally {
+        checkBtn.disabled = false;
+      }
+    });
   }
 
   updateNowBtn.addEventListener("click", async () => {

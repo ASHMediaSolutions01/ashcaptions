@@ -1,7 +1,14 @@
-"""In-app update checker (spec section 11.4; consumption contract fully
-documented in ``docs/INSTALL.md`` -- read that first if anything here is
-ambiguous, it is the source of truth `scripts/release.py` was built
-against).
+"""In-app update *applying* -- download, verify, mirror, relaunch (spec
+11.4; the checking half is ``update_check.py``, re-exported below so this
+module remains the public surface).
+
+Originally one file for both halves; split when it outgrew 500 lines. The
+seam is the one the behaviour already had: checking only reads and fails
+silently, applying writes and raises.
+
+Consumption contract fully documented in ``docs/INSTALL.md`` -- read that
+first if anything here is ambiguous; it is the source of truth
+``scripts/release.py`` was built against.
 
 Behaviour, in order, none of it negotiable:
 
@@ -34,32 +41,47 @@ actively waiting on.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
 import subprocess
-import sys
-import threading
 import urllib.request
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from ash_captions.config import app_root
 
 from .jobobject import CREATE_BREAKAWAY_FROM_JOB
+# Re-exported so this stays the public surface it has always been:
+# every caller and test still imports these from `app.updater`.
+from .update_check import (
+    CHECK_TIMEOUT_SECONDS,
+    MANIFEST_URL,
+    CheckOutcome,
+    FetchManifest,
+    UpdateInfo,
+    UpdateState,
+    _load_pkgtools_manifest,
+    check_for_update,
+    check_for_update_in_background,
+    check_for_update_outcome,
+)
 
 log = logging.getLogger(__name__)
 
 logger = logging.getLogger("ash_captions.app.updater")
 
-MANIFEST_URL = (
-    "https://github.com/ASHMediaSolutions01/ashcaptions-releases/"
-    "releases/latest/download/manifest.json"
-)
-CHECK_TIMEOUT_SECONDS = 10
+__all__ = [
+    "CHECK_TIMEOUT_SECONDS", "MANIFEST_URL", "CheckOutcome", "FetchManifest",
+    "UpdateInfo", "UpdateState", "check_for_update",
+    "check_for_update_in_background", "check_for_update_outcome",
+    "DOWNLOAD_TIMEOUT_SECONDS", "APP_NAME", "EXE_NAME", "UpdateApplyError",
+    "JOB_RUNNING_MESSAGE", "SOURCE_CHECKOUT_MESSAGE", "download_and_verify_update",
+    "apply_update", "clean_update_leftovers", "DownloadFile", "SpawnHelper",
+    "HasRunningJob",
+]
+
 DOWNLOAD_TIMEOUT_SECONDS = 30
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MiB -- matches web/app.py's upload chunking
 
@@ -73,156 +95,6 @@ class UpdateApplyError(Exception):
     response to an editor's explicit click and staying silent there would
     hide something they're actively waiting on.
     """
-
-
-def _load_pkgtools_manifest():
-    """Import ``scripts/pkgtools/manifest.py``'s version-comparison and
-    validation logic -- the single source of truth this updater and
-    ``scripts/release.py`` must agree on. Deliberately does not duplicate
-    that logic as a fallback: two implementations that can disagree is
-    exactly what reuse avoids.
-
-    Only importable from a source checkout today -- ``scripts/`` is not
-    bundled into the frozen PyInstaller build (see ``scripts/build.py``'s
-    ``--add-data`` list, which currently ships only ``web/static`` and an
-    optional model directory). Raises ``ImportError`` in that case; callers
-    treat it as one more silent-no-op failure mode during a background
-    check, same as a network failure -- see module docstring.
-    """
-    scripts_dir = app_root() / "scripts"
-    if scripts_dir.is_dir() and str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-    from pkgtools.manifest import (  # type: ignore[import-not-found]
-        ManifestError,
-        is_newer,
-        validate_manifest,
-        verify_artifact_against_manifest,
-    )
-
-    return ManifestError, is_newer, validate_manifest, verify_artifact_against_manifest
-
-
-@dataclass(frozen=True, slots=True)
-class UpdateInfo:
-    """What the tray menu / control page need to show and act on."""
-
-    version: str
-    notes: str | None
-    download_url: str
-    sha256: str
-    size_bytes: int
-    manifest: dict  # the full, already-validated manifest -- kept for verify_artifact_against_manifest
-
-
-FetchManifest = Callable[[str, float], bytes]  # (url, timeout) -> raw response bytes
-
-
-def _default_fetch_manifest(url: str, timeout: float) -> bytes:
-    with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - fixed, hardcoded host
-        return response.read()
-
-
-def check_for_update(
-    current_version: str,
-    *,
-    manifest_url: str = MANIFEST_URL,
-    fetch: FetchManifest = _default_fetch_manifest,
-    timeout: float = CHECK_TIMEOUT_SECONDS,
-) -> UpdateInfo | None:
-    """Check once, synchronously. Returns an ``UpdateInfo`` only when the
-    manifest advertises a strictly newer version; ``None`` for every other
-    outcome -- same version, older version, no network, a malformed or
-    unsupported manifest, or ``pkgtools`` being unavailable. Every branch
-    here is a silent no-op by design; only the log line differs, so a
-    caller never needs to distinguish "no update" from "couldn't check."
-    """
-    try:
-        ManifestError, is_newer, validate_manifest, _verify = _load_pkgtools_manifest()
-    except ImportError:
-        logger.info("Update check skipped: packaging's manifest module isn't available here.")
-        return None
-
-    try:
-        raw = fetch(manifest_url, timeout)
-    except Exception as exc:  # noqa: BLE001 - any network failure is a silent no-op (spec 4.4)
-        logger.info("Update check failed (network): %s", exc)
-        return None
-
-    try:
-        manifest = json.loads(raw)
-        validate_manifest(manifest)
-    except (ManifestError, json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as exc:
-        logger.info("Update check failed (malformed manifest): %s", exc)
-        return None
-
-    try:
-        newer = is_newer(manifest["version"], current_version)
-    except ManifestError as exc:
-        logger.info("Update check failed (bad version string): %s", exc)
-        return None
-
-    if not newer:
-        logger.debug(
-            "Already up to date (running %s, latest published %s).",
-            current_version, manifest["version"],
-        )
-        return None
-
-    artifact = manifest["artifact"]
-    logger.info("Update available: %s -> %s", current_version, manifest["version"])
-    return UpdateInfo(
-        version=manifest["version"],
-        notes=manifest.get("notes"),
-        download_url=artifact["url"],
-        sha256=artifact["sha256"],
-        size_bytes=artifact["size_bytes"],
-        manifest=manifest,
-    )
-
-
-class UpdateState:
-    """Thread-safe holder for the last check's result -- read by the tray
-    menu and the control page, written by the background check thread.
-    """
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._info: UpdateInfo | None = None
-
-    def get(self) -> UpdateInfo | None:
-        with self._lock:
-            return self._info
-
-    def set(self, info: UpdateInfo | None) -> None:
-        with self._lock:
-            self._info = info
-
-
-def check_for_update_in_background(
-    current_version: str,
-    state: UpdateState,
-    *,
-    manifest_url: str = MANIFEST_URL,
-    fetch: FetchManifest = _default_fetch_manifest,
-    timeout: float = CHECK_TIMEOUT_SECONDS,
-) -> threading.Thread:
-    """Kick off ``check_for_update`` on a daemon thread and store the
-    result in ``state``. Never blocks the caller -- startup must never
-    wait on this -- and never blocks on a dead network beyond ``timeout``.
-    """
-
-    def run() -> None:
-        try:
-            info = check_for_update(
-                current_version, manifest_url=manifest_url, fetch=fetch, timeout=timeout
-            )
-            state.set(info)
-        except Exception:  # noqa: BLE001 - a background check must never crash the app
-            logger.exception("Unexpected error during background update check")
-
-    thread = threading.Thread(target=run, name="ash-captions-update-check", daemon=True)
-    thread.start()
-    return thread
 
 
 DownloadFile = Callable[[str, Path, float], None]  # (url, dest, timeout) -> None

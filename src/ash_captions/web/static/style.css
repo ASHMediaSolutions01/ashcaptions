@@ -21,6 +21,12 @@
 }
 
 /* Update banner (spec 11.4) */
+/* The resting state of the updater: one quiet line that is always there,
+   so "up to date" and "cannot check" stop looking like "nothing happened". */
+.app-foot { display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px 16px 16px; color: var(--muted); font-size: 12px; }
+.app-foot .btn.small.quiet { font-size: 12px; }
+.app-foot.checking { opacity: 0.6; }
 .update-banner { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; border-color: var(--accent-fill); }
 .update-banner-text p { margin-top: 3px; color: var(--muted); }
 .update-banner-text .hint { color: var(--warn); }

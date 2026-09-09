@@ -161,3 +161,60 @@ def test_default_gate_is_the_runtime_check(fake_queue, fake_catalogue, fake_styl
     client = TestClient(app, base_url=LOCAL_BASE_URL, headers=CLIENT_HEADERS)
     assert client.get("/api/update").json() is None
     assert client.post("/api/update/apply").status_code == 409
+
+
+class TestTheRestingState:
+    """GET /api/update/status: what the page says when there is no update.
+
+    The updater worked and looked broken for exactly one reason -- its only
+    surface was a banner that exists solely when an update exists, so
+    "you're on the newest version", "this copy can't update itself" and
+    "the check failed" all rendered as an empty page. Each of those now has
+    to come back as its own state, and the failed one must never be dressed
+    up as success.
+    """
+
+    def test_up_to_date_is_said_out_loud(self, client, fake_update_state):
+        fake_update_state.set(None)
+        body = client.get("/api/update/status").json()
+        assert body["state"] == "up_to_date"
+        assert body["current_version"]
+        assert "newest" in body["detail"]
+
+    def test_an_available_update_carries_what_the_banner_needs(self, client, fake_update_state):
+        fake_update_state.set(FakeUpdateInfo(version="2.0.0", notes="New styles", size_bytes=500_000_000))
+        body = client.get("/api/update/status").json()
+        assert body["state"] == "available"
+        assert (body["version"], body["notes"], body["size_bytes"]) == ("2.0.0", "New styles", 500_000_000)
+
+    def test_before_any_check_finishes_the_answer_is_unknown_not_up_to_date(self, client):
+        body = client.get("/api/update/status").json()
+        assert body["state"] == "unknown"
+
+    def test_a_failed_check_is_never_reported_as_up_to_date(self, client, app):
+        """The lie this endpoint exists to stop telling."""
+        from ash_captions.app.updater import CheckOutcome, UpdateState
+
+        state = UpdateState()
+        state.set_outcome(CheckOutcome(None, ok=False, detail="Couldn't reach the update server."))
+        app.state.update_state = state
+        body = client.get("/api/update/status").json()
+        assert body["state"] == "unknown"
+        assert body["detail"] == "Couldn't reach the update server."
+
+
+class TestTheRestingStateOnASourceCheckout:
+    @pytest.fixture
+    def updates_supported(self):
+        return lambda: False
+
+    def test_it_says_so_instead_of_showing_nothing(self, client, fake_update_state):
+        fake_update_state.set(FakeUpdateInfo(version="2.0.0"))
+        body = client.get("/api/update/status").json()
+        assert body["state"] == "unavailable"
+        assert "source checkout" in body["detail"]
+
+    def test_rechecking_is_refused_with_the_same_explanation(self, client):
+        res = client.post("/api/update/check")
+        assert res.status_code == 409
+        assert "source checkout" in res.json()["detail"]
