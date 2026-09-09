@@ -7,7 +7,9 @@ called anywhere here).
 
 from __future__ import annotations
 
+import re
 import sys
+import tomllib
 import zipfile
 
 import build
@@ -20,8 +22,14 @@ def test_importing_build_does_not_import_pyinstaller():
 
 
 def test_read_project_version_reads_real_pyproject():
+    """Against the real pyproject, parsed a second way -- not a hardcoded
+    string. The literal that used to be here had to be edited by hand at
+    every release, which is a test that fails for being out of date rather
+    than for finding anything."""
+    expected = tomllib.loads(build.PYPROJECT_PATH.read_text(encoding="utf-8"))["project"]["version"]
     version = build.read_project_version(build.PYPROJECT_PATH)
-    assert version == "0.6.0"
+    assert version == expected
+    assert re.fullmatch(r"\d+\.\d+\.\d+", version), version
 
 
 def test_read_project_version_missing_key(tmp_path):

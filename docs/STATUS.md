@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2124 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2130 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -21,7 +21,22 @@ running it, not inferred.
 
 ## Where the project is
 
-**On master, not yet released: a wider animation vocabulary.**
+**v0.7.0 is published.** Sound effects locked to the caption word, a wider
+animation vocabulary, per-word animation, the Studio layout and behaviour
+fixes, and an updater that finally says where you stand.
+
+**The updater worked and looked broken.** "Check the upgrade feature, it
+doesn't work" -- driven end to end on the real frozen bundle, every step
+completed: check, consent, 662MB download, sha256 verify, extract, detached
+helper, robocopy /MIR, relaunch. What did not work was finding that out.
+Its whole surface was a banner that exists only while an update exists, so
+"you are on the newest version", "this copy cannot update itself" and "the
+check failed" all rendered as an empty page. There is now a line at the
+foot of the queue page that always says something, a "Check for updates"
+button, and -- the part that matters -- a failed check reports itself as
+unknown rather than being dressed up as "up to date".
+
+**In the animation vocabulary:**
 The v0.6 spec's held item 2, and the first half of item 3. Four new
 entrances and exits -- **zoom, blur, blink and bounce** -- on top of
 fade/rise/slide, and any single word can now carry its own animation and
