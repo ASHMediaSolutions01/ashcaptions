@@ -71,8 +71,12 @@
 
     // Draw the current moment again on a paused video. The track arrives
     // asynchronously (JASSUB fetches and parses it in its worker), so ask
-    // a few times over the next second rather than once, immediately.
-    const REDRAW_DELAYS_MS = [60, 200, 500, 900];
+    // a few times rather than once, immediately -- and keep asking for
+    // several seconds. A look that brings a font the worker has not
+    // loaded yet fetches that font first, and when the last redraw fired
+    // at 900ms the canvas was left showing the *previous* look until the
+    // next pick, which then showed this one: every look one behind.
+    const REDRAW_DELAYS_MS = [60, 200, 500, 900, 1500, 2500, 4000, 6000];
 
     function redrawWhilePaused() {
       for (const delay of REDRAW_DELAYS_MS) {

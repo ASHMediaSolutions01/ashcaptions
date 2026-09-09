@@ -401,3 +401,83 @@ def test_burn_only_job_renders_the_stored_caption_position(tmp_path: Path, store
     events = _ass_events(out)
     assert events and all("540,480" in line for line in events), events[:3]
     assert (out / "clip.captioned.mp4").is_file()
+
+
+# -- what the editor did to the record survives every render ------------------
+#
+# Found by driving the Studio, four days after v0.6 shipped: colour a word,
+# pick another look, and the colour is gone from the .ass while the Words
+# panel still shows the dot -- and every burn, from the Studio or the queue,
+# did the same. Only the edit path (a transcript PATCH) had ever been
+# followed through to the file; the restyle and burn paths built their own
+# cards and called write_ass without the record's meta.
+
+
+def _words_of_events(out: Path) -> list[str]:
+    r"""Each Dialogue event's text, lower-cased, with the override tags
+    stripped. The text is the tenth field: splitting on the *last* comma
+    cuts inside a ``\pos(x,y)`` tag."""
+    import re
+
+    return [re.sub(r"\{[^}]*\}", "", line.split(",", 9)[-1]).strip().lower() for line in _ass_events(out)]
+
+
+def _colour_and_split_the_record(out: Path) -> None:
+    """Word 1 goes red, word 3 starts a new line -- by hand, the way the
+    Studio's Words panel does it, then saved back beside the outputs."""
+    from ash_captions.app.transcript import load_transcript, save_transcript, set_style, split, transcript_path
+
+    record = load_transcript(transcript_path(out, "clip"))
+    record = set_style(record, 1, {"colour": "#FF0000"})
+    record = split(record, 3)
+    save_transcript(transcript_path(out, "clip"), record)
+
+
+def test_picking_a_look_keeps_the_words_own_colour_and_the_editors_line_break(tmp_path: Path, store: JobStore):
+    job, out = _done_job_with_transcript(tmp_path, store)
+    _colour_and_split_the_record(out)
+    adapter = QueueAdapter(store, out_dir=tmp_path / "out")
+    adapter._settings = _settings(tmp_path)
+
+    adapter.restyle(str(job.id), "COMIC")
+
+    ass = (out / "clip.ass").read_text(encoding="utf-8")
+    assert "Style: COMIC" in ass
+    assert "&H0000FF&" in ass, "the word's own red was dropped by the restyle"
+    assert any(text.startswith("how") for text in _words_of_events(out)), _words_of_events(out)
+    # The .srt follows the same cards, so it cannot disagree with the .ass.
+    srt = (out / "clip.srt").read_text(encoding="utf-8")
+    assert "\nhow" in srt or srt.startswith("how") or "\n\nhow" in srt, srt
+
+
+def test_a_burn_keeps_the_words_own_colour_and_the_editors_line_break(tmp_path: Path, store: JobStore):
+    """The burn re-renders the .ass from the saved record in the runner, not
+    the adapter -- so it has to carry the same meta, or the deliverable is
+    the one place the editor's work does not show."""
+    settings = _settings(tmp_path)
+    video = _video(tmp_path)
+    out = tmp_path / "out" / "clip"
+    first_job = _job(store, video, out)
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=CountingTranscriber())(first_job, _Reporter())
+    store.mark_done(first_job.id)
+    _colour_and_split_the_record(out)
+
+    burn_job = _job(store, video, out, burn=True, mode="burn_only")
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=CountingTranscriber())(burn_job, _Reporter())
+
+    ass = (out / "clip.ass").read_text(encoding="utf-8")
+    assert "&H0000FF&" in ass, "the word's own red was dropped on the way to the burn"
+    assert any(text.startswith("how") for text in _words_of_events(out)), _words_of_events(out)
+    assert (out / "clip.captioned.mp4").is_file()
+
+
+def test_a_fresh_transcription_renders_exactly_as_before(tmp_path: Path, store: JobStore):
+    """No saved record, no meta: the untouched path is provably the path
+    that existed before this fix."""
+    settings = _settings(tmp_path)
+    video = _video(tmp_path)
+    out = tmp_path / "out" / "clip"
+    build_run_job(settings, watch_dir=settings.in_dir, transcriber=CountingTranscriber())(_job(store, video, out), _Reporter())
+    ass = (out / "clip.ass").read_text(encoding="utf-8")
+    assert "&H0000FF&" not in ass
+    assert [w.split()[0] for w in _words_of_events(out)][:1] == ["hello"]

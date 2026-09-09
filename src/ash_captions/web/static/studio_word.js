@@ -295,6 +295,12 @@
         if (outcome.result && outcome.result.revision != null) state.revision = outcome.result.revision;
         if (live && assUrl) player.setTrack(assUrl());
         render();
+        // The Words panel holds its own copy of the revision. Left alone
+        // it kept the old one, and the editor's next fix or retime came
+        // back 409 "Somebody else changed this transcript" -- from their
+        // own colour change, in their own tab.
+        const words = window.AshStudioEdit;
+        if (words && typeof words.reload === "function") words.reload();
       } catch (err) {
         AshToast.show(err.message, { kind: "bad" });
       } finally {
@@ -406,6 +412,9 @@
     // event. Neither existing is fine: select() is the documented entry.
     const edit = window.AshStudioEdit;
     if (edit && Array.isArray(edit.onWordClicked)) edit.onWordClicked.push(select);
+    // And the other way round: a fix, retime, split or merge there moves
+    // the revision on, so this panel reloads or its next change is refused.
+    if (edit && typeof edit.subscribe === "function") edit.subscribe(() => load());
     document.addEventListener("ash-word-click", (e) => {
       if (e.detail && e.detail.index != null) select(Number(e.detail.index));
     });

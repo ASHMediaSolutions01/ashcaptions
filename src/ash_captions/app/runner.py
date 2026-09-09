@@ -53,10 +53,12 @@ from .runner_util import (  # noqa: F401 - re-exported for tests and callers
     _progress_budget,
     accepted_kwargs,
     atomic_write,
+    card_breaks,
     check_free_space,
     load_glossary_entries,
     load_glossary_entries_for,
     plan_sound_effects,
+    word_style_map,
 )
 
 log = logging.getLogger(__name__)
@@ -258,14 +260,21 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
 
             set_stage("write")
             report(budget["cards_and_write"][0])
+            # A reused record carries what the editor did to it -- their own
+            # line breaks and per-word colours and sizes. Both were dropped
+            # here, so every burn threw them away while the Studio kept
+            # showing them as applied. Fresh transcriptions have neither.
             cards = engine.build_cards(
                 words,
                 max_words=card_max_words,
                 min_words=card_min_words,
                 silence_gap=settings.silence_gap_seconds,
+                breaks=card_breaks(saved) if saved is not None else None,
             )
             atomic_write(lambda p: engine.write_srt(cards, p), output_dir / f"{stem}.srt")
             ass_optional = {"play_res": (info.width, info.height)} if info is not None else {}
+            if saved is not None and word_style_map(saved):
+                ass_optional["word_styles"] = word_style_map(saved)
             # The Studio's caption position (fractions of the frame, v0.5)
             # becomes the anchor in PlayRes pixels. Track A's only edit here.
             anchor = anchor_pixels(job.options.caption_position, ass_optional.get("play_res"))

@@ -236,12 +236,14 @@
     if (mine && mine.status === "done") {
       burnJobId = null;
       setBurnState("done");
+      setStatus("Ready", "ok"); // the pill said "Burn queued" until the next restyle, whatever the queue did
       AshToast.show(`${job.filename} is burned in ${mine.options.preset}.`, { kind: "ok", ms: 15000, actions: [{ label: "Open folder", onClick: revealFolder, keep: true }] });
       setTimeout(() => setBurnState("idle"), 4000);
       return;
     }
     if (mine && mine.status === "failed") {
       burnJobId = null;
+      setStatus("Ready", "ok");
       AshToast.show(`The burn failed: ${mine.error || "something went wrong"}`, { kind: "bad", ms: 0 });
     }
     if (els.burnBtn.textContent !== "✓ Burned") setBurnState("idle");

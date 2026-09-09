@@ -406,6 +406,19 @@
       root.hidden = false;
       player.onTime(sync);
       watchExistingTranslation();
+      // The Words panel rewrites the transcript in place; without this,
+      // a word fixed there stayed wrong here until the page was reloaded
+      // -- the two tabs showing two different transcripts of one video.
+      const edits = window.AshStudioEdit && window.AshStudioEdit.subscribe;
+      if (typeof edits === "function") {
+        edits(async () => {
+          try {
+            setTranscript(await fetchTranscript(), await fetchCues());
+          } catch (err) {
+            // keep what is showing; the next edit or reload will catch up
+          }
+        });
+      }
     })();
   }
 

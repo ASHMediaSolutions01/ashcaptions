@@ -5,7 +5,7 @@ running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2076 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2083 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -21,7 +21,37 @@ running it, not inferred.
 
 ## Where the project is
 
-**On master, not yet released: the Studio gets its picture back.**
+**On master, not yet released: what the Studio does when you use it.**
+Ghazi's verdict on the layout fix was "I didn't like a lot of things", so
+this pass drove every flow an editor runs -- play, pick a look, fix a word,
+style a word, retime, compare, filter, export, burn -- and measured each
+against the server instead of eyeballing a screenshot. Found and fixed:
+
+- **Every burn threw away the editor's per-word colours and sizes, and
+  their line breaks.** The runner rebuilt the cards and wrote the `.ass`
+  from the saved record without its meta, so the deliverable was the one
+  place the editor's work did not show, while the Words panel kept showing
+  the dots. v0.6 had followed an override through the edit path only.
+- **Picking a look did the same** (`QueueAdapter.restyle` rendered on its
+  own, without the meta), and left the `.srt` on the previous look's line
+  breaks. Every path that writes a job's outputs from its record now goes
+  through one function, `rewrite_outputs`.
+- **Colour a word, then drag its edge: 409 "Somebody else changed this
+  transcript."** The word toolbar and the Words panel each held their own
+  revision and never told the other. They do now, both ways.
+- **Fix a word on Words, open Check: the old word.** The check panel never
+  heard about edits. It subscribes now.
+- **Picking a look showed the previous one.** A look that brings a new font
+  makes the renderer fetch it first; the last paused-redraw fired at 900ms
+  and the canvas kept the old track until the next pick. It redraws for 6s.
+- The status pill said **"Burn queued"** until the next restyle, whatever
+  the queue did.
+
+Not reproduced after the fixes: a single 409 seen once during a burn with a
+word open. Not looked at: whether any of it is to Ghazi's taste -- that is
+his to say, and the reason this pass happened.
+
+**Before that: the Studio gets its picture back.**
 Reported from real use, not by a test: "the studio was too short with
 caption and correction I couldn't see", and "when clicking on the captions
 it takes them out of the screen". Both were one fault. The left column

@@ -488,3 +488,30 @@ class TestStageIsNotSqueezed:
     def test_the_popup_geometry_is_loaded_before_the_editor_that_uses_it(self, client, app):
         page = client.get("/studio/any-id").text
         assert page.index("/static/studio_edit_pop.js?v=") < page.index("/static/studio_edit.js?v=")
+
+
+class TestWhatAPickAndABurnLeaveOnScreen:
+    """Two things found by driving the Studio rather than testing it."""
+
+    def test_the_paused_redraw_outlasts_a_font_fetch(self):
+        """A look that brings a new font makes the worker fetch it before
+        the track renders. With the last redraw at 900ms the canvas kept
+        the previous look until the next pick: every look one behind."""
+        js = (STATIC_DIR / "studio_player.js").read_text(encoding="utf-8")
+        delays = js.split("REDRAW_DELAYS_MS = [")[1].split("]")[0]
+        assert max(int(d) for d in delays.split(",")) >= 4000, delays
+
+    def test_the_status_pill_clears_once_a_burn_has_finished(self):
+        """It said "Burn queued" until the next restyle, whatever the queue
+        did; the button beside it had already gone back to idle."""
+        js = (STATIC_DIR / "studio.js").read_text(encoding="utf-8")
+        refresh = js[js.index("async function refreshBurnState"):js.index("// ---- transcript strip")]
+        assert refresh.count('setStatus("Ready"') >= 2, "both the done and the failed branch must clear the pill"
+
+    def test_the_check_tab_follows_a_fix_made_on_the_words_tab(self):
+        """Fix "So" to "Zebra" on Words, open Check: it still said "So"
+        until the page was reloaded. One video, two transcripts."""
+        check = (STATIC_DIR / "studio_check.js").read_text(encoding="utf-8")
+        edit = (STATIC_DIR / "studio_edit.js").read_text(encoding="utf-8")
+        assert "AshStudioEdit.subscribe" in check
+        assert "onWordEdited.subscribe" in edit  # what it subscribes to still exists

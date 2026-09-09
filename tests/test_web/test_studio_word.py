@@ -221,3 +221,17 @@ class TestTheFilesAreWiredIn:
         )
         assert set(keys) <= {"colour", "scale", "bold", "italic", "x", "y"}
         assert "font" not in keys and "outline" not in keys
+
+
+def test_the_toolbar_and_the_words_panel_keep_each_other_current():
+    """Both PATCH the one transcript, each holding its own revision. Found
+    by driving the Studio: colour a word, then drag its edge, and the
+    retime came back 409 "Somebody else changed this transcript" -- the
+    somebody being the editor, a moment earlier, in the same tab."""
+    from ash_captions.web.app import STATIC_DIR
+
+    word = (STATIC_DIR / "studio_word.js").read_text(encoding="utf-8")
+    edit = (STATIC_DIR / "studio_edit.js").read_text(encoding="utf-8")
+    assert "words.reload()" in word and "window.AshStudioEdit" in word
+    assert "edit.subscribe(" in word
+    assert "reload: () =>" in edit and "onWordEdited.subscribe" in edit

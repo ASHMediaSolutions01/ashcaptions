@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
 
-from ash_captions import engine, styles
+from ash_captions import styles
 from ash_captions.config import Settings
 from ash_captions.pipeline.db import DuplicateJobError
 from ash_captions.pipeline.db import Job as PipelineJob
@@ -59,7 +59,7 @@ from .adapter_convert import (  # noqa: F401 - _to_web_job is imported from here
     _to_web_job,
     _to_web_options,
 )
-from .runner_util import atomic_write, client_for_watch_path
+from .runner_util import client_for_watch_path, rewrite_outputs
 from .transcript import TranscriptError, TranscriptRecord, load_transcript, transcript_path
 
 logger = logging.getLogger("ash_captions.app.adapter")
@@ -219,18 +219,19 @@ class QueueAdapter:
         style = styles.resolve_style(preset)
         options = job.options if position is KEEP_POSITION else _with_position(job.options, position)
         stem = Path(job.input_path).stem
-        max_words = style.layout.max_words
-        cards = engine.build_cards(
-            record.words,
-            max_words=max_words,
-            min_words=min(3, max_words),
+        # The one renderer for everything that writes a job's outputs from
+        # its record. This used to build its own cards and call write_ass
+        # directly, without the record's per-word styles or the editor's
+        # line breaks -- so picking a look silently threw away every word
+        # an editor had coloured, while the Words panel kept showing the
+        # dot. It also left the .srt on the previous look's line breaks.
+        rewrite_outputs(
+            record,
+            output_dir=Path(job.output_dir),
+            stem=stem,
+            preset=style.name,
+            position=options.caption_position,
             silence_gap=self._silence_gap_seconds(),
-        )
-        play_res = record.play_res or styles.DEFAULT_PLAY_RES
-        anchor = anchor_pixels(options.caption_position, play_res)
-        atomic_write(
-            lambda p: engine.write_ass(cards, p, style, play_res=play_res, anchor=anchor),
-            Path(job.output_dir) / f"{stem}.ass",
         )
         new_options = dataclasses.replace(options, preset=style.name)
         self._store.update_options(job.id, new_options)
