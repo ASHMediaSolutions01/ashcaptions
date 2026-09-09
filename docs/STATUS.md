@@ -1,11 +1,11 @@
 # ASH Captions — Status
 
-Last verified: **2026-09-05**. Everything under "verified" below was checked by
+Last verified: **2026-09-09**. Everything under "verified" below was checked by
 running it, not inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2083 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2124 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -21,7 +21,77 @@ running it, not inferred.
 
 ## Where the project is
 
-**On master, not yet released: what the Studio does when you use it.**
+**On master, not yet released: a wider animation vocabulary.**
+The v0.6 spec's held item 2, and the first half of item 3. Four new
+entrances and exits -- **zoom, blur, blink and bounce** -- on top of
+fade/rise/slide, and any single word can now carry its own animation and
+duration from the Studio's word toolbar.
+
+Nothing here rests on what libass documents. Each effect was burned onto
+black at 50fps with the bundled ffmpeg and measured frame by frame before
+a line of it reached `schema.py`, and two of those measurements changed
+the design:
+
+- **`\blur` is a complete no-op whenever the Style's Outline is non-zero.**
+  Not weakened -- byte-identical output, at outline 0.5 and at 6 alike.
+  Every legible caption look has an outline, so the obvious implementation
+  would have shipped a control that does nothing at all. Blur now drops the
+  border for the duration and restores it at the end. The first version
+  animated the border back *alongside* the blur, which measured as one
+  blurred frame and then a snap: the border reaches 1.2 within 40ms and
+  that is already enough to make the rest inert.
+- **An inline `\fscx` cancels a line-level one from that point in the text
+  onward.** With `entrance=zoom` under `active_word=pop`, the burn showed
+  word one scaling 40->100 while words two and three stood still -- the
+  pop's closing `\fscx100` overrode the entrance for everything after it.
+  On an event carrying a line-level zoom or bounce the active word now
+  emits colour only.
+
+Three defects found by driving the running app, none of which any test
+could see:
+
+- **The transcript API refused the new fields.** Its allowed-key list is
+  derived from the dataclass, so `animation` and `duration_ms` passed the
+  whitelist and were then rejected by a fall-through branch as out-of-range
+  *frame fractions*. The schema accepted them and the renderer honoured
+  them; only the step between the browser and the record refused them.
+- **The word toolbar never saw any override.** It read `word.style` off the
+  transcript response, and `TranscriptWord` has no `style` key -- the
+  override lives in `meta[i].style`. So: no override dot on any word,
+  "Reset all overrides" permanently disabled, and a styled word re-opened
+  showing the *look's* values, which the next change then wrote back as the
+  word's own. Bolding an amber word turned it white. Every flow passed
+  because the local commit sets the key by hand; only a reload shows it.
+- **The toolbar closed itself the moment you touched it.** `closePopup`
+  cleared it, and the pointerdown that dismisses the fix-this-word popup
+  fires for any click outside a word -- so the pointerdown reaching for a
+  toolbar control closed the toolbar the control was in. `render` also
+  called `closePopup` on every re-draw of the word list, and a re-draw
+  follows every commit. Bolding a word looked like it did nothing, and a
+  `<select>` could not be used at all: opening the list closed the list.
+
+Verified by running it: 4/4 effects animate on measured pixels; 10/10
+through the shipped renderer; 3/3 on a reel look (a per-word zoom on a
+2.2x slot ran 111px -> 277px, a blur softened over its full 300ms);
+5/5 through the real app including a burn that keeps the animation; 7/7
+in the Studio with a real mouse; 8/8 on the Styles page.
+
+The look-card drift test earned itself twice in one afternoon: it caught
+the JavaScript falling behind the moment the four effects landed, and then
+caught a regression where moving two tag builders into a new module
+silently changed `\move`'s coordinate formatting from `283.50` to `283.5`.
+Its effect list now reads the enum instead of a list typed by hand, so it
+cannot quietly stop covering what it is for.
+
+Left alone deliberately: `docs/EDITOR-GUIDE.md` and `/guide` still describe
+the v0.6 vocabulary. They are written and screenshotted per release, and
+v0.7 is not cut.
+
+`studio_word.js` and `studio_edit.js` are both at 499 lines, the ceiling
+the tests enforce. The next change to either should extract its pure
+helpers, the way `studio_edit_pop.js` was split out of `studio_edit.js`.
+
+**Before that: what the Studio does when you use it.**
 Ghazi's verdict on the layout fix was "I didn't like a lot of things", so
 this pass drove every flow an editor runs -- play, pick a look, fix a word,
 style a word, retime, compare, filter, export, burn -- and measured each

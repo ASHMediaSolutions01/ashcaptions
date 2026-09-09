@@ -61,7 +61,17 @@ class StyleValidationError(ValueError):
 # whole caption as one bar and marks the active word by colour: the
 # news lower-third / corner-tag look.
 ACTIVE_WORD_EFFECTS = frozenset({"none", "pop", "box", "scale_box", "card_box", "karaoke", "shake", "glow"})
-TRANSITION_EFFECTS = frozenset({"none", "fade", "rise", "slide"})
+# fade/rise/slide are \fad and \move; the four added in v0.7 are all \t
+# chains, measured frame by frame before they were offered here -- see
+# render_anim's module docstring for the numbers.
+TRANSITION_EFFECTS = frozenset(
+    {"none", "fade", "rise", "slide", "zoom", "blur", "blink", "bounce"}
+)
+# What one word can do on its own (v0.7, design item 3). Deliberately a
+# subset of the above: rise and slide are \move, which places a whole
+# line and cannot animate a single word's span, so offering them per-word
+# would be a control that silently moves the wrong thing.
+WORD_ANIMATIONS = frozenset({"none", "fade", "zoom", "blur", "blink", "bounce"})
 POSITIONS = frozenset({"bottom", "center", "top", "lower_third"})
 ALIGNS = frozenset({"left", "center", "right"})
 
@@ -415,6 +425,13 @@ class WordStyle:
     italic: bool | None = None
     x: float | None = None      # free placement only, fraction of the frame
     y: float | None = None
+    # v0.7: this word's own arrival, and how long it takes. ``animation``
+    # is one of WORD_ANIMATIONS and replaces the look's active-word motion
+    # for this word only -- two \fscx chains on one span do not compose,
+    # so it is a replacement rather than an addition, and the look's
+    # colour swap is kept either way.
+    animation: str | None = None
+    duration_ms: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict, *, path: str = "style") -> "WordStyle":
@@ -441,7 +458,26 @@ class WordStyle:
         y = data.get("y")
         if y is not None:
             y = float(_require_number(f"{path}.y", y, lo=_MIN_FRACTION, hi=_MAX_FRACTION))
-        return cls(colour=colour, scale=scale, bold=bold, italic=italic, x=x, y=y)
+        animation = data.get("animation")
+        if animation is not None:
+            animation = _require_choice(f"{path}.animation", animation, WORD_ANIMATIONS)
+        duration_ms = data.get("duration_ms")
+        if duration_ms is not None:
+            duration_ms = int(
+                _require_number(
+                    f"{path}.duration_ms", duration_ms, lo=_MIN_DURATION_MS, hi=_MAX_DURATION_MS
+                )
+            )
+        return cls(
+            colour=colour,
+            scale=scale,
+            bold=bold,
+            italic=italic,
+            x=x,
+            y=y,
+            animation=animation,
+            duration_ms=duration_ms,
+        )
 
     def to_dict(self) -> dict:
         """The JSON shape ``from_dict`` accepts, with unset fields left
@@ -454,7 +490,9 @@ class WordStyle:
         return all(getattr(self, name) is None for name in _WORD_STYLE_FIELDS)
 
 
-_WORD_STYLE_FIELDS = ("colour", "scale", "bold", "italic", "x", "y")
+_WORD_STYLE_FIELDS = (
+    "colour", "scale", "bold", "italic", "x", "y", "animation", "duration_ms",
+)
 
 
 # ---------------------------------------------------------------------------

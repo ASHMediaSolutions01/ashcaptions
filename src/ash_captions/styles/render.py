@@ -78,6 +78,12 @@ from .ass_format import (
     format_ass_time,
     safe_style_name,
 )
+from .render_anim import (
+    SCALE_EFFECTS,
+    tag_kind as _tag_kind,
+    transition_entrance_tag as _entrance_tag,
+    transition_exit_tag as _exit_tag,
+)
 from .render_free import free_events
 from .render_glow import HALO_LAYER, TEXT_LAYER, halo_line_text
 from .render_word import (
@@ -93,10 +99,6 @@ from .render_word import (
 from .schema import Style
 
 DEFAULT_PLAY_RES = (1080, 1920)  # vertical short-form default
-
-
-_RISE_OFFSET_PX = 46
-_SLIDE_OFFSET_PX = 160
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +237,21 @@ def _card_events(
     return _standard_events(card, style, base_name, width, height, anchor, word_styles)
 
 
+def _line_scaling(style: Style, *, is_first: bool, is_last: bool) -> bool:
+    """Does this event carry a line-level zoom or bounce?
+
+    If it does, nothing inside the line may write ``\\fscx``: an inline
+    scale applies from its point in the text onward and overrides the
+    entrance for every word after it. Measured with entrance=zoom under
+    active_word=pop -- word one animated, words two and three stood still.
+    """
+    entrance, exit_ = style.entrance, style.exit
+    return bool(
+        (is_first and entrance.effect in SCALE_EFFECTS and entrance.duration_ms > 0)
+        or (is_last and exit_.effect in SCALE_EFFECTS and exit_.duration_ms > 0)
+    )
+
+
 def _standard_events(
     card: Card,
     style: Style,
@@ -255,7 +272,10 @@ def _standard_events(
         if end <= start:
             end = start + 0.01
         event_ms = max(1, round((end - start) * 1000))
-        text = line_text(words, active_index=i, style=style, word_styles=word_styles)
+        text = line_text(
+            words, active_index=i, style=style, word_styles=word_styles, event_ms=event_ms,
+            line_scaling=_line_scaling(style, is_first=(i == 0), is_last=(i == count - 1)),
+        )
         leading = _leading_override(
             style, x, y, is_first=(i == 0), is_last=(i == count - 1), event_ms=event_ms, pinned=anchor is not None
         )
@@ -297,11 +317,15 @@ def _box_events(
         event_ms = max(1, round((end - start) * 1000))
         text = prepare_word_text(word.text, style)
         ws = word_style_for(word, word_styles)
-        scaled = style.active_word.effect == "scale_box"
+        # One word per event here, but the collision is the same one
+        # line_text faces: an inline \fscx overrides the entrance's own,
+        # and on this span the inline one is the later of the two.
+        scaling = _line_scaling(style, is_first=(i == 0), is_last=(i == count - 1))
+        scaled = style.active_word.effect == "scale_box" and not scaling
         # One word per event, so nothing after it needs restoring: only the
         # opening half of the word's own override is emitted.
         inline = (pop_scale_tags(style, event_ms, scale_pct(ws)) if scaled else "") + override_tags(
-            ws, include_scale=not scaled
+            ws, include_scale=not scaled and not scaling
         )[0]
         scale_tags = f"{{{inline}}}" if inline else ""
         leading = _leading_override(
@@ -374,7 +398,13 @@ def _leading_override(
     entrance_tag = _entrance_tag(style, x, y, event_ms) if is_first else ""
     exit_tag = _exit_tag(style, x, y, event_ms) if is_last else ""
 
-    if entrance_tag and exit_tag and _tag_kind(entrance_tag) == _tag_kind(exit_tag):
+    kinds_clash = (
+        entrance_tag
+        and exit_tag
+        and _tag_kind(entrance_tag) == _tag_kind(exit_tag)
+        and _tag_kind(entrance_tag) != "t"
+    )
+    if kinds_clash:
         # A single event carries both entrance and exit -- a one-word
         # card, or a karaoke card (one event per card, not per word). Two
         # \fad or two \move tags on the same line don't compose in
@@ -404,43 +434,6 @@ def _leading_override(
         # line don't compose in libass, so never emit both.
         tags.append(f"\\pos({_num(x)},{_num(y)})")
     return "".join(t for t in tags if t)
-
-
-def _tag_kind(tag: str) -> str:
-    return "fad" if tag.startswith("\\fad(") else "move"
-
-
-def _entrance_tag(style: Style, x: float, y: float, event_ms: int) -> str:
-    effect = style.entrance.effect
-    # The first per-word event of a card is often shorter than the
-    # entrance (a 120ms word under a 160ms rise): \fad/\move past the
-    # event's end are simply cut off, so the word never reaches full
-    # opacity or its resting position. Clamp, as _exit_tag does.
-    duration_ms = min(style.entrance.duration_ms, event_ms)
-    if effect == "fade" and duration_ms:
-        return f"\\fad({duration_ms},0)"
-    if effect in ("rise", "slide") and duration_ms:
-        dx, dy = (0, _RISE_OFFSET_PX) if effect == "rise" else (_SLIDE_OFFSET_PX, 0)
-        x1, y1 = x + dx, y + dy
-        return f"\\move({_num(x1)},{_num(y1)},{_num(x)},{_num(y)},0,{duration_ms})"
-    return ""
-
-
-def _exit_tag(style: Style, x: float, y: float, event_ms: int) -> str:
-    effect = style.exit.effect
-    duration_ms = min(style.exit.duration_ms, event_ms)
-    if effect == "fade" and duration_ms:
-        return f"\\fad(0,{duration_ms})"
-    if effect in ("rise", "slide") and duration_ms:
-        # \move's t1/t2 are relative to *this event's own* start, so the
-        # motion is pinned to the tail of the event regardless of how
-        # long the event runs -- see the module docstring on why exit only
-        # applies to a card's last Dialogue event.
-        dx, dy = (0, -_RISE_OFFSET_PX) if effect == "rise" else (-_SLIDE_OFFSET_PX, 0)
-        x2, y2 = x + dx, y + dy
-        t1 = max(0, event_ms - duration_ms)
-        return f"\\move({_num(x)},{_num(y)},{_num(x2)},{_num(y2)},{t1},{event_ms})"
-    return ""
 
 
 def _anchor_xy(style: Style, width: int, height: int, override: tuple[float, float] | None = None) -> tuple[float, float]:

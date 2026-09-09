@@ -5,6 +5,7 @@ is under test."""
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,38 @@ class TestWordStyle:
     def test_the_message_names_the_field(self):
         with pytest.raises(WordStyleError, match="style.scale"):
             parse_word_style({"scale": 9})
+
+    def test_a_per_word_animation_survives_the_boundary(self):
+        """v0.7 item 3, and the reason this test is here rather than only in
+        the schema's: the allowed-field list is derived from the dataclass,
+        so ``animation`` and ``duration_ms`` passed the whitelist and were
+        then rejected by the fall-through branch as out-of-range *frame
+        fractions*. The schema accepted them and the renderer honoured them;
+        the one step between the browser and the record refused them, and
+        no test on either side could see it.
+        """
+        assert parse_word_style({"animation": "bounce"}) == WordStyle(animation="bounce")
+        assert parse_word_style({"animation": "blur", "duration_ms": 260}) == WordStyle(
+            animation="blur", duration_ms=260
+        )
+        # every animation the Studio can offer must come through
+        for name in ("none", "fade", "zoom", "blur", "blink", "bounce"):
+            assert parse_word_style({"animation": name}).animation == name
+
+    @pytest.mark.parametrize(
+        ("bad", "field"),
+        [
+            ({"animation": "slide"}, "style.animation"),   # \\move: a whole line
+            ({"animation": "wobble"}, "style.animation"),
+            ({"animation": 3}, "style.animation"),
+            ({"duration_ms": -1}, "style.duration_ms"),
+            ({"duration_ms": 5000}, "style.duration_ms"),
+            ({"duration_ms": "fast"}, "style.duration_ms"),
+        ],
+    )
+    def test_a_bad_animation_is_refused_by_name(self, bad, field):
+        with pytest.raises(WordStyleError, match=re.escape(field)):
+            parse_word_style(bad)
 
 
 # --- set_text --------------------------------------------------------------

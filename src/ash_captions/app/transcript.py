@@ -54,8 +54,9 @@ try:  # tracks B and F put ``WordStyle`` in the renderer's own package, so
     # the renderer never imports from ``app``. Until that lands (or in a
     # tree without it) the identical class is defined here, and the moment
     # it does land both sides are the same class.
-    from ash_captions.styles.schema import WordStyle  # type: ignore[attr-defined]
+    from ash_captions.styles.schema import WORD_ANIMATIONS, WordStyle  # type: ignore[attr-defined]
 except (ImportError, AttributeError):  # pragma: no cover - exercised by whichever tree runs
+    WORD_ANIMATIONS = frozenset({"none", "fade", "zoom", "blur", "blink", "bounce"})
 
     @dataclass(frozen=True)
     class WordStyle:  # type: ignore[no-redef]
@@ -67,6 +68,8 @@ except (ImportError, AttributeError):  # pragma: no cover - exercised by whichev
         italic: bool | None = None
         x: float | None = None  # free placement only, fraction of the frame
         y: float | None = None
+        animation: str | None = None  # v0.7: this word's own arrival
+        duration_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +159,7 @@ def transcript_path(output_dir: Path, stem: str) -> Path:
 
 _HEX_COLOUR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _MIN_SCALE, _MAX_SCALE = 0.5, 3.0
+_MAX_DURATION_MS = 2000  # schema.py's _MAX_DURATION_MS
 
 
 class WordStyleError(ValueError):
@@ -177,8 +181,17 @@ def _number(name: str, value: Any, *, lo: float, hi: float) -> float:
 def parse_word_style(data: Any) -> WordStyle | None:
     """Turn the browser's style object into a ``WordStyle``, or ``None`` for
     "no override". Every key is optional; an unknown one, a colour that is
-    not ``#RRGGBB``, a scale outside 0.5-3.0 or a placement fraction outside
-    [0, 1] is a ``WordStyleError`` naming the field."""
+    not ``#RRGGBB``, a scale outside 0.5-3.0, a placement fraction outside
+    [0, 1], an animation the renderer cannot build or a duration outside
+    0-2000ms is a ``WordStyleError`` naming the field.
+
+    Each field is matched by name rather than falling through to a default,
+    because the default here is "a fraction of the frame": when v0.7 added
+    ``animation`` and ``duration_ms`` the whitelist (derived from the
+    dataclass) let them through and this loop then rejected them as
+    out-of-range coordinates. The schema accepted the field and the
+    renderer honoured it; only the boundary between the browser and the
+    record refused it, which no unit test on either side could see."""
     if data is None:
         return None
     if not isinstance(data, dict):
@@ -201,6 +214,15 @@ def parse_word_style(data: Any) -> WordStyle | None:
             if not isinstance(value, bool):
                 raise WordStyleError(f"style.{name}: {value!r} is not true/false")
             values[name] = value
+        elif name == "animation":
+            if value not in WORD_ANIMATIONS:
+                raise WordStyleError(
+                    f"style.animation: {value!r} is not one of "
+                    f"{', '.join(sorted(WORD_ANIMATIONS))}"
+                )
+            values[name] = value
+        elif name == "duration_ms":
+            values[name] = int(_number(name, value, lo=0, hi=_MAX_DURATION_MS))
         else:  # x, y -- fractions of the frame
             values[name] = _number(name, value, lo=0.0, hi=1.0)
     if not values:

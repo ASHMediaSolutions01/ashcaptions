@@ -32,7 +32,7 @@ import pytest
 
 from ash_captions.styles import ass_format, render
 from ash_captions.styles.render_word import active_word_tags
-from ash_captions.styles.schema import Style
+from ash_captions.styles.schema import TRANSITION_EFFECTS, Style
 
 DRIVER = Path(__file__).parent / "js" / "look_card_drift.js"
 
@@ -133,10 +133,16 @@ def test_style_names_are_sanitised_the_same_way():
 # render.py's motion tags
 # ---------------------------------------------------------------------------
 
+# Read from the enum, never a list typed here: v0.7 added four effects and
+# a hand-written list would have gone on passing while the look cards
+# previewed nothing at all for zoom, blur, blink and bounce. The guard has
+# to grow with the vocabulary by itself, or it is a guard that needs
+# remembering -- which is the thing it exists to replace.
+TRANSITIONS = sorted(TRANSITION_EFFECTS)
 MOTION_LOOKS = [
     look(entrance={"effect": e, "duration_ms": d}, exit={"effect": x, "duration_ms": d})
-    for e in ("none", "fade", "rise", "slide")
-    for x in ("none", "fade", "rise", "slide")
+    for e in TRANSITIONS
+    for x in TRANSITIONS
     for d in (0, 60, 120, 400)
 ]
 POINTS = [(540.0, 1800.0), (0.0, 0.0), (123.5, 47.25)]
@@ -204,8 +210,16 @@ def test_active_word_tags_agree_for_every_effect():
     for definition in looks:
         style = Style.from_dict(definition, check_font=False)
         active, text = definition["colors"]["active"], definition["colors"]["text"]
-        cases.append({"fn": "activeWordTags", "style": definition,
-                      "active_colour": active, "text_colour": text})
-        # The JS returns [on, off]; Python returns a tuple of the same two.
-        expected.append(list(active_word_tags(style, active, text)))
+        # Both sides of the v0.7 suppression: on an event carrying a
+        # line-level zoom or bounce the active word must emit colour only,
+        # or its \fscx100 close cancels the entrance for every word after
+        # it -- measured, and the reason `scaling` exists at all.
+        for scaling in (False, True):
+            cases.append({"fn": "activeWordTags", "style": definition,
+                          "active_colour": active, "text_colour": text,
+                          "scaling": scaling})
+            # The JS returns [on, off]; Python returns a tuple of the same two.
+            expected.append(list(
+                active_word_tags(style, active, text, line_scaling=scaling)
+            ))
     compare(cases, expected)

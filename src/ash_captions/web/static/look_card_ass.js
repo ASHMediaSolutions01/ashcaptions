@@ -166,6 +166,79 @@
     return [x, y];
   }
 
+  // --- the v0.7 vocabulary: the port of styles/render_anim.py ------------
+  // Every constant below is measured, not chosen; render_anim's docstring
+  // has the frame-by-frame numbers. The one that looks arbitrary is not:
+  // \blur is a COMPLETE no-op in libass whenever the Style's Outline is
+  // non-zero, so blur has to drop the border and animate it back.
+  const ZOOM_FROM_PCT = 40;
+  const BOUNCE_PEAK_PCT = 118;
+  const BOUNCE_OUT_ACCEL = 0.6;
+  const BOUNCE_BACK_ACCEL = 1.7;
+  const BLUR_RADIUS = 12;
+  const BLINK_PULSES = 2;
+  const BLINK_EDGE_MS = 10;
+  const SCALE_EFFECTS = ["zoom", "bounce"];
+
+  function blinkChain(startMs, durationMs) {
+    const steps = BLINK_PULSES * 2;
+    const span = Math.max(1, Math.floor(durationMs / steps));
+    const edge = Math.min(BLINK_EDGE_MS, Math.max(1, Math.floor(span / 3)));
+    let out = "";
+    for (let i = 0; i < steps; i += 1) {
+      const at = startMs + i * span;
+      out += `\\t(${at},${at + edge},\\alpha${i % 2 === 0 ? "&HFF&" : "&H00&"})`;
+    }
+    const end = startMs + durationMs;
+    return `${out}\\t(${end},${end + edge},\\alpha&H00&)`;
+  }
+
+  function animEntranceTag(effect, duration, outline) {
+    if (effect === "zoom") {
+      return `\\fscx${ZOOM_FROM_PCT}\\fscy${ZOOM_FROM_PCT}\\t(0,${duration},\\fscx100\\fscy100)`;
+    }
+    if (effect === "blur") {
+      // The border must stay at 0 for the whole ramp: any non-zero border
+      // makes the remaining blur inert, so animating it back alongside the
+      // blur rendered one blurred frame and then a snap. Measured.
+      return (
+        `\\bord0\\blur${BLUR_RADIUS}\\t(0,${duration},\\blur0)` +
+        `\\t(${duration},${duration + 1},\\bord${outline})`
+      );
+    }
+    if (effect === "blink") return blinkChain(0, duration);
+    if (effect === "bounce") {
+      const outMs = Math.max(1, roundHalfToEven(duration * 0.55));
+      return (
+        `\\fscx${ZOOM_FROM_PCT}\\fscy${ZOOM_FROM_PCT}` +
+        `\\t(0,${outMs},${BOUNCE_OUT_ACCEL},\\fscx${BOUNCE_PEAK_PCT}\\fscy${BOUNCE_PEAK_PCT})` +
+        `\\t(${outMs},${duration},${BOUNCE_BACK_ACCEL},\\fscx100\\fscy100)`
+      );
+    }
+    return "";
+  }
+
+  function animExitTag(effect, duration, eventMs, outline) {
+    if (duration <= 0 || eventMs <= 0) return "";
+    const d = Math.min(duration, eventMs);
+    const t1 = Math.max(0, eventMs - d);
+    if (effect === "zoom") {
+      return `\\t(${t1},${eventMs},\\fscx${ZOOM_FROM_PCT}\\fscy${ZOOM_FROM_PCT})`;
+    }
+    if (effect === "blur") {
+      return `\\t(${t1},${t1 + 1},\\bord0)\\t(${t1},${eventMs},\\blur${BLUR_RADIUS})`;
+    }
+    if (effect === "blink") return blinkChain(t1, d);
+    if (effect === "bounce") {
+      const mid = t1 + Math.max(1, roundHalfToEven(d * 0.4));
+      return (
+        `\\t(${t1},${mid},${BOUNCE_OUT_ACCEL},\\fscx${BOUNCE_PEAK_PCT}\\fscy${BOUNCE_PEAK_PCT})` +
+        `\\t(${mid},${eventMs},${BOUNCE_BACK_ACCEL},\\fscx${ZOOM_FROM_PCT}\\fscy${ZOOM_FROM_PCT})`
+      );
+    }
+    return "";
+  }
+
   function entranceTag(style, x, y, eventMs) {
     const effect = style.entrance.effect;
     const duration = Math.min(style.entrance.duration_ms, eventMs);
@@ -174,21 +247,37 @@
       const [dx, dy] = effect === "rise" ? [0, RISE_OFFSET_PX] : [SLIDE_OFFSET_PX, 0];
       return `\\move(${num(x + dx)},${num(y + dy)},${num(x)},${num(y)},0,${duration})`;
     }
-    return "";
+    if (duration <= 0) return "";
+    return animEntranceTag(effect, duration, outlineWidth(style));
   }
   function exitTag(style, x, y, eventMs) {
     const effect = style.exit.effect;
     const duration = Math.min(style.exit.duration_ms, eventMs);
     if (effect === "fade" && duration) return `\\fad(0,${duration})`;
-    if ((effect === "rise" || effect === "slide") && duration) {
+    if (effect !== "rise" && effect !== "slide") {
+      return animExitTag(effect, duration, eventMs, outlineWidth(style));
+    }
+    if (duration) {
       const [dx, dy] = effect === "rise" ? [0, -RISE_OFFSET_PX] : [-SLIDE_OFFSET_PX, 0];
       const t1 = Math.max(0, eventMs - duration);
       return `\\move(${num(x)},${num(y)},${num(x + dx)},${num(y + dy)},${t1},${eventMs})`;
     }
     return "";
   }
+  // Only \fad and \move clash when two land on one event; the v0.7 effects
+  // are \t chains over disjoint windows and compose, so they share one kind.
   function tagKind(tag) {
-    return tag.startsWith("\\fad(") ? "fad" : "move";
+    if (tag.startsWith("\\fad(")) return "fad";
+    return tag.startsWith("\\move(") ? "move" : "t";
+  }
+  // True when this event carries a line-level zoom or bounce, in which case
+  // nothing inside the line may write \fscx -- an inline scale overrides the
+  // entrance from that point in the text onward. See render.py's _line_scaling.
+  function lineScaling(style, isFirst, isLast) {
+    return Boolean(
+      (isFirst && SCALE_EFFECTS.includes(style.entrance.effect) && style.entrance.duration_ms > 0) ||
+        (isLast && SCALE_EFFECTS.includes(style.exit.effect) && style.exit.duration_ms > 0)
+    );
   }
 
   function leadingOverride(style, x, y, isFirst, isLast, eventMs) {
@@ -196,7 +285,7 @@
     if (style.letter_spacing) tags.push(`\\fsp${num(style.letter_spacing)}`);
     const eTag = isFirst ? entranceTag(style, x, y, eventMs) : "";
     const xTag = isLast ? exitTag(style, x, y, eventMs) : "";
-    if (eTag && xTag && tagKind(eTag) === tagKind(xTag)) {
+    if (eTag && xTag && tagKind(eTag) === tagKind(xTag) && tagKind(eTag) !== "t") {
       if (tagKind(eTag) === "fad") {
         let entranceMs = style.entrance.effect === "fade" ? Math.min(style.entrance.duration_ms, eventMs) : 0;
         let exitMs = style.exit.effect === "fade" ? Math.min(style.exit.duration_ms, eventMs) : 0;
@@ -225,8 +314,12 @@
     const d = Math.min(POP_HALF_MS, Math.max(1, Math.floor(eventMs / 2)));
     return `{\\t(0,${d},\\fscx${scale}\\fscy${scale})\\t(${d},${2 * d},\\fscx100\\fscy100)}`;
   }
-  function activeWordTags(style, activeColour, textColour) {
+  function activeWordTags(style, activeColour, textColour, scaling) {
     const effect = style.active_word.effect;
+    // Under a line-level zoom/bounce the entrance owns \fscx for this
+    // event: the pop's chain and its \fscx100 close would cancel it for
+    // every word after this one. Colour only.
+    if (scaling) return [`\\c${activeColour}`, `\\c${textColour}`];
     if (effect === "pop" || effect === "glow") {
       return [`\\c${activeColour}${scaleTransformTags(style.active_word.scale)}`, `\\c${textColour}\\fscx100\\fscy100`];
     }
@@ -249,14 +342,14 @@
       .map((w, i) => (i === activeIndex ? `{${openTags}}${w}{${closeTags}}` : `{\\alpha&HFF&}${w}`))
       .join(" ");
   }
-  function lineText(words, activeIndex, style) {
+  function lineText(words, activeIndex, style, scaling) {
     const textColour = assInlineColour(style.colors.text);
     const activeColour = assInlineColour(style.colors.active);
     return words
       .map((word, i) => {
         const text = prepareWordText(word, style);
         if (i === activeIndex) {
-          const [openTags, closeTags] = activeWordTags(style, activeColour, textColour);
+          const [openTags, closeTags] = activeWordTags(style, activeColour, textColour, scaling);
           return `{${openTags}}${text}{${closeTags}}`;
         }
         return `{\\c${textColour}}${text}`;
@@ -319,18 +412,19 @@
       const isLast = i === count - 1;
       const leading = leadingOverride(style, x, y, isFirst, isLast, eventMs);
       const prefix = leading ? `{${leading}}` : "";
+      const scaling = lineScaling(style, isFirst, isLast);
       if (boxed) {
         const text = prepareWordText(SAMPLE_WORDS[i], style);
-        const scaleTags = effect === "scale_box" ? popScaleTags(style, eventMs) : "";
+        const scaleTags = effect === "scale_box" && !scaling ? popScaleTags(style, eventMs) : "";
         lines.push(dialogueLine(start, end, styleName, `${prefix}${scaleTags}${text}`));
       } else if (glow) {
         const prepared = SAMPLE_WORDS.map((w) => prepareWordText(w, style));
         const halo = haloLineText(prepared, i, style);
-        const text = lineText(SAMPLE_WORDS, i, style);
+        const text = lineText(SAMPLE_WORDS, i, style, scaling);
         lines.push(dialogueLine(start, end, styleName, prefix + halo, 0));
         lines.push(dialogueLine(start, end, styleName, prefix + text, 1));
       } else {
-        const text = lineText(SAMPLE_WORDS, i, style);
+        const text = lineText(SAMPLE_WORDS, i, style, scaling);
         lines.push(dialogueLine(start, end, styleName, prefix + text));
       }
     }

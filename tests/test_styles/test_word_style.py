@@ -7,12 +7,20 @@ from __future__ import annotations
 
 import pytest
 
-from ash_captions.styles.schema import StyleValidationError, WordStyle
+from ash_captions.styles.schema import (
+    TRANSITION_EFFECTS,
+    WORD_ANIMATIONS,
+    StyleValidationError,
+    WordStyle,
+)
 
 
 def test_every_field_is_optional_and_defaults_to_none():
     ws = WordStyle()
-    assert (ws.colour, ws.scale, ws.bold, ws.italic, ws.x, ws.y) == (None,) * 6
+    assert (
+        ws.colour, ws.scale, ws.bold, ws.italic, ws.x, ws.y,
+        ws.animation, ws.duration_ms,
+    ) == (None,) * 8
     assert ws.is_empty()
     assert ws.to_dict() == {}
 
@@ -81,3 +89,40 @@ def test_the_path_in_the_error_can_name_where_the_override_came_from():
     with pytest.raises(StyleValidationError) as excinfo:
         WordStyle.from_dict({"scale": 9}, path="words[12].style")
     assert "words[12].style.scale" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# per-word animation (v0.7 design item 3)
+# ---------------------------------------------------------------------------
+
+
+def test_a_word_can_carry_its_own_animation_and_duration():
+    ws = WordStyle.from_dict({"animation": "bounce", "duration_ms": 240})
+    assert (ws.animation, ws.duration_ms) == ("bounce", 240)
+    assert ws.to_dict() == {"animation": "bounce", "duration_ms": 240}
+    assert not ws.is_empty()
+
+
+def test_the_offered_animations_are_the_ones_a_single_word_can_actually_do():
+    r"""rise and slide are ``\move``, which places a whole line: offering
+    them per word would be a control that silently moves something else."""
+    assert WORD_ANIMATIONS == {"none", "fade", "zoom", "blur", "blink", "bounce"}
+    assert WORD_ANIMATIONS < TRANSITION_EFFECTS
+    for name in sorted(WORD_ANIMATIONS):
+        assert WordStyle.from_dict({"animation": name}).animation == name
+
+
+@pytest.mark.parametrize(
+    ("data", "fragment"),
+    [
+        ({"animation": "slide"}, "style.animation"),
+        ({"animation": "rise"}, "style.animation"),
+        ({"animation": "wobble"}, "style.animation"),
+        ({"duration_ms": -1}, "style.duration_ms"),
+        ({"duration_ms": 2001}, "style.duration_ms"),
+    ],
+)
+def test_a_bad_animation_names_the_field_it_came_from(data, fragment):
+    with pytest.raises(StyleValidationError) as excinfo:
+        WordStyle.from_dict(data)
+    assert fragment in str(excinfo.value)

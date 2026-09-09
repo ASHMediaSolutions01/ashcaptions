@@ -218,3 +218,39 @@ class TestWhereThePopupGoes:
         style = json.loads(done.stdout)
         assert style["top"] == "386px"  # 320 + 6 + 60
         assert style["left"] == "705px"  # 700 + 5
+
+
+class TestTheStyleToolbarSurvivesTheFixPopup:
+    """Clicking a word opens two things at once: this panel's fix-this-word
+    popup, and track B's style toolbar. They then fought.
+
+    ``closePopup`` cleared the toolbar, and the document-level pointerdown
+    that dismisses the popup fires for *any* click outside a word -- so the
+    pointerdown that reached for a toolbar control closed the toolbar the
+    control was in. Worse, ``render`` called ``closePopup`` on every re-draw
+    of the word list, and a re-draw follows every commit, so styling a word
+    made its toolbar vanish. Bolding a word appeared to do nothing; a
+    ``<select>`` could not be used at all, because opening the list closed
+    the list.
+
+    Found by driving the page: the commit went through, but the toolbar was
+    gone before the next click landed, and the click hit the panel beneath.
+    Neither symptom is visible without a real pointer.
+    """
+
+    def test_a_redraw_of_the_word_list_never_clears_the_toolbar(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        # the re-draw path passes keepToolbar
+        assert "else closePopup(true);" in source
+
+    def test_a_pointerdown_on_the_toolbar_keeps_it(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        assert 'closest("#word-toolbar")' in source
+        assert "closePopup(Boolean(" in source
+
+    def test_only_a_real_dismissal_still_clears_it(self):
+        """Escape, the close button and a click on the page elsewhere must
+        still put both away -- the guard is about the toolbar, not about
+        never closing anything."""
+        source = SCRIPT.read_text(encoding="utf-8")
+        assert "if (!keepToolbar && window.AshStudioWord && AshStudioWord.clear) AshStudioWord.clear();" in source

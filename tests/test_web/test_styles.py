@@ -4,6 +4,8 @@ against fakes -- no ffmpeg, no whisper, no real `ash_captions.styles`
 rendering, no network (see fakes.py)."""
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from ash_captions.web.models import PreviewStatus
@@ -373,6 +375,21 @@ def test_editor_page_has_the_alignment_and_card_box_controls(client):
     for value in ("left", "center", "right"):
         assert f'["{value}", ' in js
     assert "draft.layout.align = value" in js
+
+
+def test_style_editor_offers_every_transition_the_renderer_can_build(client):
+    """The effect list on the Styles page is typed into JavaScript, so it
+    cannot be derived from the enum at runtime -- but it can be checked.
+    v0.7 added four; without this, an editor would simply never be offered
+    zoom, blur, blink or bounce and nobody would know they existed.
+    """
+    from ash_captions.styles.schema import TRANSITION_EFFECTS
+    from ash_captions.web.app import STATIC_DIR
+
+    js = (STATIC_DIR / "style_editor.js").read_text(encoding="utf-8")
+    offered = set(re.findall(r'\["([a-z_]+)", "[^"]+"\]', js))
+    missing = TRANSITION_EFFECTS - offered
+    assert not missing, f"the Styles page cannot reach: {sorted(missing)}"
 
 
 class TestSounds:

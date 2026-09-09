@@ -50,7 +50,12 @@
     ["shake", "Shake"], ["glow", "Glow"],
   ];
   // Entrance and exit share one set of values (schema.py's TRANSITION_EFFECTS).
-  const ENTRANCE_EFFECTS = [["none", "None"], ["fade", "Fade"], ["rise", "Rise"], ["slide", "Slide"]];
+  // The last four are v0.7; test_style_editor_offers_every_transition keeps
+  // this list and the enum from drifting apart.
+  const ENTRANCE_EFFECTS = [
+    ["none", "None"], ["fade", "Fade"], ["rise", "Rise"], ["slide", "Slide"],
+    ["zoom", "Zoom"], ["bounce", "Bounce"], ["blur", "Blur"], ["blink", "Blink"],
+  ];
   const EXIT_EFFECTS = ENTRANCE_EFFECTS;
   const MIN_DURATION_MS = 0;
   const MAX_DURATION_MS = 2000; // schema.py's _MAX_DURATION_MS

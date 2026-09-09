@@ -26,8 +26,14 @@
 
   const STYLE_PAGE = "/style-editor";
   const MIN_PERCENT = 50; // WordStyle.scale is bounded 0.5-3.0 in styles/schema.py
+  // schema.py's WORD_ANIMATIONS. No rise/slide: those place a whole line.
+  const ANIMATIONS = [["none", "Follow the look"], ["fade", "Fade in"],
+    ["zoom", "Zoom in"], ["bounce", "Bounce in"], ["blur", "Blur in"],
+    ["blink", "Blink"]];
   const MAX_PERCENT = 300;
   const LOOK_FALLBACK = { colors: {}, size: 72 };
+  // WordStyle's fields: any one set means the word carries an override.
+  const OVERRIDE_KEYS = ["colour", "scale", "bold", "italic", "x", "y", "animation", "duration_ms"];
 
   // ---- pure helpers (no DOM, no network) ----
 
@@ -50,7 +56,7 @@
   // regular (see styles/ass_format.py).
   function lookBaseline(look) {
     const colors = (look && look.colors) || {};
-    return { colour: opaqueHex(colors.text, "#FFFFFF"), percent: 100, bold: false, italic: false };
+    return { colour: opaqueHex(colors.text, "#FFFFFF"), percent: 100, bold: false, italic: false, animation: "none" };
   }
 
   // What this word renders as today: the look, with the word's own override
@@ -63,13 +69,26 @@
       percent: own.scale == null ? base.percent : clampPercent(own.scale * 100),
       bold: own.bold == null ? base.bold : !!own.bold,
       italic: own.italic == null ? base.italic : !!own.italic,
+      animation: own.animation == null ? base.animation : own.animation,
     };
+  }
+
+  // The transcript answers {words, meta}; TranscriptWord has no `style` key,
+  // so reading word.style straight off it found nothing, ever -- see
+  // test_studio_word.py for what that cost. Joined in one place only.
+  function mergeMeta(words, meta) {
+    const list = words || [];
+    if (!meta) return list;
+    return list.map((word, i) => {
+      const style = meta[i] && meta[i].style;
+      return style ? Object.assign({}, word, { style: style }) : word;
+    });
   }
 
   function hasOverride(word) {
     const own = word && word.style;
     if (!own) return false;
-    return ["colour", "scale", "bold", "italic", "x", "y"].some((k) => own[k] != null);
+    return OVERRIDE_KEYS.some((k) => own[k] != null);
   }
 
   // Only what differs from the look is sent: a word that was merely bolded
@@ -83,11 +102,14 @@
     if (percent !== base.percent) style.scale = Math.round(percent) / 100;
     if (!!chosen.bold !== base.bold) style.bold = !!chosen.bold;
     if (!!chosen.italic !== base.italic) style.italic = !!chosen.italic;
+    if (chosen.animation && chosen.animation !== base.animation) style.animation = chosen.animation;
     // Free placement is track F's; this toolbar never sets it, but it must
     // not drop it either when it rewrites a word that already has one.
     const previous = (keep && keep.style) || {};
     if (previous.x != null) style.x = previous.x;
     if (previous.y != null) style.y = previous.y;
+    // No duration control yet: the renderer's default stands unless kept.
+    if (previous.duration_ms != null && style.animation) style.duration_ms = previous.duration_ms;
     return Object.keys(style).length ? style : null;
   }
 
@@ -196,15 +218,22 @@
     size.step = "5";
     sizeLabel.append(document.createTextNode("Size "), size, document.createTextNode(" %"));
 
+    const animLabel = document.createElement("label");
+    animLabel.className = "word-field";
+    const animation = document.createElement("select");
+    animation.id = "word-animation";
+    for (const [v, label] of ANIMATIONS) animation.append(new Option(label, v));
+    animLabel.append(document.createTextNode("Animation "), animation);
+
     const bold = button("B", "Bold this word", "word-toggle word-bold");
     const italic = button("I", "Italic this word", "word-toggle word-italic");
     const resetWord = button("Reset word", "Put this word back to the look", "btn small");
     const resetAll = button("Reset all overrides on this job", "Put every word back to the look", "btn small");
     const close = button("Close", "Close the toolbar (Escape)", "btn small word-close");
 
-    controls.append(which, colourLabel, sizeLabel, bold, italic, resetWord, resetAll, close);
+    controls.append(which, colourLabel, sizeLabel, animLabel, bold, italic, resetWord, resetAll, close);
     root.append(scope, controls);
-    return { colour, size, bold, italic, resetWord, resetAll, close, which };
+    return { colour, size, animation, bold, italic, resetWord, resetAll, close, which };
   }
 
   // The transcript's word elements, in transcript order. Track A's panel
@@ -246,6 +275,7 @@
       const shown = effectiveStyle(word, look());
       els.colour.value = shown.colour;
       els.size.value = String(shown.percent);
+      els.animation.value = shown.animation;
       els.bold.setAttribute("aria-pressed", String(shown.bold));
       els.italic.setAttribute("aria-pressed", String(shown.italic));
       els.bold.classList.toggle("on", shown.bold);
@@ -275,6 +305,7 @@
         percent: els.size.value,
         bold: els.bold.getAttribute("aria-pressed") === "true",
         italic: els.italic.getAttribute("aria-pressed") === "true",
+        animation: els.animation.value,
       };
     }
 
@@ -347,7 +378,7 @@
         const res = await request(`/api/jobs/${encodeURIComponent(jobId)}/transcript`);
         if (!res.ok) return;
         const transcript = await res.json();
-        state.words = transcript.words || [];
+        state.words = mergeMeta(transcript.words, transcript.meta);
         state.revision = transcript.revision || 0;
       } catch (err) {
         state.words = [];
@@ -370,6 +401,7 @@
 
     els.colour.addEventListener("change", changed);
     els.size.addEventListener("change", changed);
+    els.animation.addEventListener("change", changed);
     els.bold.addEventListener("click", () => toggle(els.bold));
     els.italic.addEventListener("click", () => toggle(els.italic));
     els.resetWord.addEventListener("click", () => commit([{ op: "set_style", index: state.index, style: null }]));
@@ -430,6 +462,7 @@
   const exported = {
     MIN_PERCENT, MAX_PERCENT,
     opaqueHex, clampPercent, lookBaseline, effectiveStyle, hasOverride, diffStyle,
+    mergeMeta,
     patchBody, resetAllOps, wordIndexAt, sendOps, saveStyle, mount,
     select: (index) => (panel ? panel.select(index) : undefined),
     clear: () => (panel ? panel.clear() : undefined),

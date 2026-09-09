@@ -7,6 +7,8 @@ editor picks a colour, the Studio shows it, and the reel look ignores it.
 """
 from __future__ import annotations
 
+import re
+
 from ash_captions.engine.rules import Card
 from ash_captions.engine.transcribe import Word
 from ash_captions.styles.render import render_ass
@@ -145,3 +147,47 @@ def test_the_biggest_treatment_still_goes_to_the_word_that_earns_it():
     a digit, so it takes the 2.2x slot wherever that slot happens to sit."""
     assert "\\fscy220" in event_for("2nd")
     assert "\\fscy220" not in event_for("the")
+
+
+# ---------------------------------------------------------------------------
+# per-word animation (v0.7 design item 3)
+# ---------------------------------------------------------------------------
+
+
+def test_a_word_animation_replaces_the_slots_own_entrance():
+    r"""The same silence, and the same shape, as the colour case above: the
+    toolbar offers an animation, the Studio shows it, and a reel look would
+    quietly ignore it. A slot's entrance and a word's animation both drive
+    ``\fscx``, so the word's own replaces the slot's outright rather than
+    the two fighting over one span.
+    """
+    plain = free_events_for()
+    styled = free_events_for(
+        word_styles={SECOND: WordStyle(animation="zoom", duration_ms=200)}
+    )
+    assert plain[1] != styled[1]
+    # this slot is scale 2.20, so the zoom has to land on 220% -- the word's
+    # own size -- and start at 40% of it, not at 40% of the frame's 100%
+    assert "\\t(0,200,\\fscx220\\fscy220)" in styled[1]
+    assert "\\fscx88\\fscy88" in styled[1]
+    # the words that were not named keep the entrance they always had
+    assert styled[0] == plain[0]
+    assert styled[2] == plain[2]
+
+
+def test_a_blurred_word_in_a_reel_look_restores_the_slots_own_border():
+    r"""``\blur`` is inert unless ``\bord0`` is in the same block, and the
+    border that comes back has to be the slot's -- a 0.55x word wears a
+    lighter outline than a 2.2x one."""
+    styled = free_events_for(word_styles={SECOND: WordStyle(animation="blur")})[1]
+    assert "\\bord0" in styled, "without it libass renders no blur at all"
+    slot_border = re.search(r"\\bord(\d+)\\c", styled)
+    assert slot_border, styled
+    # restored at the end of the ramp, not alongside it: a border above
+    # zero at any point makes the remaining blur inert
+    assert f"\\bord{slot_border.group(1)})" in styled
+
+
+def test_a_reel_word_with_no_animation_is_unchanged():
+    assert free_events_for(word_styles={SECOND: WordStyle(animation="none")}) == free_events_for()
+

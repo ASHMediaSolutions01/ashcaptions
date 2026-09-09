@@ -59,18 +59,77 @@ class TestTheDiff:
     def test_the_look_alone_is_white_full_size_regular(self):
         assert run_js(f"w.lookBaseline({json.dumps(LOOK)})") == {
             "colour": "#FFFFFF", "percent": 100, "bold": False, "italic": False,
+            # v0.7: "follow the look", which is what every word did before
+            # a per-word animation was something a word could carry.
+            "animation": "none",
         }
 
     def test_a_word_with_no_override_shows_the_look_s_own_values(self):
         # The toolbar is a diff, not a blank form.
         assert run_js(f"w.effectiveStyle({json.dumps(PLAIN)}, {json.dumps(LOOK)})") == {
             "colour": "#FFFFFF", "percent": 100, "bold": False, "italic": False,
+            "animation": "none",
         }
 
     def test_a_word_with_an_override_shows_it_laid_over_the_look(self):
         assert run_js(f"w.effectiveStyle({json.dumps(STYLED)}, {json.dumps(LOOK)})") == {
             "colour": "#FFD166", "percent": 125, "bold": False, "italic": False,
+            "animation": "none",
         }
+
+    def test_a_word_can_carry_its_own_animation(self):
+        word = {"w": "boom", "style": {"animation": "bounce"}}
+        shown = run_js(f"w.effectiveStyle({json.dumps(word)}, {json.dumps(LOOK)})")
+        assert shown["animation"] == "bounce"
+        assert run_js(f"w.hasOverride({json.dumps(word)})") is True
+        # and only the animation is sent -- the word still follows the
+        # look's colour, size, weight and slant
+        chosen = {"colour": "#FFFFFF", "percent": 100, "bold": False,
+                  "italic": False, "animation": "bounce"}
+        sent = run_js(f"w.diffStyle({json.dumps(chosen)}, {json.dumps(LOOK)}, null)")
+        assert sent == {"animation": "bounce"}
+
+    def test_choosing_follow_the_look_clears_the_animation(self):
+        chosen = {"colour": "#FFFFFF", "percent": 100, "bold": False,
+                  "italic": False, "animation": "none"}
+        assert run_js(f"w.diffStyle({json.dumps(chosen)}, {json.dumps(LOOK)}, null)") is None
+
+    def test_the_toolbar_reads_the_override_out_of_meta_not_off_the_word(self):
+        """GET /api/jobs/{id}/transcript answers {words, meta}, and
+        ``TranscriptWord`` has no ``style`` key at all -- the override lives
+        in ``meta[i].style``. The toolbar was reading ``word.style`` straight
+        off the response, which was never there, so on any page load: no
+        override dot on any word, "Reset all overrides" permanently
+        disabled, and a styled word re-opened showing the LOOK's values --
+        which the next change then sent back as the word's own, throwing the
+        original away. Bolding an amber word turned it white.
+
+        It passed every flow because ``applyOps`` writes the key locally, so
+        styling a word and checking it in the same page load works. Only a
+        reload shows it, which is what driving the real app found.
+        """
+        words = [{"w": "a", "s": 0.0, "e": 0.2}, {"w": "b", "s": 0.2, "e": 0.4}]
+        meta = [
+            {"edited": False, "style": None},
+            {"edited": True, "style": {"colour": "#FFD166", "scale": 1.5}},
+        ]
+        merged = run_js(f"w.mergeMeta({json.dumps(words)}, {json.dumps(meta)})")
+        assert merged[1]["style"] == {"colour": "#FFD166", "scale": 1.5}
+        assert "style" not in merged[0]
+        # the word's own text and timings survive the join untouched
+        assert merged[1]["w"] == "b" and merged[1]["s"] == 0.2
+        # ...and the things that were broken now work off the joined list
+        assert run_js(f"w.mergeMeta({json.dumps(words)}, {json.dumps(meta)}).map(w.hasOverride)") == [
+            False, True,
+        ]
+        assert run_js(
+            f"w.resetAllOps(w.mergeMeta({json.dumps(words)}, {json.dumps(meta)})).length"
+        ) == 1
+
+    def test_a_transcript_with_no_meta_is_left_exactly_as_it_came(self):
+        words = [{"w": "a", "s": 0.0, "e": 0.2}]
+        assert run_js(f"w.mergeMeta({json.dumps(words)}, null)") == words
+        assert run_js("w.mergeMeta(null, null)") == []
 
     def test_the_dot_follows_any_set_field(self):
         assert run_js(f"[{json.dumps(PLAIN)}, {json.dumps(STYLED)}].map(w.hasOverride)") == [False, True]

@@ -37,7 +37,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .ass_format import ass_inline_colour
+from .ass_format import ass_inline_colour, outline_width
+from .render_anim import SCALE_EFFECTS, word_animation_tags
 from .schema import Style, WordStyle
 
 # The mapping ``render_ass`` takes: a word's (start, end) -> its override.
@@ -48,6 +49,11 @@ WordStyles = Mapping[tuple[float, float], WordStyle]
 # Half the pop "bounce": scale up over the first POP_HALF_MS, back over the
 # next. Also re-exported from render_glow, where the halo has always named it.
 POP_HALF_MS = 90
+
+# How long a per-word animation runs when the word does not say. The pop's
+# own full length, so a word given its own animation keeps the tempo of
+# the look it sits in rather than introducing a second one.
+WORD_ANIM_DEFAULT_MS = POP_HALF_MS * 2
 
 # Fullwidth lookalikes: visually close to the ASCII originals, structurally
 # inert to the ASS/libass tag parser.
@@ -177,7 +183,15 @@ def prepare_word_text(text: str, style: Style) -> str:
     return escape_ass_text(text)
 
 
-def line_text(words: tuple, *, active_index: int, style: Style, word_styles: WordStyles | None = None) -> str:
+def line_text(
+    words: tuple,
+    *,
+    active_index: int,
+    style: Style,
+    word_styles: WordStyles | None = None,
+    event_ms: int = 0,
+    line_scaling: bool = False,
+) -> str:
     """Full sentence, active word wrapped with colour + its effect tags.
 
     Each word already has its own ``{...}`` block, which is the seam the
@@ -193,9 +207,14 @@ def line_text(words: tuple, *, active_index: int, style: Style, word_styles: Wor
         word_text = prepare_word_text(word.text, style)
         ws = word_style_for(word, word_styles)
         if i == active_index:
-            open_tags, close_tags = active_word_tags(style, active_colour, text_colour, ws)
+            open_tags, close_tags = active_word_tags(
+                style, active_colour, text_colour, ws,
+                event_ms=event_ms, line_scaling=line_scaling,
+            )
         else:
-            extra_open, extra_close = override_tags(ws, restore_colour=text_colour)
+            extra_open, extra_close = override_tags(
+                ws, restore_colour=text_colour, include_scale=not line_scaling
+            )
             open_tags = f"\\c{text_colour}{extra_open}"
             close_tags = extra_close
         parts.append(f"{{{open_tags}}}{word_text}" + (f"{{{close_tags}}}" if close_tags else ""))
@@ -215,10 +234,58 @@ def _join_words(parts: list[str]) -> list[str]:
 
 
 def active_word_tags(
-    style: Style, active_colour: str, text_colour: str, ws: "WordStyle | None" = None
+    style: Style,
+    active_colour: str,
+    text_colour: str,
+    ws: "WordStyle | None" = None,
+    *,
+    event_ms: int = 0,
+    line_scaling: bool = False,
 ) -> tuple[str, str]:
+    """The active word's own tags.
+
+    ``line_scaling`` says this event already carries a line-level zoom or
+    bounce (v0.7). That matters because every ``\\fscx`` written inside the
+    line -- the pop's chain, its ``\\fscx100`` close, even a word's own
+    static size -- overrides the line-level animation from that point in
+    the text onward, so the first word would arrive animated and every
+    word after it would snap to full size. Measured: with entrance=zoom
+    and active_word=pop, word one scaled 40->100 while words two and three
+    never moved. Under ``line_scaling`` the scale is left entirely to the
+    entrance and only colour, weight and slant are emitted here.
+    """
     effect = style.active_word.effect
     base_pct = scale_pct(ws)
+    # v0.7 item 3: a word carrying its own animation runs that instead of
+    # the look's motion. It is a replacement, not an addition, because
+    # zoom and bounce animate the same \fscx/\fscy the pop does and two
+    # chains on one span do not compose -- the second silently wins. The
+    # look's colour swap is kept either way, so the word still reads as
+    # the active one.
+    if (
+        ws is not None
+        and ws.animation not in (None, "none")
+        and not (line_scaling and ws.animation in SCALE_EFFECTS)
+    ):
+        duration_ms = ws.duration_ms if ws.duration_ms is not None else WORD_ANIM_DEFAULT_MS
+        if event_ms > 0:
+            duration_ms = min(duration_ms, event_ms)
+        anim_open, anim_close = word_animation_tags(
+            ws.animation, duration_ms, event_ms,
+            base_pct=base_pct, outline=outline_width(style),
+        )
+        if anim_open:
+            # The animation already carries the word's own size, so the
+            # override must not emit a second static \fscx after it.
+            extra_open, extra_close = override_tags(ws, include_scale=False)
+            return (
+                f"\\c{active_colour}{anim_open}{extra_open}",
+                f"\\c{text_colour}{anim_close}{extra_close}",
+            )
+    if line_scaling:
+        # The entrance owns \fscx for this event; see the docstring.
+        extra_open, extra_close = override_tags(ws, include_scale=False)
+        return f"\\c{active_colour}{extra_open}", f"\\c{text_colour}{extra_close}"
     # A word given its own size should pop *from* that size, not have the
     # pop replaced, and libass cannot compose a static \fscx with a \t
     # chain already emitted -- so the size is folded into the chain and

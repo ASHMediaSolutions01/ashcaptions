@@ -36,7 +36,7 @@ process.stdin.on("end", () => {
       case "leadingOverride":
         return ass.leadingOverride(c.style, c.x, c.y, c.is_first, c.is_last, c.event_ms);
       case "activeWordTags":
-        return ass.activeWordTags(c.style, c.active_colour, c.text_colour);
+        return ass.activeWordTags(c.style, c.active_colour, c.text_colour, c.scaling);
       default:
         throw new Error(`unknown function ${c.fn}`);
     }

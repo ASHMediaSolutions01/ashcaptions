@@ -42,7 +42,8 @@ from typing import Protocol
 from ..engine.rules import Card
 from ..engine.transcribe import Word
 from .ass_format import ass_inline_colour, outline_width
-from .render_word import prepare_word_text
+from .render_anim import entrance_tag as anim_entrance_tag
+from .render_word import WORD_ANIM_DEFAULT_MS, prepare_word_text
 from .schema import Slot, Style
 
 # Entrance geometry, from the reference frames (see the module docstring).
@@ -305,9 +306,22 @@ def _word_tags(
     # guess the layout made from the word's length and its role.
     scale = max(1, round(slot.scale * _override_scale(override) * size_factor * 100))
     enter_ms = min(_ENTRANCE_MS.get(slot.entrance, 0), event_ms)
+    # v0.7 item 3. A word given its own animation runs that instead of the
+    # slot's entrance -- the same rule line mode follows, and for the same
+    # reason: two scale chains on one span do not compose. Without this the
+    # toolbar's animation control would do nothing whatsoever on a reel
+    # look, which is the newest and most-used family in the library.
+    animation = _attr(override, "animation")
+    own_anim = animation not in (None, "none")
+    anim_ms = 0
+    if own_anim:
+        anim_ms = _attr(override, "duration_ms") or WORD_ANIM_DEFAULT_MS
+        if event_ms > 0:
+            anim_ms = min(anim_ms, event_ms)
+        enter_ms = 0
     tags = ["\\an5"]  # \pos is the word's centre, whatever the look's align is
 
-    if slot.entrance == "fade_settle" and enter_ms:
+    if slot.entrance == "fade_settle" and enter_ms and not own_anim:
         # \move places the word as well as animating it; \pos alongside
         # it would silently win in libass, so it is never emitted here.
         tags.append(f"\\move({num(x)},{num(y - SETTLE_DROP_PX)},{num(x)},{num(y)},0,{enter_ms})")
@@ -330,9 +344,23 @@ def _word_tags(
         tags.append(f"\\fsp{num(style.letter_spacing)}")
     colour = _attr(override, "colour") or getattr(style.colors, slot.role)
     tags.append(f"\\c{ass_inline_colour(colour)}")
-    tags.extend(_scale_tags(slot.entrance, scale, enter_ms))
+    if own_anim:
+        # The outline passed here is the slot's, not the look's: a small
+        # word wears a lighter border, and a blur has to restore the one
+        # it removed rather than some other look's.
+        own = anim_entrance_tag(
+            animation, anim_ms, base_pct=scale, outline=_border(style, slot, size_factor)
+        )
+        # "fade" has no line-level form here (\fad is the card's own), so
+        # it falls through to the fade tag below with the word at rest.
+        tags.append(own or f"\\fscx{scale}\\fscy{scale}")
+    else:
+        tags.extend(_scale_tags(slot.entrance, scale, enter_ms))
 
-    fade = _fade_tag(enter_ms if slot.entrance != "none" else 0, exit_ms, event_ms)
+    fade_in_ms = anim_ms if (own_anim and animation == "fade") else (
+        enter_ms if slot.entrance != "none" else 0
+    )
+    fade = _fade_tag(fade_in_ms, exit_ms, event_ms)
     if fade:
         tags.append(fade)
     return "".join(tags)

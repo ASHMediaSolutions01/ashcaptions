@@ -276,7 +276,7 @@
       }
       section.hidden = state.words.length === 0;
       if (state.selected >= 0 && state.spans[state.selected]) placePopup(state.selected);
-      else closePopup();
+      else closePopup(true); // a re-draw dismisses nothing: keep the toolbar
     }
 
     // ---- the popup ----
@@ -311,11 +311,11 @@
       if (settle) requestAnimationFrame(() => { if (state.selected === index) placePopup(index); });
     }
 
-    function closePopup() {
+    function closePopup(keepToolbar) {
       pop.hidden = true;
       state.selected = -1;
       clearOpen();
-      if (window.AshStudioWord && typeof AshStudioWord.clear === "function") AshStudioWord.clear();
+      if (!keepToolbar && window.AshStudioWord && AshStudioWord.clear) AshStudioWord.clear();
     }
     function clearOpen() { for (const s of state.spans) if (s) s.classList.remove("is-open"); }
 
@@ -453,7 +453,7 @@
     });
     document.addEventListener("pointerdown", (e) => {
       if (pop.hidden || pop.contains(e.target) || (e.target.closest && e.target.closest(".tw"))) return;
-      closePopup();
+      closePopup(Boolean(e.target.closest && e.target.closest("#word-toolbar"))); // keep the toolbar
     });
     if (window.AshEditPopup) {
       AshEditPopup.follow(pop, () => (state.selected >= 0 ? state.spans[state.selected] : null),
