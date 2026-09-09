@@ -1,26 +1,23 @@
-/* Style one word (v0.6 design, section 2): click a word and give it its own
-   colour, size, weight or slant without leaving the Studio and without
-   changing the look.
+/* Style one word (v0.6 design §2; its own animation is v0.7): click a word
+   and give it a colour, size, weight, slant or arrival of its own, without
+   leaving the Studio and without changing the look.
 
    Every control is pre-filled with what the look already gives that word, so
-   the toolbar reads as a diff rather than a blank form, and only the
-   properties that actually differ are sent -- bold a word and its colour
-   still follows the look. Above the controls one line names the blast
-   radius, because the scope of an edit should be visible at the moment of
-   editing rather than be a setting on another page.
+   the toolbar reads as a diff rather than a blank form, and only what
+   actually differs is sent -- bold a word and its colour still follows the
+   look. One line above the controls names the blast radius, because the
+   scope of an edit should be visible while editing rather than be a setting
+   on another page.
 
    Deliberately not here: font family and outline. Those stay properties of
-   the look; the combinatorial surface is where per-word styling turns into a
-   mess.
+   the look -- the combinatorial surface is where this turns into a mess.
 
-   Persisting rides track A's PATCH /api/jobs/{id}/transcript as a
-   `set_style` op -- one endpoint owns the transcript and one revision
-   counter guards it. This file adds no route.
+   Persisting rides PATCH /api/jobs/{id}/transcript as a `set_style` op --
+   one endpoint owns the transcript, one revision guards it, no route here.
 
    The helpers above mount() are pure and exported for node, so
    tests/test_web/test_studio_word.py runs them (and the PATCH, against a
-   fake fetch) without a browser; nothing here touches the DOM until
-   AshStudio.onReady fires. */
+   fake fetch) without a browser. */
 (function () {
   "use strict";
 
@@ -51,9 +48,8 @@
     return Math.max(MIN_PERCENT, Math.min(MAX_PERCENT, n));
   }
 
-  // What the look alone gives any word of a caption: its text colour, full
-  // size, and the weight and slant of the Style line, which is always
-  // regular (see styles/ass_format.py).
+  // What the look alone gives any word: its text colour, full size, and the
+  // Style line's weight and slant, which is always regular (ass_format.py).
   function lookBaseline(look) {
     const colors = (look && look.colors) || {};
     return { colour: opaqueHex(colors.text, "#FFFFFF"), percent: 100, bold: false, italic: false, animation: "none" };
@@ -227,11 +223,15 @@
 
     const bold = button("B", "Bold this word", "word-toggle word-bold");
     const italic = button("I", "Italic this word", "word-toggle word-italic");
+    // One flex item, so a narrow column can never split the pair across rows.
+    const face = document.createElement("span");
+    face.className = "word-pair";
+    face.append(bold, italic);
     const resetWord = button("Reset word", "Put this word back to the look", "btn small");
     const resetAll = button("Reset all overrides on this job", "Put every word back to the look", "btn small");
     const close = button("Close", "Close the toolbar (Escape)", "btn small word-close");
 
-    controls.append(which, colourLabel, sizeLabel, animLabel, bold, italic, resetWord, resetAll, close);
+    controls.append(which, colourLabel, sizeLabel, animLabel, face, resetWord, resetAll, close);
     root.append(scope, controls);
     return { colour, size, animation, bold, italic, resetWord, resetAll, close, which };
   }

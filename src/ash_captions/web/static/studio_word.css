@@ -20,6 +20,7 @@
 .word-field input[type="color"] { inline-size: 34px; block-size: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; }
 .word-field input[type="number"] { inline-size: 66px; font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--ink); }
 
+.word-pair { display: inline-flex; align-items: center; gap: 6px; }
 .word-toggle { font: inherit; inline-size: 28px; block-size: 26px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--ink); cursor: pointer; }
 .word-toggle.word-bold { font-weight: 800; }
 .word-toggle.word-italic { font-style: italic; font-family: Georgia, "Times New Roman", serif; }
