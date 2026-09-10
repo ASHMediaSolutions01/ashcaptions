@@ -99,9 +99,37 @@
   function escapeAssText(text) {
     return String(text).replace(/[{}\\]/g, (ch) => ESCAPE_MAP[ch]);
   }
+  // Hand-kept ports of render_word.apply_case / apply_punctuation. The
+  // character sets are the same list in the same order as the Python.
+  const STOP_MARKS = new Set(Array.from(".,;:…。、，；：،؛۔"));
+  const INTRA_WORD_MARKS = new Set(Array.from("'’-‐‑"));
+
+  function applyCase(text, mode) {
+    if (mode === "upper") return String(text).toUpperCase();
+    if (mode === "lower") return String(text).toLowerCase();
+    return String(text);
+  }
+
+  function applyPunctuation(text, mode) {
+    const s = String(text);
+    if (mode === "no_stops") {
+      return Array.from(s).filter((ch) => !STOP_MARKS.has(ch)).join("");
+    }
+    if (mode !== "none" || !s) return s;
+    const chars = Array.from(s);
+    return chars
+      .filter((ch, i) => {
+        if (!/\p{P}/u.test(ch)) return true;
+        return INTRA_WORD_MARKS.has(ch) && i > 0 && i < chars.length - 1
+          && /\p{L}/u.test(chars[i - 1]) && /\p{L}/u.test(chars[i + 1]);
+      })
+      .join("");
+  }
+
   function prepareWordText(text, style) {
-    const upper = style.uppercase ? String(text).toUpperCase() : text;
-    return escapeAssText(upper);
+    const cased = applyCase(applyPunctuation(text, style.punctuation || "keep"),
+                            style.case_mode || "as_written");
+    return escapeAssText(cased);
   }
 
   function styleField(o) {
@@ -376,7 +404,12 @@
   // enough to how styles/render.py sizes a per-word event (from the next
   // word's start, or the card's end for the last word) to show the same
   // shape of motion without a real transcript to draw timing from.
-  function buildSampleAss(style) {
+  // ``words`` lets a caller preview its own sentence -- the style
+  // editor passes one carrying punctuation, so the Punctuation control
+  // has something to visibly act on. The cards on the Styles page keep
+  // the default three.
+  function buildSampleAss(style, words) {
+    const sample = (words && words.length) ? words : SAMPLE_WORDS;
     const [width, height] = PLAY_RES;
     style = previewLayout(style);
     const baseName = safeStyleName(style.name);
@@ -384,13 +417,13 @@
     const header = assHeader(style, baseName, boxName, width, height);
     const [x, y] = anchorXY(style, width, height);
     const effect = style.active_word.effect;
-    const count = SAMPLE_WORDS.length;
+    const count = sample.length;
     const sliceMs = Math.floor(LOOP_MS / count);
-    const bounds = SAMPLE_WORDS.map((_, i) => [i * sliceMs, i === count - 1 ? LOOP_MS : (i + 1) * sliceMs]);
+    const bounds = sample.map((_, i) => [i * sliceMs, i === count - 1 ? LOOP_MS : (i + 1) * sliceMs]);
     const lines = [];
 
     if (effect === "karaoke") {
-      const parts = SAMPLE_WORDS.map((word, i) => {
+      const parts = sample.map((word, i) => {
         const [start, end] = bounds[i];
         return `{\\kf${Math.max(1, Math.round((end - start) / 10))}}${prepareWordText(word, style)}`;
       });
@@ -414,17 +447,17 @@
       const prefix = leading ? `{${leading}}` : "";
       const scaling = lineScaling(style, isFirst, isLast);
       if (boxed) {
-        const text = prepareWordText(SAMPLE_WORDS[i], style);
+        const text = prepareWordText(sample[i], style);
         const scaleTags = effect === "scale_box" && !scaling ? popScaleTags(style, eventMs) : "";
         lines.push(dialogueLine(start, end, styleName, `${prefix}${scaleTags}${text}`));
       } else if (glow) {
-        const prepared = SAMPLE_WORDS.map((w) => prepareWordText(w, style));
+        const prepared = sample.map((w) => prepareWordText(w, style));
         const halo = haloLineText(prepared, i, style);
-        const text = lineText(SAMPLE_WORDS, i, style, scaling);
+        const text = lineText(sample, i, style, scaling);
         lines.push(dialogueLine(start, end, styleName, prefix + halo, 0));
         lines.push(dialogueLine(start, end, styleName, prefix + text, 1));
       } else {
-        const text = lineText(SAMPLE_WORDS, i, style, scaling);
+        const text = lineText(sample, i, style, scaling);
         lines.push(dialogueLine(start, end, styleName, prefix + text));
       }
     }
@@ -445,6 +478,9 @@
     leadingOverride,
     activeWordTags,
     safeStyleName,
+    applyCase,
+    applyPunctuation,
+    prepareWordText,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

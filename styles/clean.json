@@ -2,7 +2,8 @@
   "name": "CLEAN",
   "font": "Inter",
   "size": 60,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0,
   "colors": {
     "text": "#EDEDED",

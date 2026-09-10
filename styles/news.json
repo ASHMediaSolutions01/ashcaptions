@@ -2,7 +2,8 @@
   "name": "NEWS",
   "font": "Noto Sans",
   "size": 58,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",

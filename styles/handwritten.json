@@ -2,7 +2,8 @@
   "name": "HANDWRITTEN",
   "font": "Caveat Medium",
   "size": 100,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",

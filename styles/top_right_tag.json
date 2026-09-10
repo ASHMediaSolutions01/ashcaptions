@@ -2,7 +2,8 @@
   "name": "TOP RIGHT TAG",
   "font": "Montserrat",
   "size": 60,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",

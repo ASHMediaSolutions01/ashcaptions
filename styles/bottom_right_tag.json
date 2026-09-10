@@ -2,7 +2,8 @@
   "name": "BOTTOM RIGHT TAG",
   "font": "Space Grotesk",
   "size": 62,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",

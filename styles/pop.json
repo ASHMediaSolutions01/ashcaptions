@@ -2,7 +2,8 @@
   "name": "POP",
   "font": "Montserrat ExtraBold",
   "size": 88,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 0.5,
   "colors": {
     "text": "#FFFFFF",

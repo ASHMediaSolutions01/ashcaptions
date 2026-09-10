@@ -2,7 +2,8 @@
   "name": "TOP BAR",
   "font": "Bebas Neue",
   "size": 84,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 1.5,
   "colors": {
     "text": "#FFFFFF",

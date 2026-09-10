@@ -10,10 +10,13 @@ from __future__ import annotations
 from ash_captions.engine.transcribe import Word
 from ash_captions.styles.render_word import (
     POP_HALF_MS,
+    apply_case,
+    apply_punctuation,
     face_tags,
     karaoke_override_tags,
     override_tags,
     scale_pct,
+    prepare_word_text,
     scale_transform_tags,
     scaled_transform_tags,
     word_style_for,
@@ -131,3 +134,92 @@ def test_karaoke_carries_weight_slant_and_size_like_any_other_look():
         "\\b1\\fscx75\\fscy75",
         "\\b0\\fscx100\\fscy100",
     )
+
+
+# ---------------------------------------------------------------------------
+# the look's treatment of the words it was given
+# ---------------------------------------------------------------------------
+
+
+class TestApplyCase:
+    def test_as_written_is_the_identity(self):
+        assert apply_case("Hello, World.", "as_written") == "Hello, World."
+
+    def test_upper_and_lower(self):
+        assert apply_case("Hello", "upper") == "HELLO"
+        assert apply_case("Hello", "lower") == "hello"
+
+    def test_german_eszett_uppercases_to_two_letters(self):
+        """German orthography requires it, and ``str.upper`` already does
+        it. A title-caser would not, which is why this is not one."""
+        assert apply_case("Straße", "upper") == "STRASSE"
+
+    def test_accents_survive_both_directions(self):
+        assert apply_case("café", "upper") == "CAFÉ"
+        assert apply_case("ÄÖÜ", "lower") == "äöü"
+
+
+class TestApplyPunctuation:
+    def test_keep_is_the_identity(self):
+        for word in ("Hello,", "really?", "—", "don't"):
+            assert apply_punctuation(word, "keep") == word
+
+    def test_no_stops_drops_the_separators(self):
+        assert apply_punctuation("Hello,", "no_stops") == "Hello"
+        assert apply_punctuation("end...", "no_stops") == "end"
+        assert apply_punctuation("so:", "no_stops") == "so"
+
+    def test_no_stops_keeps_the_marks_that_carry_tone(self):
+        """A caption reading "really" and one reading "really?" are
+        different lines. That is the whole reason for the middle mode."""
+        assert apply_punctuation("really?", "no_stops") == "really?"
+        assert apply_punctuation("wow!", "no_stops") == "wow!"
+        assert apply_punctuation("¿Qué?", "no_stops") == "¿Qué?"
+
+    def test_no_stops_reaches_other_scripts(self):
+        assert apply_punctuation("你好。", "no_stops") == "你好"
+        assert apply_punctuation("مرحبا،", "no_stops") == "مرحبا"
+
+    def test_none_drops_tone_and_quotes_too(self):
+        assert apply_punctuation("really?", "none") == "really"
+        assert apply_punctuation("“quoted”", "none") == "quoted"
+        assert apply_punctuation("wow!!", "none") == "wow"
+
+    def test_none_keeps_an_apostrophe_or_hyphen_inside_a_word(self):
+        """Stripping these makes the word wrong rather than plainer."""
+        assert apply_punctuation("don't", "none") == "don't"
+        assert apply_punctuation("l’ami", "none") == "l’ami"
+        assert apply_punctuation("twenty-five", "none") == "twenty-five"
+
+    def test_none_still_drops_one_at_the_edge_of_a_word(self):
+        assert apply_punctuation("-dash", "none") == "dash"
+        assert apply_punctuation("'quoted'", "none") == "quoted"
+
+    def test_a_token_that_is_only_punctuation_comes_back_empty(self):
+        """Left empty on purpose: dropping the word would slide every
+        later word onto the wrong moment, because the word list drives
+        the active-word index and the karaoke timings."""
+        assert apply_punctuation("—", "none") == ""
+        assert apply_punctuation("...", "no_stops") == ""
+
+    def test_empty_input_is_safe_in_every_mode(self):
+        for mode in ("keep", "no_stops", "none"):
+            assert apply_punctuation("", mode) == ""
+
+
+class TestPrepareWordText:
+    def _style(self, **kw):
+        return Style.from_dict({"name": "X", **kw}, check_font=False)
+
+    def test_a_default_look_only_escapes(self):
+        assert prepare_word_text("Hello,", self._style()) == "Hello,"
+
+    def test_both_treatments_compose(self):
+        style = self._style(case_mode="upper", punctuation="no_stops")
+        assert prepare_word_text("Hello,", style) == "HELLO"
+
+    def test_escaping_still_happens_after_the_treatment(self):
+        """The brace and backslash substitutions must survive, or a word
+        containing one would break the .ass it is written into."""
+        style = self._style(case_mode="upper")
+        assert prepare_word_text("a{b}c", style) == "A｛B｝C"

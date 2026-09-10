@@ -151,8 +151,8 @@ class LanguageCatalogue(BaseModel):
 # --- Caption styling (spec 7A) ---------------------------------------------
 #
 # A style's wire shape is exactly `ash_captions.styles.Style.to_dict()`
-# (spec 7A.2's JSON example): name, font, size, uppercase, letter_spacing,
-# colors, active_word, entrance, exit, layout. The web layer treats that as
+# (spec 7A.2's JSON example): name, font, size, case_mode, punctuation,
+# letter_spacing, colors, active_word, entrance, exit, layout. The web layer treats that as
 # opaque data it round-trips to the styles package for validation/rendering
 # -- "styles are data" (spec 7A.2) applies here too, so it is modelled as a
 # plain dict rather than re-declared field by field and risking drift from

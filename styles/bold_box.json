@@ -2,7 +2,8 @@
   "name": "BOLD BOX",
   "font": "Anton",
   "size": 96,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 1.0,
   "colors": {
     "text": "#FFFFFF",

@@ -2,7 +2,8 @@
   "name": "ASH BRAND",
   "font": "Archivo Black",
   "size": 68,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 2.5,
   "colors": {
     "text": "#D8D2C8",

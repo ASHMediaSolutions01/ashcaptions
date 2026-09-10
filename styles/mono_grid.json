@@ -2,7 +2,8 @@
   "name": "MONO GRID",
   "font": "Space Grotesk",
   "size": 70,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 1.0,
   "colors": {
     "text": "#E8FFE8",

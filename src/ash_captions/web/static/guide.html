@@ -266,7 +266,24 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <h3>Making your own</h3>
   <p>Open <strong>Styles</strong> in the top bar for the style editor.</p>
   <figure><img src="/static/guide/style-editor.png" alt="The style editor: a list of looks on the left, settings in the middle, and a live preview"><figcaption>The style editor. Pick a look on the left, change anything, render a real 3-second clip of your own footage at the bottom.</figcaption></figure>
-  <p>Change anything: font (24 to choose from), size, letter spacing, ALL CAPS, the four colours, how the active word behaves, how captions enter, and <strong>where they sit</strong> (top, centre, bottom; left, middle, right).</p>
+  <p>Change anything: font (24 to choose from), size, letter spacing, case and punctuation, the four colours, how the active word behaves, how captions enter, and <strong>where they sit</strong> (top, centre, bottom; left, middle, right).</p>
+
+  <h3>Case and punctuation</h3>
+  <p>On the <strong>Type</strong> tab, under the font and size. Both change the caption that gets <strong>burned into the video</strong> — the <code>.srt</code> always keeps the words exactly as they were transcribed, so the file you hand a client or drop into Premiere is unaffected by either.</p>
+  <table class="plain">
+    <tr><th>Case</th><th></th></tr>
+    <tr><td><strong>Aa</strong> As transcribed</td><td>What was actually said, sentence case. The default.</td></tr>
+    <tr><td><strong>AA</strong> ALL CAPS</td><td>The short-form standard.</td></tr>
+    <tr><td><strong>aa</strong> all lower case</td><td>Quieter and more modern; good under a calm voice.</td></tr>
+  </table>
+  <table class="plain">
+    <tr><th>Punctuation</th><th></th></tr>
+    <tr><td><strong>As transcribed</strong></td><td>Everything the transcript had. The default, and the right one for client work.</td></tr>
+    <tr><td><strong>No full stops or commas</strong></td><td>Drops <code>.</code> <code>,</code> <code>;</code> <code>:</code> and keeps <code>?</code> and <code>!</code> — the short-form house style. Question marks and exclamation marks carry tone, so they stay.</td></tr>
+    <tr><td><strong>None at all</strong></td><td>Drops every mark. Apostrophes and hyphens <em>inside</em> a word survive, so "don't" and "twenty-five" stay readable.</td></tr>
+  </table>
+  <p>The sample above the tabs updates as you click, so you can read the treatment before you commit to it.</p>
+  <p class="note">ALL CAPS on German turns ß into SS, which is what German spelling requires. Nothing to set: it just happens.</p>
 
   <h3>Always preview first</h3>
   <p>On the right, pick one of your recent videos (or choose another file) and a <strong>start time in seconds</strong>; it defaults to the first moment someone speaks. Click <strong>Render preview</strong>; a few seconds later you get a real clip of your own footage in that style, at the video's real size. It saves you discovering the style was wrong after a 30-minute render.</p>

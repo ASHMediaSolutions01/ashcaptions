@@ -25,7 +25,22 @@
   const POOL_SIZE = 4;
   const VENDOR = "/static/vendor/jassub/";
 
-  function buildPoster(style, opts) {
+  // schema.CASE_MODES -> CSS.
+  function cssTextTransform(mode) {
+    if (mode === "upper") return "uppercase";
+    if (mode === "lower") return "lowercase";
+    return "none";
+  }
+
+  // The poster is not a second-class preview. There are only POOL_SIZE
+  // JASSUB slots and a page can hold forty cards, so on the Styles page
+  // the *editor's own sample* routinely loses the draw and the poster is
+  // what a person is actually looking at. Case comes free from CSS;
+  // punctuation has to be applied to the text, or clicking "No full
+  // stops or commas" appears to do nothing at all.
+  const applyPunctuation = window.AshLookCardAss.applyPunctuation;
+
+  function buildPoster(style, opts, words) {
     const o = Object.assign({ fontDivisor: 3.8, fontMin: 15, fontMax: 24 }, opts);
     const colors = style.colors || {};
     const active = style.active_word || {};
@@ -35,12 +50,12 @@
     poster.style.fontSize = `${Math.round(Math.min(o.fontMax, Math.max(o.fontMin, (style.size || 72) / o.fontDivisor)))}px`;
     poster.style.color = colors.text || "#fff";
     poster.style.letterSpacing = `${(style.letter_spacing || 0) * 0.02}em`;
-    poster.style.textTransform = style.uppercase ? "uppercase" : "none";
+    poster.style.textTransform = cssTextTransform(style.case_mode);
     poster.style.textShadow = `0 0 2px ${colors.outline || "#000"}, 0 2px 3px ${colors.shadow || "transparent"}`;
-    SAMPLE_WORDS.forEach((word, i) => {
+    ((words && words.length) ? words : SAMPLE_WORDS).forEach((word, i) => {
       const w = document.createElement("span");
       w.className = "w";
-      w.textContent = word;
+      w.textContent = applyPunctuation(word, style.punctuation || "keep");
       if (i === 1) {
         w.style.color = colors.active || colors.text || "#fff";
         const boxed = active.box || ["box", "scale_box", "card_box"].includes(active.effect);
@@ -183,7 +198,7 @@
     }
     let ass;
     try {
-      ass = buildSampleAss(el._ashLookStyle);
+      ass = buildSampleAss(el._ashLookStyle, el._ashLookWords);
     } catch (err) {
       console.error("AshLookCard: couldn't build a sample for", el._ashLookStyle && el._ashLookStyle.name, err);
       return;
@@ -223,17 +238,21 @@
     return io;
   }
 
-  function create(style, posterOpts) {
+  // ``words`` overrides the three-word sample, for a caller that wants
+  // a sentence of its own (the style editor, whose Punctuation control
+  // needs punctuation on screen to act on).
+  function create(style, posterOpts, words) {
     const el = document.createElement("div");
     el.className = "ash-look-card";
     const stage = document.createElement("div");
     stage.className = "ash-look-stage";
-    const poster = buildPoster(style, posterOpts);
+    const poster = buildPoster(style, posterOpts, words);
     stage.appendChild(poster);
     el.appendChild(stage);
     el._ashLookStyle = style;
     el._ashLookStage = stage;
     el._ashLookPosterOpts = posterOpts;
+    el._ashLookWords = words;
     el._ashLookVisible = false;
     observer().observe(el);
     return el;
@@ -249,12 +268,12 @@
     el._ashLookStyle = style;
     const stage = el._ashLookStage;
     const oldPoster = stage.querySelector(".ash-look-poster");
-    const poster = buildPoster(style, el._ashLookPosterOpts);
+    const poster = buildPoster(style, el._ashLookPosterOpts, el._ashLookWords);
     if (oldPoster) stage.replaceChild(poster, oldPoster);
     else stage.insertBefore(poster, stage.firstChild);
     if (el._ashLookSlot) {
       try {
-        el._ashLookSlot.renderer.setTrack(buildSampleAss(style));
+        el._ashLookSlot.renderer.setTrack(buildSampleAss(style, el._ashLookWords));
       } catch (err) {
         /* the next assignment (or the clock's next tick) recovers */
       }

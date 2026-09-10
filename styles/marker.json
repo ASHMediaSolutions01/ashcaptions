@@ -2,7 +2,8 @@
   "name": "MARKER",
   "font": "Permanent Marker",
   "size": 90,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFF8DC",

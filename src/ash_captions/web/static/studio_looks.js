@@ -19,6 +19,13 @@
     return span;
   }
 
+  // schema.CASE_MODES -> CSS, for the still fallback below.
+  function cssTextTransform(mode) {
+    if (mode === "upper") return "uppercase";
+    if (mode === "lower") return "lowercase";
+    return "none";
+  }
+
   // Static fallback, shown until look_card.js finishes loading (see
   // ensureLookCard below) or if JASSUB can't start at all.
   function staticSampleFor(d) {
@@ -30,7 +37,7 @@
     sample.style.fontSize = `${Math.round(Math.min(24, Math.max(15, (d.size || 72) / 3.8)))}px`;
     sample.style.color = colors.text || "#fff";
     sample.style.letterSpacing = `${(d.letter_spacing || 0) * 0.02}em`;
-    sample.style.textTransform = d.uppercase ? "uppercase" : "none";
+    sample.style.textTransform = cssTextTransform(d.case_mode);
     sample.style.textShadow = `0 0 2px ${colors.outline || "#000"}, 0 2px 3px ${colors.shadow || "transparent"}`;
     ["Pick", "this", "look"].forEach((word, i) => {
       const w = document.createElement("span");

@@ -32,7 +32,14 @@ import pytest
 
 from ash_captions.styles import ass_format, render
 from ash_captions.styles.render_word import active_word_tags
-from ash_captions.styles.schema import TRANSITION_EFFECTS, Style
+from ash_captions.styles import render_word
+from ash_captions.styles.render_word import prepare_word_text
+from ash_captions.styles.schema import (
+    CASE_MODES,
+    PUNCTUATION_MODES,
+    TRANSITION_EFFECTS,
+    Style,
+)
 
 DRIVER = Path(__file__).parent / "js" / "look_card_drift.js"
 
@@ -42,7 +49,8 @@ BASE: dict = {
     "name": "TEST LOOK",
     "font": "Inter",
     "size": 72,
-    "uppercase": False,
+    "case_mode": "as_written",
+    "punctuation": "keep",
     "letter_spacing": 0,
     "colors": {"text": "#FFFFFF", "active": "#FFD166", "outline": "#000000",
                "shadow": "#00000090", "box": "#00000000"},
@@ -222,4 +230,45 @@ def test_active_word_tags_agree_for_every_effect():
             expected.append(list(
                 active_word_tags(style, active, text, line_scaling=scaling)
             ))
+    compare(cases, expected)
+
+
+# ---------------------------------------------------------------------------
+# render_word.py's case and punctuation treatment
+# ---------------------------------------------------------------------------
+
+# Words chosen for the edges rather than for looking like a sentence: an
+# intra-word apostrophe and hyphen (which survive every mode), a quoted
+# word and a lone dash (which do not), an eszett whose upper case is two
+# letters, and one token that is nothing but punctuation.
+TREATMENT_WORDS = [
+    "Hello,", "really?", "wow!!", "don't", "l\u2019ami", "twenty-five",
+    "Stra\u00dfe.", "\u201cquoted\u201d", "\u2014", "end...", "\u00bfQu\u00e9?",
+    "\u4f60\u597d\u3002", "\u0645\u0631\u062d\u0628\u0627\u060c", "ALREADY", "caf\u00e9",
+    # Every stop mark, read from the set itself rather than typed here:
+    # the first version of this list happened to contain no colon and no
+    # semicolon, so deleting one from the JavaScript's copy of the set
+    # left this test green. Reading the set means a mark added to the
+    # vocabulary is covered without anyone remembering to cover it.
+    *(f"a{mark}b" for mark in sorted(render_word._STOP_MARKS)),
+    *(f"a{mark}b" for mark in sorted(render_word._INTRA_WORD_MARKS)),
+]
+
+
+def test_case_and_punctuation_treat_every_word_the_same_way():
+    """The whole matrix through both implementations.
+
+    Everything else in this file compares tag *formulas*; this compares
+    the text itself, which is the half a reader actually reads. A look
+    card that drops a comma the burn keeps -- or keeps an eszett the burn
+    turns into SS -- is a preview that lies about the delivered file.
+    """
+    cases, expected = [], []
+    for case_mode in sorted(CASE_MODES):
+        for punctuation in sorted(PUNCTUATION_MODES):
+            definition = look(case_mode=case_mode, punctuation=punctuation)
+            style = Style.from_dict(definition, check_font=False)
+            for word in TREATMENT_WORDS:
+                cases.append({"fn": "prepareWordText", "text": word, "style": definition})
+                expected.append(prepare_word_text(word, style))
     compare(cases, expected)

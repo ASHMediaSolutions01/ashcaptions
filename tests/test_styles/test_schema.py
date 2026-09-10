@@ -153,3 +153,72 @@ def test_to_dict_round_trips_through_from_dict():
     )
     rebuilt = Style.from_dict(original.to_dict())
     assert rebuilt == original
+
+
+# ---------------------------------------------------------------------------
+# case and punctuation (v0.6 spec, held item 5)
+# ---------------------------------------------------------------------------
+
+
+class TestCaseAndPunctuation:
+    """``uppercase`` became ``case_mode`` in v0.8. Every look already on an
+    editor's PC still says ``uppercase``, so reading it is not a courtesy:
+    it is the only reason their saved looks keep working."""
+
+    def test_defaults_leave_the_words_alone(self):
+        style = Style.from_dict({"name": "X"}, check_font=False)
+        assert style.case_mode == "as_written"
+        assert style.punctuation == "keep"
+        assert style.uppercase is False
+
+    def test_an_old_look_saying_uppercase_true_reads_as_upper(self):
+        style = Style.from_dict({"name": "X", "uppercase": True}, check_font=False)
+        assert style.case_mode == "upper"
+        assert style.uppercase is True
+
+    def test_an_old_look_saying_uppercase_false_reads_as_written(self):
+        style = Style.from_dict({"name": "X", "uppercase": False}, check_font=False)
+        assert style.case_mode == "as_written"
+
+    def test_lower_is_reachable_only_through_case_mode(self):
+        """The point of the change: 'aa' had no spelling in the old field."""
+        style = Style.from_dict({"name": "X", "case_mode": "lower"}, check_font=False)
+        assert style.case_mode == "lower"
+        assert style.uppercase is False
+
+    def test_saving_writes_case_mode_and_not_the_old_field(self):
+        style = Style.from_dict({"name": "X", "uppercase": True}, check_font=False)
+        saved = style.to_dict()
+        assert saved["case_mode"] == "upper"
+        assert saved["punctuation"] == "keep"
+        assert "uppercase" not in saved
+        # and what it writes is what it can read back
+        assert Style.from_dict(saved, check_font=False) == style
+
+    def test_agreeing_old_and_new_fields_are_accepted(self):
+        style = Style.from_dict(
+            {"name": "X", "uppercase": True, "case_mode": "upper"}, check_font=False
+        )
+        assert style.case_mode == "upper"
+
+    def test_contradicting_old_and_new_fields_are_refused_by_name(self):
+        """Silently picking one would mean a look that renders differently
+        from what the file plainly says."""
+        with pytest.raises(StyleValidationError, match="contradicts"):
+            Style.from_dict(
+                {"name": "X", "uppercase": True, "case_mode": "lower"}, check_font=False
+            )
+
+    def test_rejects_an_unknown_case_mode(self):
+        with pytest.raises(StyleValidationError, match="case_mode"):
+            Style.from_dict({"name": "X", "case_mode": "Title Case"}, check_font=False)
+
+    def test_rejects_an_unknown_punctuation_mode(self):
+        with pytest.raises(StyleValidationError, match="punctuation"):
+            Style.from_dict({"name": "X", "punctuation": "some"}, check_font=False)
+
+    def test_uppercase_cannot_be_set_directly(self):
+        """It is a view of case_mode, so the two can never disagree."""
+        style = Style.from_dict({"name": "X"}, check_font=False)
+        with pytest.raises(AttributeError):
+            style.uppercase = True

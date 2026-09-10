@@ -2,7 +2,8 @@
   "name": "LOWER THIRD",
   "font": "Figtree",
   "size": 46,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.2,
   "colors": {
     "text": "#F5F5F5",

@@ -75,6 +75,21 @@ WORD_ANIMATIONS = frozenset({"none", "fade", "zoom", "blur", "blink", "bounce"})
 POSITIONS = frozenset({"bottom", "center", "top", "lower_third"})
 ALIGNS = frozenset({"left", "center", "right"})
 
+# How the look treats the words it was given (v0.6 spec, held item 5).
+# Both apply to the burned caption only: the .srt stays as transcribed,
+# because a look is a treatment and the plain caption file is the record.
+#
+# "as_written" is what the speech model produced, which for every
+# language we support is already sentence case. Casing is done with
+# ``str.upper``/``str.lower`` rather than anything cleverer, so German
+# gets SS out of an eszett, which is what German orthography requires.
+CASE_MODES = frozenset({"as_written", "upper", "lower"})
+# The three the short-form convention actually uses. "no_stops" drops the
+# marks that only separate clauses and keeps the two that carry tone --
+# a caption reading "really" and one reading "really?" are different
+# lines, so ? and ! survive where . and , do not.
+PUNCTUATION_MODES = frozenset({"keep", "no_stops", "none"})
+
 # Free placement (design 2026-09-05, section 5). "line" is every look
 # shipped up to v0.5: one band, words laid out as a sentence. "free"
 # gives each word its own slot and keeps it on screen while the next
@@ -627,7 +642,12 @@ _TOP_LEVEL_FIELDS = {
     "name",
     "font",
     "size",
+    # "uppercase" is the v0.7 spelling of case_mode. It is still accepted
+    # so looks an editor saved before v0.8 -- and any style file already
+    # on their PC -- keep loading; ``to_dict`` writes case_mode instead.
     "uppercase",
+    "case_mode",
+    "punctuation",
     "letter_spacing",
     "colors",
     "active_word",
@@ -643,7 +663,8 @@ class Style:
     name: str
     font: str = "Inter"
     size: int = 72
-    uppercase: bool = False
+    case_mode: str = "as_written"
+    punctuation: str = "keep"
     letter_spacing: float = 0.0
     colors: Colors = field(default_factory=Colors)
     active_word: ActiveWord = field(default_factory=ActiveWord)
@@ -651,6 +672,17 @@ class Style:
     exit: Transition = field(default_factory=lambda: Transition(effect="none", duration_ms=0))
     layout: Layout = field(default_factory=Layout)
     sound: Sound = field(default_factory=Sound)
+
+    @property
+    def uppercase(self) -> bool:
+        """The v0.7 field, kept as a read-only view of ``case_mode``.
+
+        Every caller that only ever asked "is this look ALL CAPS?" --
+        the look-card previews, the style editor's sample -- keeps
+        working, and nothing can set it to something ``case_mode``
+        disagrees with.
+        """
+        return self.case_mode == "upper"
 
     @classmethod
     def from_dict(cls, data: dict, *, check_font: bool = True) -> "Style":
@@ -681,7 +713,28 @@ class Style:
             )
 
         size = _require_number("size", data.get("size", defaults.size), lo=_MIN_SIZE, hi=_MAX_SIZE)
-        uppercase = _require_bool("uppercase", data.get("uppercase", defaults.uppercase))
+        # case_mode wins where both are present; a file written before
+        # v0.8 has only "uppercase" and is read through it. Setting them
+        # to contradict each other is a mistake worth naming rather than
+        # silently resolving.
+        if "case_mode" in data and "uppercase" in data:
+            upper = _require_bool("uppercase", data["uppercase"])
+            mode = _require_choice("case_mode", data["case_mode"], CASE_MODES)
+            if upper != (mode == "upper"):
+                raise StyleValidationError(
+                    f"case_mode: {mode!r} contradicts uppercase: {upper!r} -- "
+                    "drop the older 'uppercase' field"
+                )
+            case_mode = mode
+        elif "case_mode" in data:
+            case_mode = _require_choice("case_mode", data["case_mode"], CASE_MODES)
+        elif _require_bool("uppercase", data.get("uppercase", False)):
+            case_mode = "upper"
+        else:
+            case_mode = defaults.case_mode
+        punctuation = _require_choice(
+            "punctuation", data.get("punctuation", defaults.punctuation), PUNCTUATION_MODES
+        )
         letter_spacing = _require_number(
             "letter_spacing",
             data.get("letter_spacing", defaults.letter_spacing),
@@ -711,7 +764,8 @@ class Style:
             name=name,
             font=font,
             size=int(size),
-            uppercase=uppercase,
+            case_mode=case_mode,
+            punctuation=punctuation,
             letter_spacing=float(letter_spacing),
             colors=colors,
             active_word=active_word,
@@ -728,7 +782,8 @@ class Style:
             "name": self.name,
             "font": self.font,
             "size": self.size,
-            "uppercase": self.uppercase,
+            "case_mode": self.case_mode,
+            "punctuation": self.punctuation,
             "letter_spacing": self.letter_spacing,
             "colors": {f.name: getattr(self.colors, f.name) for f in fields(Colors)},
             "active_word": {f.name: getattr(self.active_word, f.name) for f in fields(ActiveWord)},

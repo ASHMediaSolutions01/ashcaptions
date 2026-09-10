@@ -2,7 +2,8 @@
   "name": "NIGHT",
   "font": "Montserrat ExtraBold",
   "size": 80,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",

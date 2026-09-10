@@ -2,7 +2,8 @@
   "name": "ROUNDED POP",
   "font": "Fredoka Medium",
   "size": 84,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#1B1B1B",

@@ -2,7 +2,8 @@
   "name": "OUTLINE",
   "font": "Bebas Neue",
   "size": 110,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 2.0,
   "colors": {
     "text": "#FFFFFF",

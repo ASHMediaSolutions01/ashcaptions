@@ -2,7 +2,8 @@
   "name": "IMPACT",
   "font": "Alfa Slab One",
   "size": 130,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",

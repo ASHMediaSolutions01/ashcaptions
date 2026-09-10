@@ -2,7 +2,8 @@
   "name": "REEL ESTATE",
   "font": "Anton",
   "size": 160,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",

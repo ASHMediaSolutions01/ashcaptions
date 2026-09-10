@@ -35,6 +35,7 @@ must never import it back.
 """
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Mapping
 
 from .ass_format import ass_inline_colour, outline_width
@@ -177,10 +178,69 @@ def escape_ass_text(text: str) -> str:
     return "".join(_ESCAPE_MAP.get(ch, ch) for ch in text)
 
 
+# The marks that only separate clauses, in the scripts we caption. These
+# are what "no_stops" drops; ? and ! are deliberately not here, in any
+# script, because they carry tone rather than structure.
+_STOP_MARKS = frozenset(
+    ".,;:…"          # . , ; : ...
+    "。、，；："   # CJK . , , ; :
+    "،؛۔"  # Arabic comma, Arabic semicolon, Urdu full stop
+)
+# Kept inside a word even by "none": stripping these makes the word wrong
+# rather than plainer -- "don't" -> "dont", "l'ami" -> "lami",
+# "twenty-five" -> "twentyfive". Only counted when a letter sits on both
+# sides, so a quoted 'word' or a leading dash still goes.
+_INTRA_WORD_MARKS = frozenset("'’-‐‑")
+
+
+def apply_case(text: str, mode: str) -> str:
+    """``str.upper``/``str.lower``, deliberately. Nothing cleverer:
+    a German eszett must become SS under ALL CAPS, which is what
+    ``str.upper`` already does and what a title-caser would not."""
+    if mode == "upper":
+        return text.upper()
+    if mode == "lower":
+        return text.lower()
+    return text
+
+
+def apply_punctuation(text: str, mode: str) -> str:
+    """Drop the marks ``mode`` says to drop, from one word.
+
+    A token that is nothing but punctuation comes back empty. That is
+    left alone rather than special-cased: the word list drives the
+    active-word index and the karaoke timings, so removing an entry
+    would slide every later word onto the wrong moment.
+    """
+    if mode == "keep" or not text:
+        return text
+    if mode == "no_stops":
+        return "".join(ch for ch in text if ch not in _STOP_MARKS)
+    kept = []
+    for i, ch in enumerate(text):
+        if unicodedata.category(ch)[0] != "P":
+            kept.append(ch)
+            continue
+        if (
+            ch in _INTRA_WORD_MARKS
+            and 0 < i < len(text) - 1
+            and text[i - 1].isalpha()
+            and text[i + 1].isalpha()
+        ):
+            kept.append(ch)
+    return "".join(kept)
+
+
 def prepare_word_text(text: str, style: Style) -> str:
-    if style.uppercase:
-        text = text.upper()
-    return escape_ass_text(text)
+    """The look's treatment of one word, then ASS escaping.
+
+    Punctuation before case, so a mark removed is never a mark that was
+    uppercased first -- the two are independent, and doing it in this
+    order keeps ``apply_case`` operating on the text that will actually
+    be drawn.
+    """
+    text = apply_punctuation(text, style.punctuation)
+    return escape_ass_text(apply_case(text, style.case_mode))
 
 
 def line_text(

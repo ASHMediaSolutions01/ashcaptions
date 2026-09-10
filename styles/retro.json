@@ -2,7 +2,8 @@
   "name": "RETRO",
   "font": "Luckiest Guy",
   "size": 104,
-  "uppercase": true,
+  "case_mode": "upper",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFF200",

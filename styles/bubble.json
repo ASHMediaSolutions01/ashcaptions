@@ -2,7 +2,8 @@
   "name": "BUBBLE",
   "font": "Baloo 2 SemiBold",
   "size": 86,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#2A1B3D",

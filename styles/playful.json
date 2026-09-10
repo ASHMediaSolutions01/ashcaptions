@@ -2,7 +2,8 @@
   "name": "PLAYFUL",
   "font": "Baloo 2 SemiBold",
   "size": 74,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0,
   "colors": {
     "text": "#3A2E39",

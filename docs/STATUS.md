@@ -25,6 +25,47 @@ running it, not inferred.
 animation vocabulary, per-word animation, the Studio layout and behaviour
 fixes, and an updater that finally says where you stand.
 
+**Case and punctuation modes** (v0.6 spec, held item 5) are in on master,
+unreleased. `uppercase: true/false` became `case_mode` -- **Aa** as
+transcribed, **AA** ALL CAPS, **aa** all lower case -- next to a new
+`punctuation`: keep everything, drop full stops and commas while keeping
+`?` and `!`, or drop every mark. The spec asked for "three punctuation
+modes" without naming them; that middle one is the short-form house style
+and the reason it exists is that `?` and `!` carry tone where `.` and `,`
+only separate clauses. Both treat the **burned caption only** -- the
+`.srt` stays as transcribed, which is the same rule uppercase always
+followed.
+
+Two decisions worth knowing:
+
+- **`uppercase` still loads, and is now a read-only view of `case_mode`.**
+  Every look already on an editor's PC says `uppercase`, so reading it is
+  not a courtesy. `to_dict` writes `case_mode`; a file setting both to
+  contradict each other is refused by name rather than silently resolved.
+  The 39 shipped looks were migrated in place, two lines each, with no
+  reformatting of the hand-written compact JSON around them.
+- **The still poster applies punctuation too.** There are only four JASSUB
+  slots and the Styles page holds forty cards, so the editor's own sample
+  routinely loses the draw and the CSS poster is what a person is actually
+  looking at -- measured in a real browser, where the sample had no canvas
+  at all. Case came free from `text-transform`; punctuation had to be
+  applied to the text, or clicking "No full stops or commas" appeared to
+  do nothing.
+
+Verified by running it: all nine combinations burned with the bundled
+ffmpeg and read off the pixels (`WELL REALLY? STRASSE` -- comma and full
+stop gone, question mark kept, eszett to SS); all nine driven in a real
+browser and read back off the sample; and the whole editor path through
+the running app -- Save as, restyle job 5, read the `.ass` the app wrote
+-- giving 728 ALL CAPS events with no stops and an untouched `.srt`.
+
+The drift test grew a text half. It previously compared tag *formulas*
+only, so a look card could have dropped a comma the burn kept. It now
+runs every word through both implementations, and its word list is built
+from `_STOP_MARKS` itself: the first version was typed by hand, contained
+no colon, and stayed green when a colon was deleted from the JavaScript's
+copy of the set.
+
 **The guide now documents what shipped.** With v0.7 out, the note below
 about leaving the guide until the release was cut had expired: the six
 editors had the animation vocabulary and the per-word animation control,

@@ -324,9 +324,34 @@ Click **"Design your own caption styles →"** on the control page.
 
 ![The style editor](images/style-editor.png)
 
-Change anything: font (24 to choose from), size, letter spacing, ALL CAPS, the
-four colours, how the active word behaves, how captions enter, and **where they
-sit** (top, centre, bottom; left, middle, right).
+Change anything: font (24 to choose from), size, letter spacing, case and
+punctuation, the four colours, how the active word behaves, how captions enter,
+and **where they sit** (top, centre, bottom; left, middle, right).
+
+### Case and punctuation
+
+On the **Type** tab, under the font and size. Both change the caption that gets
+**burned into the video** — the `.srt` always keeps the words exactly as they
+were transcribed, so the file you hand a client or drop into Premiere is
+unaffected by either.
+
+| Case | |
+|---|---|
+| **Aa** As transcribed | What was actually said, sentence case. The default |
+| **AA** ALL CAPS | The short-form standard |
+| **aa** all lower case | Quieter and more modern; good under a calm voice |
+
+| Punctuation | |
+|---|---|
+| **As transcribed** | Everything the transcript had. The default, and the right one for client work |
+| **No full stops or commas** | Drops `.` `,` `;` `:` and keeps `?` and `!` — the short-form house style. Question marks and exclamation marks carry tone, so they stay |
+| **None at all** | Drops every mark. Apostrophes and hyphens *inside* a word survive, so "don't" and "twenty-five" stay readable |
+
+The sample above the tabs updates as you click, so you can read the treatment
+before you commit to it.
+
+> ALL CAPS on German turns ß into SS, which is what German spelling requires.
+> Nothing to set: it just happens.
 
 **Always preview first.** At the bottom, paste a video path and a start time in
 seconds where someone is talking, then click **Render preview**. A few seconds

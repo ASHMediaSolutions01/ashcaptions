@@ -2,7 +2,8 @@
   "name": "KARAOKE",
   "font": "Poppins",
   "size": 70,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0,
   "colors": {
     "text": "#FFFFFF",

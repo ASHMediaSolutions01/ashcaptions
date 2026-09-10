@@ -20,7 +20,8 @@
   const fontSelect = $("font-select");
   const sizeInput = $("size-input");
   const spacingInput = $("spacing-input");
-  const uppercaseCheck = $("uppercase-check");
+  const caseModeGroup = $("case-mode-group");
+  const punctuationGroup = $("punctuation-group");
   const colourText = $("colour-text");
   const colourActive = $("colour-active");
   const colourOutline = $("colour-outline");
@@ -59,6 +60,21 @@
   const EXIT_EFFECTS = ENTRANCE_EFFECTS;
   const MIN_DURATION_MS = 0;
   const MAX_DURATION_MS = 2000; // schema.py's _MAX_DURATION_MS
+  // schema.py's CASE_MODES and PUNCTUATION_MODES. The labels show the
+  // treatment rather than name it: an editor picking a caption case is
+  // choosing between three samples, not reading three settings.
+  const CASE_MODES = [
+    ["as_written", "Aa  As transcribed"], ["upper", "AA  ALL CAPS"], ["lower", "aa  all lower case"],
+  ];
+  const PUNCTUATION_MODES = [
+    ["keep", "As transcribed"],
+    ["no_stops", "No full stops or commas"],
+    ["none", "None at all"],
+  ];
+  // The editor's own sample sentence. Unlike the three-word cards in the
+  // list, this one carries a comma and a question mark, so Case and
+  // Punctuation both visibly do something the moment they are clicked.
+  const SAMPLE_WORDS = ["Well,", "really?", "Yes."];
   const POSITIONS = [["bottom", "Bottom"], ["center", "Center"], ["top", "Top"], ["lower_third", "Lower third"]];
   const ALIGNS = [["left", "Left"], ["center", "Centre"], ["right", "Right"]];
   const DEFAULT_ALIGN = "center"; // schema default for styles saved before `align` existed
@@ -117,6 +133,8 @@
   buildRadioGroup(exitGroup, "exit-effect", EXIT_EFFECTS, (value) => { draft.exit.effect = value; });
   buildRadioGroup(positionGroup, "position", POSITIONS, (value) => { draft.layout.position = value; });
   buildRadioGroup(alignGroup, "align", ALIGNS, (value) => { draft.layout.align = value; });
+  buildRadioGroup(caseModeGroup, "case-mode", CASE_MODES, (value) => { draft.case_mode = value; });
+  buildRadioGroup(punctuationGroup, "punctuation", PUNCTUATION_MODES, (value) => { draft.punctuation = value; });
 
   // ---- Loading ----
 
@@ -270,7 +288,8 @@
     fontSelect.value = draft.font;
     sizeInput.value = draft.size;
     spacingInput.value = draft.letter_spacing;
-    uppercaseCheck.checked = draft.uppercase;
+    setRadioValue(caseModeGroup, draft.case_mode || "as_written");
+    setRadioValue(punctuationGroup, draft.punctuation || "keep");
     colourText.value = toHex6(draft.colors.text);
     colourActive.value = toHex6(draft.colors.active);
     colourOutline.value = toHex6(draft.colors.outline);
@@ -311,7 +330,7 @@
     if (!draft || !window.AshLookCard) return;
     sample.className = `sample ${draft.layout.position || "bottom"} ${draft.layout.align || DEFAULT_ALIGN}`;
     if (!sampleCard) {
-      sampleCard = window.AshLookCard.create(draft);
+      sampleCard = window.AshLookCard.create(draft, null, SAMPLE_WORDS);
       sample.innerHTML = "";
       sample.appendChild(sampleCard);
       return;
@@ -325,7 +344,6 @@
   fontSelect.addEventListener("change", () => { draft.font = fontSelect.value; renderSample(); });
   sizeInput.addEventListener("input", () => { draft.size = Number(sizeInput.value) || draft.size; renderSample(); });
   spacingInput.addEventListener("input", () => { draft.letter_spacing = Number(spacingInput.value) || 0; renderSample(); });
-  uppercaseCheck.addEventListener("change", () => { draft.uppercase = uppercaseCheck.checked; renderSample(); });
   colourText.addEventListener("input", () => { draft.colors.text = withPreservedAlpha(draft.colors.text, colourText.value); renderSample(); });
   colourActive.addEventListener("input", () => { draft.colors.active = withPreservedAlpha(draft.colors.active, colourActive.value); renderSample(); });
   colourOutline.addEventListener("input", () => { draft.colors.outline = withPreservedAlpha(draft.colors.outline, colourOutline.value); renderSample(); });

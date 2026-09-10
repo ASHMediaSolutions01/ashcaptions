@@ -2,7 +2,8 @@
   "name": "SUNSET",
   "font": "Rubik",
   "size": 78,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFF1E6",

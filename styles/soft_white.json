@@ -2,7 +2,8 @@
   "name": "SOFT WHITE",
   "font": "Inter",
   "size": 64,
-  "uppercase": false,
+  "case_mode": "as_written",
+  "punctuation": "keep",
   "letter_spacing": 0.0,
   "colors": {
     "text": "#FFFFFF",
