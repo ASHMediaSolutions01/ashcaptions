@@ -117,10 +117,15 @@ def test_without_an_anchor_output_is_byte_identical_to_today():
     one = [card([word("hello", 0.0, 0.3), word("there", 0.3, 0.6)])]
     out = render_ass(one, style, play_res=(1080, 1920))
     assert out == render_ass(one, style, play_res=(1080, 1920), anchor=None)
-    # Today's exact events for this style (captured before the anchor work).
+    # Today's exact events for this style (captured before the anchor
+    # work; the shadow pair joined the leading block when the shadow moved
+    # out of the Style column to gain an angle -- same pixels, new text).
+    shadow = "{\\xshad2\\yshad2}"
     assert dialogue_lines(out) == [
-        "Dialogue: 0,0:00:00.00,0:00:00.30,X,,0,0,0,,{\\c&H632EFF&}hello{\\c&HFFFFFF&} {\\c&HFFFFFF&}there",
-        "Dialogue: 0,0:00:00.30,0:00:00.60,X,,0,0,0,,{\\c&HFFFFFF&}hello {\\c&H632EFF&}there{\\c&HFFFFFF&}",
+        "Dialogue: 0,0:00:00.00,0:00:00.30,X,,0,0,0,," + shadow
+        + "{\\c&H632EFF&}hello{\\c&HFFFFFF&} {\\c&HFFFFFF&}there",
+        "Dialogue: 0,0:00:00.30,0:00:00.60,X,,0,0,0,," + shadow
+        + "{\\c&HFFFFFF&}hello {\\c&H632EFF&}there{\\c&HFFFFFF&}",
     ]
     for name, shipped in shipped_line_styles().items():
         assert "\\pos(" not in render_ass(cards(), shipped), name

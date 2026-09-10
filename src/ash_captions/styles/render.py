@@ -77,6 +77,7 @@ from .ass_format import (
     ass_header,
     format_ass_time,
     safe_style_name,
+    shadow_tags as _shadow_tags,
 )
 from .render_anim import (
     SCALE_EFFECTS,
@@ -392,6 +393,13 @@ def _leading_override(
     pinned: bool = False,
 ) -> str:
     tags: list[str] = []
+    # The shadow is inline rather than a Style column because a column has
+    # no angle. It goes in every leading block, on every event, so that a
+    # caption's shadow does not depend on which effect happened to draw
+    # it -- the three event builders in this module all come through here.
+    shadow = _shadow_tags(style)
+    if shadow:
+        tags.append(shadow)
     if style.letter_spacing:
         tags.append(f"\\fsp{_num(style.letter_spacing)}")
 

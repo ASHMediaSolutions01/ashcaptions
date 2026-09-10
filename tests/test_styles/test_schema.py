@@ -222,3 +222,51 @@ class TestCaseAndPunctuation:
         style = Style.from_dict({"name": "X"}, check_font=False)
         with pytest.raises(AttributeError):
             style.uppercase = True
+
+
+class TestBoxAndShadow:
+    """Geometry for the two things drawn behind the words (v0.6 spec,
+    held item 4). Their colours stay in ``colors``, where colours live."""
+
+    def test_defaults_reproduce_what_the_renderer_hardcoded(self):
+        style = Style.from_dict({"name": "X"}, check_font=False)
+        assert style.box.padding == 0.28       # the old max(8, size * 0.28)
+        assert style.shadow.angle == 45.0      # the only place ASS could put it
+        assert style.shadow.distance == 2.83   # the true length of a (2, 2) offset
+
+    def test_the_default_distance_is_the_diagonal_not_the_axis(self):
+        """A default of 2 would have quietly pulled every shipped look's
+        shadow in from (2, 2) to (1.41, 1.41)."""
+        from ash_captions.styles.ass_format import shadow_offset
+
+        style = Style.from_dict({"name": "X"}, check_font=False)
+        dx, dy = shadow_offset(style)
+        assert (dx, dy) == (2.0, 2.0)
+
+    def test_round_trips(self):
+        data = {"name": "X", "box": {"padding": 0.5},
+                "shadow": {"angle": 210, "distance": 12.5}}
+        style = Style.from_dict(data, check_font=False)
+        assert style.box.padding == 0.5
+        assert style.shadow.angle == 210
+        assert Style.from_dict(style.to_dict(), check_font=False) == style
+
+    def test_rejects_out_of_range_values_by_name(self):
+        with pytest.raises(StyleValidationError, match="box.padding"):
+            Style.from_dict({"name": "X", "box": {"padding": 5}}, check_font=False)
+        with pytest.raises(StyleValidationError, match="shadow.angle"):
+            Style.from_dict({"name": "X", "shadow": {"angle": 400}}, check_font=False)
+        with pytest.raises(StyleValidationError, match="shadow.distance"):
+            Style.from_dict({"name": "X", "shadow": {"distance": 999}}, check_font=False)
+
+    def test_rejects_unknown_keys_in_either_block(self):
+        with pytest.raises(StyleValidationError, match="box"):
+            Style.from_dict({"name": "X", "box": {"radius": 8}}, check_font=False)
+        with pytest.raises(StyleValidationError, match="shadow"):
+            Style.from_dict({"name": "X", "shadow": {"blur": 4}}, check_font=False)
+
+    def test_a_look_from_before_these_blocks_existed_still_loads(self):
+        style = Style.from_dict(
+            {"name": "OLD", "colors": {"shadow": "#00000090"}}, check_font=False
+        )
+        assert style.box.padding == 0.28 and style.shadow.distance == 2.83

@@ -229,3 +229,22 @@
      and show the level. */
   .gain-row input[type="number"] { display: none; }
 }
+
+/* Box and shadow: a colour and its geometry on one row, so the group
+   reads as one thing rather than five settings that happen to be near
+   each other. */
+.effect-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.effect-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; }
+.slider-field { display: flex; flex-direction: column; gap: 4px; min-width: 130px; flex: 1 1 130px; }
+.slider-field > span { font-size: 12.5px; color: var(--muted); }
+.slider-field input[type="range"] { width: 100%; cursor: pointer; }
+.slider-field output {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) {
+  /* Two per row rather than four squeezed to nothing. */
+  .slider-field { flex: 1 1 45%; }
+}

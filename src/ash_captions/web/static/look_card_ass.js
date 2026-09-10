@@ -30,107 +30,32 @@
   const SLIDE_OFFSET_PX = 160;
   const POP_HALF_MS = 90;
   const SHAKE_QUARTER_MS = 45;
-  const ESCAPE_MAP = { "{": "｛", "}": "｝", "\\": "＼" };
-
-  function num(value) {
-    return Number.isInteger(value) ? String(value) : value.toFixed(2);
-  }
-
-  function parseHex(colour) {
-    const body = String(colour).replace("#", "");
-    const r = parseInt(body.slice(0, 2), 16);
-    const g = parseInt(body.slice(2, 4), 16);
-    const b = parseInt(body.slice(4, 6), 16);
-    const a = body.length === 8 ? parseInt(body.slice(6, 8), 16) : 255;
-    return [r, g, b, a];
-  }
-  function hex2(n) {
-    return n.toString(16).toUpperCase().padStart(2, "0");
-  }
-  function assStyleColour(colour) {
-    const [r, g, b, a] = parseHex(colour);
-    return `&H${hex2(255 - a)}${hex2(b)}${hex2(g)}${hex2(r)}`;
-  }
-  function assInlineColour(colour) {
-    const [r, g, b] = parseHex(colour);
-    return `&H${hex2(b)}${hex2(g)}${hex2(r)}&`;
-  }
-  // Python's round() breaks an exact .5 tie to the *even* number;
-  // Math.round breaks it upwards. At 12.345s that is a whole centisecond
-  // of disagreement between what a look card shows and what the burn
-  // writes -- found by tests/test_web/test_look_card_drift.py, which is
-  // the only thing that compares the two rather than comparing this file
-  // to numbers a person typed. ass_format.py is the source of truth.
-  function roundHalfToEven(value) {
-    const below = Math.floor(value);
-    const fraction = value - below;
-    if (fraction > 0.5) return below + 1;
-    if (fraction < 0.5) return below;
-    return below % 2 === 0 ? below : below + 1;
-  }
-
-  function formatAssTime(seconds) {
-    seconds = Math.max(seconds, 0);
-    const totalCs = roundHalfToEven(seconds * 100);
-    const hours = Math.floor(totalCs / 360000);
-    const remH = totalCs % 360000;
-    const minutes = Math.floor(remH / 6000);
-    const remM = remH % 6000;
-    const secs = Math.floor(remM / 100);
-    const cs = remM % 100;
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
-  }
-
-  const ROW_BASE = { bottom: 1, lower_third: 1, center: 4, top: 7 };
-  const COLUMN_OFFSET = { left: 0, center: 1, right: 2 };
-  function assAlignment(position, align) {
-    return (ROW_BASE[position] || 1) + (COLUMN_OFFSET[align] !== undefined ? COLUMN_OFFSET[align] : 1);
-  }
-  function outlineWidth(style) {
-    return Math.max(1, Math.round(style.size * 0.055));
-  }
-  function glowWidth(style) {
-    const base = outlineWidth(style);
-    return Math.max(base + 3, base * 2);
-  }
-  function safeStyleName(name) {
-    return String(name || "").replace(/,/g, "").replace(/ /g, "_") || "STYLE";
-  }
-  function escapeAssText(text) {
-    return String(text).replace(/[{}\\]/g, (ch) => ESCAPE_MAP[ch]);
-  }
-  // Hand-kept ports of render_word.apply_case / apply_punctuation. The
-  // character sets are the same list in the same order as the Python.
-  const STOP_MARKS = new Set(Array.from(".,;:…。、，；：،؛۔"));
-  const INTRA_WORD_MARKS = new Set(Array.from("'’-‐‑"));
-
-  function applyCase(text, mode) {
-    if (mode === "upper") return String(text).toUpperCase();
-    if (mode === "lower") return String(text).toLowerCase();
-    return String(text);
-  }
-
-  function applyPunctuation(text, mode) {
-    const s = String(text);
-    if (mode === "no_stops") {
-      return Array.from(s).filter((ch) => !STOP_MARKS.has(ch)).join("");
-    }
-    if (mode !== "none" || !s) return s;
-    const chars = Array.from(s);
-    return chars
-      .filter((ch, i) => {
-        if (!/\p{P}/u.test(ch)) return true;
-        return INTRA_WORD_MARKS.has(ch) && i > 0 && i < chars.length - 1
-          && /\p{L}/u.test(chars[i - 1]) && /\p{L}/u.test(chars[i + 1]);
-      })
-      .join("");
-  }
-
-  function prepareWordText(text, style) {
-    const cased = applyCase(applyPunctuation(text, style.punctuation || "keep"),
-                            style.case_mode || "as_written");
-    return escapeAssText(cased);
-  }
+  // Ports of ass_format.py and render_word.py: their own file, so this
+  // one stays about building a card. Loaded before this script in the
+  // browser (style_editor.html, studio_looks.js) and required under Node.
+  const S = (typeof module !== "undefined" && module.exports)
+    ? require("./look_card_style.js")
+    : root.AshLookCardStyle;
+  const num = S.num;
+  const parseHex = S.parseHex;
+  const hex2 = S.hex2;
+  const assStyleColour = S.assStyleColour;
+  const assInlineColour = S.assInlineColour;
+  const roundHalfToEven = S.roundHalfToEven;
+  const formatAssTime = S.formatAssTime;
+  const assAlignment = S.assAlignment;
+  const outlineWidth = S.outlineWidth;
+  const glowWidth = S.glowWidth;
+  const boxPaddingPx = S.boxPaddingPx;
+  const shadowGeometry = S.shadowGeometry;
+  const shadowVisible = S.shadowVisible;
+  const shadowOffset = S.shadowOffset;
+  const shadowTags = S.shadowTags;
+  const safeStyleName = S.safeStyleName;
+  const escapeAssText = S.escapeAssText;
+  const applyCase = S.applyCase;
+  const applyPunctuation = S.applyPunctuation;
+  const prepareWordText = S.prepareWordText;
 
   function styleField(o) {
     return (
@@ -147,8 +72,7 @@
     const layout = style.layout || {};
     const alignment = assAlignment(layout.position || "bottom", layout.align || "center");
     const outline = outlineWidth(style);
-    const shadowWidth = String(style.colors.shadow).toUpperCase() !== "#00000000" ? 2 : 0;
-    const boxPadding = Math.max(8, Math.round(style.size * 0.28));
+    const boxPadding = boxPaddingPx(style);
     const cardBox = style.active_word.effect === "card_box";
     const baseStyle = styleField({
       name: baseName, font: style.font, size: style.size,
@@ -157,7 +81,7 @@
       backColour: cardBox ? style.colors.box : style.colors.shadow,
       borderStyle: cardBox ? 3 : 1,
       outlineWidthPx: cardBox ? boxPadding : outline,
-      shadow: cardBox ? 0 : shadowWidth,
+      shadow: 0,
       alignment, layout,
     });
     const boxStyle = styleField({
@@ -310,6 +234,8 @@
 
   function leadingOverride(style, x, y, isFirst, isLast, eventMs) {
     const tags = [];
+    const shadow = shadowTags(style);
+    if (shadow) tags.push(shadow);
     if (style.letter_spacing) tags.push(`\\fsp${num(style.letter_spacing)}`);
     const eTag = isFirst ? entranceTag(style, x, y, eventMs) : "";
     const xTag = isLast ? exitTag(style, x, y, eventMs) : "";
@@ -479,6 +405,9 @@
     activeWordTags,
     safeStyleName,
     applyCase,
+    shadowTags,
+    shadowOffset,
+    boxPaddingPx,
     applyPunctuation,
     prepareWordText,
   };

@@ -69,17 +69,23 @@
         link.dataset.ashLookCard = "1";
         document.head.appendChild(link);
       }
-      const assScript = document.createElement("script");
-      assScript.src = "/static/look_card_ass.js";
-      assScript.onload = () => {
+      // Three files, in order: the ass_format ports, the sample builder
+      // that uses them, then the DOM half. look_card_ass.js reads
+      // AshLookCardStyle at load, so loading it first is not optional.
+      const chain = ["/static/look_card_style.js", "/static/look_card_ass.js",
+                     "/static/look_card.js"];
+      const next = (i) => {
+        if (i === chain.length) {
+          resolve(!!window.AshLookCard);
+          return;
+        }
         const script = document.createElement("script");
-        script.src = "/static/look_card.js";
-        script.onload = () => resolve(!!window.AshLookCard);
+        script.src = chain[i];
+        script.onload = () => next(i + 1);
         script.onerror = () => resolve(false);
         document.head.appendChild(script);
       };
-      assScript.onerror = () => resolve(false);
-      document.head.appendChild(assScript);
+      next(0);
     });
     return lookCardPromise;
   }

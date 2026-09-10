@@ -24,6 +24,75 @@ def outline_width(style: Style) -> int:
     return max(1, round(style.size * 0.055))
 
 
+def box_padding(style: Style) -> int:
+    """The Outline column of a BorderStyle=3 style, which is what pads a
+    box. MEASURED: it adds its own value to each side, linearly -- 132px
+    of text became 148, 156, 172 and 204 wide at padding 4, 8, 16 and 32.
+
+    The 8px floor was here before ``box.padding`` was a control and is
+    kept: a box thinner than that reads as a rendering fault rather than
+    a design, and at small sizes 0.28 of the size falls under it.
+    """
+    return max(8, round(style.size * style.box.padding))
+
+
+def shadow_visible(style: Style) -> bool:
+    """A shadow is drawn only when it has both a colour and a distance.
+
+    The colour test is the exact string the renderer has always used --
+    widening it would turn the shadow on for looks that never had one.
+    """
+    return style.colors.shadow.upper() != "#00000000" and style.shadow.distance > 0
+
+
+def shadow_offset(style: Style) -> tuple[float, float]:
+    """Where the shadow falls, in script pixels.
+
+    Degrees with 0 to the right and increasing clockwise, so +y is down
+    the screen and 45 is down-right -- the one place ASS's own Shadow
+    column could put it, which is why it is the default.
+
+    ``distance`` is how far the shadow travels, not how far it moves on
+    each axis. That distinction is the whole reason the default is 2.83
+    and not 2: ASS's ``Shadow: 2`` offsets by 2 *on both axes*, whose
+    real distance is 2 times the square root of 2. Getting this wrong
+    would have quietly pulled every shipped look's shadow in to (1.41,
+    1.41) while claiming nothing had changed.
+
+    Both values are rounded here, not at the caller: cos(90 degrees) is
+    6.1e-17 rather than 0, which formats as "0.00" on one axis and "0" on
+    another, and negative zero prints as "-0".
+    """
+    import math
+
+    radians = math.radians(style.shadow.angle)
+    dx = round(style.shadow.distance * math.cos(radians), 2)
+    dy = round(style.shadow.distance * math.sin(radians), 2)
+    return (dx + 0.0 if dx else 0.0, dy + 0.0 if dy else 0.0)
+
+
+def shadow_tags(style: Style) -> str:
+    """``\\xshad``/``\\yshad`` for the leading override block, or "".
+
+    MEASURED 2026-09-10: a Style-level ``Shadow: N`` and an inline
+    ``\\xshadN\\yshadN`` are byte-identical at 48, 90 and 140px and at
+    distance 1, 2, 4 and 8. That equivalence is the whole reason the
+    renderer can move to the inline pair -- and so gain an angle -- with
+    no shipped look rendering one pixel differently.
+    """
+    if not shadow_visible(style):
+        return ""
+    dx, dy = shadow_offset(style)
+    return f"\\xshad{_num(dx)}\\yshad{_num(dy)}"
+
+
+def _num(value: float) -> str:
+    """Trim a float the way the rest of the renderer does: 2 not 2.0,
+    283.5 not 283.50. The drift test compares these strings against the
+    JavaScript port character for character."""
+    return f"{value:.0f}" if float(value).is_integer() else f"{value:.2f}"
+
+
 # ---------------------------------------------------------------------------
 # header
 # ---------------------------------------------------------------------------
@@ -32,9 +101,10 @@ def outline_width(style: Style) -> int:
 def ass_header(style: Style, base_name: str, box_name: str, width: int, height: int) -> str:
     alignment = ass_alignment(style.layout.position, getattr(style.layout, "align", "center"))
     outline = outline_width(style)
-    shadow_width = 2 if style.colors.shadow.upper() not in ("#00000000",) else 0
-
-    box_padding = max(8, round(style.size * 0.28))
+    # The shadow is drawn by the inline pair in the leading override now,
+    # not by this column, because a column has no angle. The two render
+    # identically -- see shadow_tags.
+    padding = box_padding(style)
     # card_box: the base style itself is the bar -- every word of the
     # caption sits on one box, the active word differing only by colour.
     card_box = style.active_word.effect == "card_box"
@@ -47,8 +117,8 @@ def ass_header(style: Style, base_name: str, box_name: str, width: int, height: 
         outline_colour=style.colors.box if card_box else style.colors.outline,
         back_colour=style.colors.box if card_box else style.colors.shadow,
         border_style=3 if card_box else 1,
-        outline_width=box_padding if card_box else outline,
-        shadow=0 if card_box else shadow_width,
+        outline_width=padding if card_box else outline,
+        shadow=0,
         alignment=alignment,
         layout=style.layout,
     )
@@ -61,7 +131,7 @@ def ass_header(style: Style, base_name: str, box_name: str, width: int, height: 
         outline_colour=style.colors.box,
         back_colour=style.colors.box,
         border_style=3,
-        outline_width=box_padding,
+        outline_width=padding,
         shadow=0,
         alignment=alignment,
         layout=style.layout,

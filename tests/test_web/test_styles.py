@@ -513,3 +513,52 @@ class TestSoundVolumeIsReachable:
         html = self._static("style_editor.html")
         assert 'min="-40" max="6"' in html
         assert Sound().gain_db == -8.0, "the default the guide and the hint both name"
+
+
+class TestBoxAndShadowControls:
+    """v0.6 spec, held item 4. Box colour, opacity and size; shadow
+    colour, opacity, angle and distance -- all on the Colours tab, so the
+    two things drawn behind the words are set in one place."""
+
+    def _static(self, name: str) -> str:
+        from ash_captions.web.app import STATIC_DIR
+
+        return (STATIC_DIR / name).read_text(encoding="utf-8")
+
+    def test_every_control_the_spec_named_is_on_the_page(self):
+        html = self._static("style_editor.html")
+        for control in ("colour-box", "box-opacity", "box-padding",
+                        "colour-shadow", "shadow-opacity", "shadow-distance", "shadow-angle"):
+            assert f'id="{control}"' in html, control
+
+    def test_the_shadow_colour_is_reachable_at_last(self):
+        """It round-tripped unchanged through Save for four versions
+        because the editor had nowhere to put it."""
+        html = self._static("style_editor.html")
+        assert 'id="colour-shadow"' in html
+        assert "Deliberately not exposed here: colors.shadow" not in html
+
+    def test_the_ranges_match_the_schema(self):
+        from ash_captions.styles.schema import _MAX_SHADOW_DISTANCE
+
+        html = self._static("style_editor.html")
+        assert f'id="shadow-distance" min="0" max="{int(_MAX_SHADOW_DISTANCE)}"' in html
+        assert 'id="shadow-angle" min="0" max="360"' in html
+
+    def test_opacity_writes_the_colours_alpha_rather_than_a_new_field(self):
+        """One source of truth: a look already carries the opacity of its
+        box and shadow in the colour's alpha byte."""
+        from ash_captions.styles.schema import Style
+
+        source = self._static("style_editor_effects.js")
+        assert "withAlpha" in source
+        assert "opacity" not in Style.from_dict({"name": "X"}, check_font=False).to_dict()["box"]
+
+    def test_the_still_poster_shows_the_shadow_angle_and_the_box_size(self):
+        """The sample is usually the CSS poster, not the JASSUB canvas --
+        four slots, forty cards. A slider that moves nothing there is a
+        slider that appears broken."""
+        source = self._static("look_card.js")
+        assert "shadowOffset(style)" in source
+        assert "boxPaddingPx(style)" in source
+        assert "textShadow" in source

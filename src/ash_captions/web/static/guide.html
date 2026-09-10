@@ -277,6 +277,22 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <figure><img src="/static/guide/style-editor.png" alt="The style editor: a list of looks on the left, settings in the middle, and a live preview"><figcaption>The style editor. Pick a look on the left, change anything, render a real 3-second clip of your own footage at the bottom.</figcaption></figure>
   <p>Change anything: font (24 to choose from), size, letter spacing, case and punctuation, the four colours, how the active word behaves, how captions enter, and <strong>where they sit</strong> (top, centre, bottom; left, middle, right).</p>
 
+  <h3>The box and the shadow</h3>
+  <p>On the <strong>Colours</strong> tab, under the three text colours. Both are things drawn <em>behind</em> the words, so they live together.</p>
+  <table class="plain">
+    <tr><th>Box</th><th></th></tr>
+    <tr><td><strong>Colour</strong> and <strong>Opacity</strong></td><td>Opacity 0 hides the box whatever colour it is — that is how most looks are set.</td></tr>
+    <tr><td><strong>Size</strong></td><td>The padding around the words, as a share of the type size. It stays in proportion when you change the size.</td></tr>
+  </table>
+  <table class="plain">
+    <tr><th>Shadow</th><th></th></tr>
+    <tr><td><strong>Colour</strong> and <strong>Opacity</strong></td><td></td></tr>
+    <tr><td><strong>Distance</strong></td><td>How far the shadow falls, in pixels. <strong>0 turns it off.</strong></td></tr>
+    <tr><td><strong>Angle</strong></td><td>Which way it falls. 45° is down and to the right, where a shadow normally goes; 225° puts it up and to the left.</td></tr>
+  </table>
+  <p>The sample above the tabs follows both, so you can see the shadow swing round as you drag the angle.</p>
+  <p class="note"><strong>No corner radius, and no soft shadow — yet.</strong> Both were tried and measured. A rounded box has to be drawn as a shape sized to the words, and we cannot measure the words the way the renderer does: the two disagree by up to 553 pixels, so the box would visibly miss. A blurred shadow needs its own layer under the caption, because blurring it in place blurs the letters with it. Ask if you want either and they can be built properly.</p>
+
   <h3>Case and punctuation</h3>
   <p>On the <strong>Type</strong> tab, under the font and size. Both change the caption that gets <strong>burned into the video</strong> — the <code>.srt</code> always keeps the words exactly as they were transcribed, so the file you hand a client or drop into Premiere is unaffected by either.</p>
   <table class="plain">

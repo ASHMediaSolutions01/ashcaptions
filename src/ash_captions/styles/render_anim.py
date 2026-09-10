@@ -44,13 +44,22 @@ BOUNCE_BACK_ACCEL = 1.7
 # \blur's radius. 12 is soft enough to be unmistakably a blur at 1080p
 # without the word smearing into its neighbours.
 BLUR_RADIUS = 12
-# MEASURED, and the whole reason blur is not a one-tag effect: in this
-# build \blur (and \be) are a COMPLETE no-op whenever the Style's Outline
-# is non-zero. Not weakened -- byte-identical output, at outline 0.5 and
-# at 6 alike. Only \bord0 in the same block brings it back, and then it
-# renders pixel-for-pixel like an outline-0 style. Every legible caption
-# look has an outline, so a blur that did not also drop the border would
-# have shipped as a control that does nothing whatsoever.
+# MEASURED, and the whole reason blur is not a one-tag effect: with a
+# non-zero Outline, \blur never softens the GLYPH. Re-measured 2026-09-10
+# with a visible outline on black, counting solid (>200) pixels in the
+# letterform at radius 0, 6 and 18:
+#
+#   outline 0   solid 1413 -> 0    -> 0      the word really does dissolve
+#   outline 3   solid 1424 -> 1441 -> 1432   the core never softens at all
+#   outline 6   solid 1424 -> 1426 -> 1440   nor here
+#
+# The outline's own edge does spread (lit 3575 -> 5284 at outline 3), so
+# the earlier note here -- "byte-identical output" -- was wrong: it was
+# measured with a BLACK outline on a BLACK background, where a softened
+# black edge is invisible to the eye and to a pixel diff alike. The
+# conclusion it drew is still the right one, for a better reason: an
+# entrance that has to open soft and resolve sharp needs the letterform
+# itself to soften, and that only happens at \bord0.
 BLUR_NEEDS_BORD0 = True
 # How many times a blink goes dark. Two reads as a deliberate flash; more
 # reads as a fault in the file.

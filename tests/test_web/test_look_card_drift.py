@@ -272,3 +272,38 @@ def test_case_and_punctuation_treat_every_word_the_same_way():
                 cases.append({"fn": "prepareWordText", "text": word, "style": definition})
                 expected.append(prepare_word_text(word, style))
     compare(cases, expected)
+
+
+# ---------------------------------------------------------------------------
+# ass_format.py's box padding and shadow geometry
+# ---------------------------------------------------------------------------
+
+
+def test_box_padding_agrees():
+    """The padding is what makes a box a box. A card that padded it
+    differently from the burn would show the wrong shape of every boxed
+    look on the Styles page."""
+    cases, expected = [], []
+    for padding in (0.0, 0.1, 0.28, 0.5, 1.0):
+        for size in (24, 48, 80, 140, 300):
+            definition = look(size=size, box={"padding": padding})
+            cases.append({"fn": "boxPaddingPx", "style": definition})
+            expected.append(ass_format.box_padding(Style.from_dict(definition, check_font=False)))
+    compare(cases, expected)
+
+
+def test_shadow_geometry_agrees_all_the_way_round():
+    """Every 15 degrees, at several distances. The trig is done twice --
+    once in Python, once in JavaScript -- and the two have to round the
+    same way, or a card's shadow falls somewhere the burn's does not."""
+    cases, expected = [], []
+    for angle in range(0, 361, 15):
+        for distance in (0, 0.5, 2.83, 6, 12.5, 40):
+            definition = look(shadow={"angle": angle, "distance": distance})
+            cases.append({"fn": "shadowTags", "style": definition})
+            expected.append(ass_format.shadow_tags(Style.from_dict(definition, check_font=False)))
+    # and the case where the colour, not the geometry, turns it off
+    off = look(colors={"shadow": "#00000000"})
+    cases.append({"fn": "shadowTags", "style": off})
+    expected.append(ass_format.shadow_tags(Style.from_dict(off, check_font=False)))
+    compare(cases, expected)

@@ -25,7 +25,6 @@
   const colourText = $("colour-text");
   const colourActive = $("colour-active");
   const colourOutline = $("colour-outline");
-  const colourBox = $("colour-box");
   const activeWordGroup = $("active-word-effect-group");
   const entranceGroup = $("entrance-effect-group");
   const exitGroup = $("exit-effect-group");
@@ -293,7 +292,6 @@
     colourText.value = toHex6(draft.colors.text);
     colourActive.value = toHex6(draft.colors.active);
     colourOutline.value = toHex6(draft.colors.outline);
-    colourBox.value = toHex6(draft.colors.box);
     setRadioValue(activeWordGroup, draft.active_word.effect);
     setRadioValue(entranceGroup, draft.entrance.effect);
     entranceDurationInput.value = draft.entrance.duration_ms;
@@ -302,6 +300,7 @@
     setRadioValue(positionGroup, draft.layout.position);
     setRadioValue(alignGroup, draft.layout.align || DEFAULT_ALIGN);
     if (window.AshStyleSound) AshStyleSound.apply();
+    if (window.AshStyleEffects) AshStyleEffects.apply();
     renderSample();
   }
 
@@ -347,7 +346,6 @@
   colourText.addEventListener("input", () => { draft.colors.text = withPreservedAlpha(draft.colors.text, colourText.value); renderSample(); });
   colourActive.addEventListener("input", () => { draft.colors.active = withPreservedAlpha(draft.colors.active, colourActive.value); renderSample(); });
   colourOutline.addEventListener("input", () => { draft.colors.outline = withPreservedAlpha(draft.colors.outline, colourOutline.value); renderSample(); });
-  colourBox.addEventListener("input", () => { draft.colors.box = withPreservedAlpha(draft.colors.box, colourBox.value); renderSample(); });
 
   function clampDuration(value, fallback) {
     const n = Number(value);
@@ -444,4 +442,7 @@
   loadStyles();
   AshEditorPreview.init({ getDraft: () => draft });
   if (window.AshStyleSound) AshStyleSound.init({ getDraft: () => draft });
+  if (window.AshStyleEffects) {
+    AshStyleEffects.init({ getDraft: () => draft, onChange: renderSample });
+  }
 })();

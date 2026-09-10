@@ -39,6 +39,10 @@ process.stdin.on("end", () => {
         return ass.activeWordTags(c.style, c.active_colour, c.text_colour, c.scaling);
       case "prepareWordText":
         return ass.prepareWordText(c.text, c.style);
+      case "shadowTags":
+        return ass.shadowTags(c.style);
+      case "boxPaddingPx":
+        return ass.boxPaddingPx(c.style);
       default:
         throw new Error(`unknown function ${c.fn}`);
     }

@@ -39,6 +39,8 @@
   // punctuation has to be applied to the text, or clicking "No full
   // stops or commas" appears to do nothing at all.
   const applyPunctuation = window.AshLookCardAss.applyPunctuation;
+  const shadowOffset = window.AshLookCardAss.shadowOffset;
+  const boxPaddingPx = window.AshLookCardAss.boxPaddingPx;
 
   function buildPoster(style, opts, words) {
     const o = Object.assign({ fontDivisor: 3.8, fontMin: 15, fontMax: 24 }, opts);
@@ -51,7 +53,18 @@
     poster.style.color = colors.text || "#fff";
     poster.style.letterSpacing = `${(style.letter_spacing || 0) * 0.02}em`;
     poster.style.textTransform = cssTextTransform(style.case_mode);
-    poster.style.textShadow = `0 0 2px ${colors.outline || "#000"}, 0 2px 3px ${colors.shadow || "transparent"}`;
+    // The poster is drawn at a fraction of the look's real size, so the
+    // shadow offset and the box padding have to come down by the same
+    // fraction or a 12px shadow on a 110px look would swamp a 22px
+    // sample. Without this the Angle and Size sliders would move nothing
+    // a person can see -- the sample is usually the CSS poster, not the
+    // JASSUB canvas.
+    const scale = parseFloat(poster.style.fontSize) / (style.size || 72);
+    const [sdx, sdy] = shadowOffset(style);
+    const shadowColour = colors.shadow || "transparent";
+    poster.style.textShadow = `0 0 2px ${colors.outline || "#000"}, `
+      + `${(sdx * scale).toFixed(2)}px ${(sdy * scale).toFixed(2)}px 1px ${shadowColour}`;
+    const padPx = Math.max(1, Math.round(boxPaddingPx(style) * scale));
     ((words && words.length) ? words : SAMPLE_WORDS).forEach((word, i) => {
       const w = document.createElement("span");
       w.className = "w";
@@ -59,7 +72,10 @@
       if (i === 1) {
         w.style.color = colors.active || colors.text || "#fff";
         const boxed = active.box || ["box", "scale_box", "card_box"].includes(active.effect);
-        if (boxed && colors.box) w.style.background = colors.box;
+        if (boxed && colors.box) {
+          w.style.background = colors.box;
+          w.style.padding = `${Math.round(padPx * 0.45)}px ${padPx}px`;
+        }
         if (active.effect === "glow") w.style.textShadow = `0 0 8px ${colors.active || "#fff"}`;
         if (active.effect === "pop" || active.effect === "scale_box") w.style.transform = "scale(1.1)";
       }

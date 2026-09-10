@@ -32,6 +32,11 @@ function baseStyle(overrides) {
   );
 }
 
+// The leading block opens with the look's shadow now that the shadow
+// carries an angle and so cannot live in the Style column. The base
+// fixture has a visible shadow, so every leading block starts with it.
+const SHADOW = "\\xshad2\\yshad2";
+
 test("assStyleColour matches ASS's &HAABBGGRR, alpha inverted", () => {
   assert.equal(ass.assStyleColour("#FFFFFF"), "&H00FFFFFF");
   assert.equal(ass.assStyleColour("#000000"), "&H00000000");
@@ -83,7 +88,7 @@ test("leadingOverride merges a one-event fade entrance+exit into one \\fad", () 
     entrance: { effect: "fade", duration_ms: 120 },
     exit: { effect: "fade", duration_ms: 100 },
   });
-  assert.equal(ass.leadingOverride(style, 540, 1800, true, true, 2000), "\\fad(120,100)");
+  assert.equal(ass.leadingOverride(style, 540, 1800, true, true, 2000), SHADOW + "\\fad(120,100)");
 });
 
 test("leadingOverride splits the event in half when both fades don't fit", () => {
@@ -91,7 +96,7 @@ test("leadingOverride splits the event in half when both fades don't fit", () =>
     entrance: { effect: "fade", duration_ms: 120 },
     exit: { effect: "fade", duration_ms: 100 },
   });
-  assert.equal(ass.leadingOverride(style, 540, 1800, true, true, 150), "\\fad(75,75)");
+  assert.equal(ass.leadingOverride(style, 540, 1800, true, true, 150), SHADOW + "\\fad(75,75)");
 });
 
 test("activeWordTags: pop scales up then back to 100 in the active colour", () => {

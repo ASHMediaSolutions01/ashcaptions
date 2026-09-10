@@ -342,6 +342,32 @@ Change anything: font (24 to choose from), size, letter spacing, case and
 punctuation, the four colours, how the active word behaves, how captions enter,
 and **where they sit** (top, centre, bottom; left, middle, right).
 
+### The box and the shadow
+
+On the **Colours** tab, under the three text colours. Both are things drawn
+*behind* the words, so they live together.
+
+| Box | |
+|---|---|
+| **Colour** and **Opacity** | Opacity 0 hides the box whatever colour it is — that is how most looks are set |
+| **Size** | The padding around the words, as a share of the type size. It stays in proportion when you change the size |
+
+| Shadow | |
+|---|---|
+| **Colour** and **Opacity** | |
+| **Distance** | How far the shadow falls, in pixels. **0 turns it off** |
+| **Angle** | Which way it falls. 45° is down and to the right, where a shadow normally goes; 225° puts it up and to the left |
+
+The sample above the tabs follows both, so you can see the shadow swing round
+as you drag the angle.
+
+> **No corner radius, and no soft shadow — yet.** Both were tried and
+> measured. A rounded box has to be drawn as a shape sized to the words, and
+> we cannot measure the words the way the renderer does: the two disagree by
+> up to 553 pixels, so the box would visibly miss. A blurred shadow needs its
+> own layer under the caption, because blurring it in place blurs the letters
+> with it. Ask if you want either and they can be built properly.
+
 ### Case and punctuation
 
 On the **Type** tab, under the font and size. Both change the caption that gets

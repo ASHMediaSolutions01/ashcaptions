@@ -41,7 +41,7 @@ from typing import Protocol
 
 from ..engine.rules import Card
 from ..engine.transcribe import Word
-from .ass_format import ass_inline_colour, outline_width
+from .ass_format import ass_inline_colour, outline_width, shadow_tags
 from .render_anim import entrance_tag as anim_entrance_tag
 from .render_word import WORD_ANIM_DEFAULT_MS, prepare_word_text
 from .schema import Slot, Style
@@ -327,6 +327,15 @@ def _word_tags(
         tags.append(f"\\move({num(x)},{num(y - SETTLE_DROP_PX)},{num(x)},{num(y)},0,{enter_ms})")
     else:
         tags.append(f"\\pos({num(x)},{num(y)})")
+
+    # Free layout builds its own tag list rather than coming through
+    # render._leading_override, so the look's shadow is added here too --
+    # otherwise the reel looks would be the one family in the library that
+    # quietly ignores the shadow controls. It sits with the placement
+    # tags, not between \bord and \c: those two are read as a pair.
+    shadow = shadow_tags(style)
+    if shadow:
+        tags.append(shadow)
 
     tags.append(f"\\fn{slot.font or style.font}")
     italic = slot.italic if _attr(override, "italic") is None else bool(_attr(override, "italic"))

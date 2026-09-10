@@ -116,6 +116,12 @@ _MIN_FRACTION, _MAX_FRACTION = 0.0, 1.0
 _MIN_SLOT_SCALE, _MAX_SLOT_SCALE = 0.2, 3.0
 _MIN_SLOT_BORDER, _MAX_SLOT_BORDER = 0.0, 3.0
 _MIN_INTENSITY, _MAX_INTENSITY = 0.0, 1.0
+# Box padding is a multiple of the look's size; 0 is no box at all and
+# 1.0 is a bar taller than the type is.
+_MIN_BOX_PADDING, _MAX_BOX_PADDING = 0.0, 1.0
+# Shadow distance in script pixels. 40 at a 1080-wide PlayRes is already
+# a shadow halfway across a word.
+_MIN_SHADOW_DISTANCE, _MAX_SHADOW_DISTANCE = 0.0, 40.0
 _MAX_SLOTS = _MAX_MAX_WORDS  # a card can never be wider than max_words
 
 
@@ -302,6 +308,89 @@ class Slot:
 
     def to_dict(self) -> dict:
         return {f.name: getattr(self, f.name) for f in fields(Slot)}
+
+
+@dataclass(frozen=True, slots=True)
+class Box:
+    """How big the box behind the caption is. Its colour is
+    ``colors.box``, where every colour lives.
+
+    ``padding`` is a multiple of the look's size rather than a pixel
+    count, so a box stays in proportion when the size changes -- 0.28 is
+    what the renderer hardcoded before this was a control, and stays the
+    default so no shipped look moves.
+
+    Corner radius is deliberately absent. It needs a drawn shape (``\\p``)
+    behind the text, and a drawn shape has to be sized to the text --
+    which libass measures and we cannot. Measured 2026-09-10: PIL reading
+    the same font file at the same size disagrees with what libass
+    actually rendered by 29 to 553px, and the ratio differs per face
+    (Inter 0.68, Archivo Black 0.72, Montserrat ExtraBold 0.63), so a box
+    drawn from that measurement would visibly miss the words it is meant
+    to sit behind.
+    """
+
+    padding: float = 0.28
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Box":
+        _reject_unknown_keys("box", data, {"padding"})
+        defaults = cls()
+        padding = _require_number(
+            "box.padding", data.get("padding", defaults.padding),
+            lo=_MIN_BOX_PADDING, hi=_MAX_BOX_PADDING,
+        )
+        return cls(padding=float(padding))
+
+    def to_dict(self) -> dict:
+        return {"padding": self.padding}
+
+
+@dataclass(frozen=True, slots=True)
+class Shadow:
+    """Where the caption's shadow falls and how far. Its colour, and its
+    opacity as that colour's alpha, are ``colors.shadow``.
+
+    ``angle`` is in degrees with 0 to the right and increasing clockwise,
+    so 45 is down-right -- which is the only place ASS's own ``Shadow``
+    field could ever put it, and therefore the default.
+
+    MEASURED 2026-09-10, and the reason this can exist without restyling
+    anything: a Style-level ``Shadow: N`` and an inline ``\\xshadN\\yshadN``
+    render byte-identically at every size and distance tried (48/90/140px
+    at 1, 2, 4 and 8), so the renderer moves to the inline pair and gains
+    an angle for free.
+
+    ``blur`` is absent for now. Measured: blurring a shadow in the same
+    event blurs the text with it -- the letterform's solid pixels drop to
+    zero -- so a soft shadow has to be its own Dialogue line underneath,
+    the way ``render_glow`` builds a halo. That is a real route, but it
+    means a second event on every caption in four separate emission
+    paths, which is its own change.
+    """
+
+    # 2.83 is not an arbitrary default: it is the true distance of ASS's
+    # own (2, 2) offset, so a look that says nothing about its shadow
+    # renders exactly where it always did. A default of 2 would have been
+    # a quiet restyle of all 39 looks.
+    angle: float = 45.0
+    distance: float = 2.83
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Shadow":
+        _reject_unknown_keys("shadow", data, {"angle", "distance"})
+        defaults = cls()
+        angle = _require_number(
+            "shadow.angle", data.get("angle", defaults.angle), lo=0.0, hi=360.0
+        )
+        distance = _require_number(
+            "shadow.distance", data.get("distance", defaults.distance),
+            lo=_MIN_SHADOW_DISTANCE, hi=_MAX_SHADOW_DISTANCE,
+        )
+        return cls(angle=float(angle), distance=float(distance))
+
+    def to_dict(self) -> dict:
+        return {"angle": self.angle, "distance": self.distance}
 
 
 @dataclass(frozen=True, slots=True)
@@ -649,6 +738,8 @@ _TOP_LEVEL_FIELDS = {
     "case_mode",
     "punctuation",
     "letter_spacing",
+    "box",
+    "shadow",
     "colors",
     "active_word",
     "entrance",
@@ -670,6 +761,8 @@ class Style:
     active_word: ActiveWord = field(default_factory=ActiveWord)
     entrance: Transition = field(default_factory=lambda: Transition(effect="fade", duration_ms=120))
     exit: Transition = field(default_factory=lambda: Transition(effect="none", duration_ms=0))
+    box: Box = field(default_factory=Box)
+    shadow: Shadow = field(default_factory=Shadow)
     layout: Layout = field(default_factory=Layout)
     sound: Sound = field(default_factory=Sound)
 
@@ -754,6 +847,8 @@ class Style:
             default_effect=defaults.exit.effect,
             default_duration_ms=defaults.exit.duration_ms,
         )
+        box = Box.from_dict(_require_dict("box", data.get("box", {})))
+        shadow = Shadow.from_dict(_require_dict("shadow", data.get("shadow", {})))
         layout = Layout.from_dict(_require_dict("layout", data.get("layout", {})), check_font=check_font)
         # ``check_font`` doubles as "check the bundled asset libraries": a
         # test that does not want a fonts manifest does not want a sounds
@@ -771,6 +866,8 @@ class Style:
             active_word=active_word,
             entrance=entrance,
             exit=exit_,
+            box=box,
+            shadow=shadow,
             layout=layout,
             sound=sound,
         )
@@ -789,6 +886,8 @@ class Style:
             "active_word": {f.name: getattr(self.active_word, f.name) for f in fields(ActiveWord)},
             "entrance": {f.name: getattr(self.entrance, f.name) for f in fields(Transition)},
             "exit": {f.name: getattr(self.exit, f.name) for f in fields(Transition)},
+            "box": self.box.to_dict(),
+            "shadow": self.shadow.to_dict(),
             "layout": self.layout.to_dict(),
             "sound": self.sound.to_dict(),
         }

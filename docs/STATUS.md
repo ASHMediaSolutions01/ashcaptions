@@ -21,9 +21,64 @@ running it, not inferred.
 
 ## Where the project is
 
+**What this is, since it decides design questions:** a captions generator
+in the Veed / Submagic category, not a video editor. Ghazi, 2026-09-10.
+The chrome stays neutral because a caption's colour is judged against
+footage, not because the tool wants to look like an edit suite.
+
 **v0.7.0 is published.** Sound effects locked to the caption word, a wider
 animation vocabulary, per-word animation, the Studio layout and behaviour
 fixes, and an updater that finally says where you stand.
+
+**Box and shadow are real controls** (v0.6 spec, held item 4), unreleased.
+Box: colour, opacity, size. Shadow: colour, opacity, angle, distance --
+seven of the nine properties the spec named. The shadow colour had round-
+tripped untouched through Save for four versions because the editor had
+nowhere to put it.
+
+Everything was measured before it was offered, and two measurements
+changed the design:
+
+- **A Style-level `Shadow: N` and an inline `\xshadN\yshadN` are
+  byte-identical** at 48/90/140px and at distance 1, 2, 4 and 8. That is
+  the whole reason the shadow could move out of the Style column -- where
+  it can only ever fall down-right -- and gain an angle without restyling
+  a single shipped look. Proven twice: once on synthetic text, then again
+  by burning all seven committed goldens old-against-new, 24 frames each.
+  **Text changed, pixels identical**, which is what made re-baselining the
+  goldens honest rather than convenient.
+- **The default distance is 2.83, not 2.** ASS's `Shadow: 2` offsets by 2
+  on *both* axes, whose true distance is 2 root 2. A default of 2 would
+  have quietly pulled every look's shadow in to (1.41, 1.41) while the
+  commit message claimed nothing had moved.
+
+**Two of the nine are not built, and the reasons are measured, not
+guessed:**
+
+- **Corner radius** needs a drawn shape sized to the words. libass
+  measures them; we cannot. PIL reading the same font file at the same
+  size disagrees with the burn by 29 to 553px, and the ratio differs per
+  face (Inter 0.68, Archivo Black 0.72, Montserrat ExtraBold 0.63), so a
+  box drawn from that measurement would visibly miss.
+- **Shadow blur** blurs the letters with it: in one event the letterform's
+  solid pixels drop to zero. Two events -- the shadow as its own layer
+  underneath, the way `render_glow` builds a halo -- keep the text sharp
+  and the shadow soft (2220 white px against 0). That is a real route, but
+  a second event on every caption in four emission paths is its own change.
+
+**A shipped comment was wrong and is fixed.** `render_anim.py` said
+`\blur` is "byte-identical" with a non-zero Outline. Re-measured: that was
+taken with a *black outline on a black background*, where a softened black
+edge is invisible to the eye and to a pixel diff alike. With a visible
+outline blur does change the picture -- but the letterform's solid core
+never softens (1424 -> 1441 -> 1432 solid px at radius 0, 6, 18, against
+1413 -> 0 -> 0 with no outline). The v0.7 fix was right; its stated reason
+was not.
+
+`look_card_ass.js` crossed the 500-line ceiling, so the ports of
+`ass_format.py` were split into `look_card_style.js` -- a real seam:
+everything there answers "what does the Python turn this style into?" and
+nothing knows a card exists.
 
 **The Studio's columns are the editor's to set, and the chrome stopped
 tinting the footage.** Unreleased, on master. Ghazi: "the studio was

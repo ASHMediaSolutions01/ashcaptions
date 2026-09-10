@@ -88,14 +88,56 @@
       </div>
     </div>
 
-    <!-- Deliberately not exposed here: colors.shadow. It round-trips
-         unchanged through Save. -->
     <div class="panel" id="panel-colours" role="tabpanel" aria-labelledby="tab-colours" hidden>
       <div class="colour-row">
         <label class="colour-field"><span>Text</span><input type="color" id="colour-text"></label>
         <label class="colour-field"><span>Active word</span><input type="color" id="colour-active"></label>
         <label class="colour-field"><span>Outline</span><input type="color" id="colour-outline"></label>
-        <label class="colour-field"><span>Box</span><input type="color" id="colour-box"></label>
+      </div>
+
+      <div class="effect-group">
+        <div class="field">
+          <span class="field-label">Box</span>
+          <div class="effect-row">
+            <label class="colour-field"><span>Colour</span><input type="color" id="colour-box"></label>
+            <label class="slider-field">
+              <span>Opacity</span>
+              <input type="range" id="box-opacity" min="0" max="100" step="1">
+              <output id="box-opacity-out"></output>
+            </label>
+            <label class="slider-field">
+              <span>Size</span>
+              <input type="range" id="box-padding" min="0" max="100" step="1">
+              <output id="box-padding-out"></output>
+            </label>
+          </div>
+          <p class="hint">Opacity 0 hides the box whatever its colour. Size is the padding around the words, as a share of the type size.</p>
+        </div>
+      </div>
+
+      <div class="effect-group">
+        <div class="field">
+          <span class="field-label">Shadow</span>
+          <div class="effect-row">
+            <label class="colour-field"><span>Colour</span><input type="color" id="colour-shadow"></label>
+            <label class="slider-field">
+              <span>Opacity</span>
+              <input type="range" id="shadow-opacity" min="0" max="100" step="1">
+              <output id="shadow-opacity-out"></output>
+            </label>
+            <label class="slider-field">
+              <span>Distance</span>
+              <input type="range" id="shadow-distance" min="0" max="40" step="0.5">
+              <output id="shadow-distance-out"></output>
+            </label>
+            <label class="slider-field">
+              <span>Angle</span>
+              <input type="range" id="shadow-angle" min="0" max="360" step="5">
+              <output id="shadow-angle-out"></output>
+            </label>
+          </div>
+          <p class="hint">Distance 0 turns the shadow off. 45° puts it down and to the right, where a shadow normally falls; 225° puts it up and to the left.</p>
+        </div>
       </div>
     </div>
 
@@ -244,11 +286,13 @@
 <script src="/static/nav.js?v=__VERSION__"></script>
 <script src="/static/toast.js?v=__VERSION__"></script>
 <script src="/static/vendor/jassub/jassub.umd.js?v=__VERSION__"></script>
+<script src="/static/look_card_style.js?v=__VERSION__"></script>
 <script src="/static/look_card_ass.js?v=__VERSION__"></script>
 <script src="/static/look_card.js?v=__VERSION__"></script>
 <script src="/static/export.js?v=__VERSION__"></script>
 <script src="/static/style_editor_preview.js?v=__VERSION__"></script>
 <script src="/static/style_editor_sound.js?v=__VERSION__"></script>
+<script src="/static/style_editor_effects.js?v=__VERSION__"></script>
 <script src="/static/style_editor.js?v=__VERSION__"></script>
 </body>
 </html>

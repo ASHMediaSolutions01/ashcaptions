@@ -428,8 +428,12 @@ def test_glow_text_layer_is_exactly_the_pop_rendering():
 
 def test_glow_halo_carries_the_same_entrance_as_the_text():
     lines = _dialogue_lines(render_ass([card([word("one", 0.0, 0.5), word("two", 0.5, 1.0)])], _glow_like_style("glow")))
-    assert lines[0].split(",", 9)[-1].startswith("{\\fad(140,0)}")  # halo of the first word
-    assert lines[1].split(",", 9)[-1].startswith("{\\fad(140,0)}")  # text of the first word
+    # Both layers get the identical leading block, which is the point: the
+    # halo has to enter and leave locked to the word it sits behind. The
+    # block carries the look's shadow as well as its entrance.
+    leading = "{\\xshad2\\yshad2\\fad(140,0)}"
+    assert lines[0].split(",", 9)[-1].startswith(leading)  # halo of the first word
+    assert lines[1].split(",", 9)[-1].startswith(leading)  # text of the first word
     assert "\\fad(" not in lines[2]
     assert "\\fad(" not in lines[3]
 
