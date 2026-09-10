@@ -300,7 +300,7 @@ What you see in the Studio is what gets burned: the browser draws the captions
 with the same engine ffmpeg uses. The `.ass` in the output folder is rewritten
 each time you pick a look; the `.srt` (plain text, no styling) is unchanged.
 
-### The 36 looks
+### The 39 looks
 
 Every look is a small JSON file in the `styles` folder. The original nine:
 
@@ -341,7 +341,53 @@ back.
 > `POP` on this PC gets *your* version. To make your own look, use **Save as…**
 > with a new name. The editor marks a changed built-in as "customized locally".
 
-## Part 6 — Moving a caption
+## Part 6 — How captions move
+
+A look decides three things about movement: what the **active word** does while
+it is being said, how a caption **arrives**, and how it **leaves**. All three
+sit on the **Motion** tab in the style editor, next to each other, because you
+can only really judge them together.
+
+![The Motion tab](images/motion-tab.png)
+
+**Entrance** and **Exit** offer the same eight choices.
+
+| | What it does | When it's the right one |
+|---|---|---|
+| **None** | The caption is simply there | The look already moves enough — a karaoke sweep, a punch-in |
+| **Fade** | Fades up, fades out | Client work. It is the one nobody notices, which is the point |
+| **Rise** | Slides up into place | Lower thirds. Reads as the caption settling onto the frame |
+| **Slide** | Comes in from the side | Alternating left and right looks, where the direction means something |
+| **Zoom** | Starts small and grows to full size | Short-form. The word arrives rather than appears |
+| **Bounce** | A zoom that overshoots and settles back | The most energetic one. One word at a time, on content that is already loud |
+| **Blur** | Starts soft and sharpens | A softer arrival than a zoom. Good under a voice that is calm |
+| **Blink** | Flashes twice, then holds | A warning or a punchline. It draws the eye hard, so use it on one look, not as a house style |
+
+**Speed (ms)** beside each one is how long the movement takes. 100 to 200 is
+the usable range for an entrance: below about 80 nobody sees it happen, and
+above 400 the caption is still arriving when the next one is due. If you set a
+speed longer than the caption is on screen, it is trimmed to fit rather than
+cut off half-finished.
+
+> **Zoom, Bounce, Blur and Blink are not used by any of the 39 built-in
+> looks.** They are there for looks you make yourself. Pick a look you like,
+> **Duplicate** it, change the entrance, and **Save as…** with your own name.
+
+**Always use Preview 3 seconds on real footage before you save.** Motion is the
+one thing a still preview cannot show you, and the whole point of these is how
+they feel at speed.
+
+Two things worth knowing so they don't read as bugs:
+
+- **Blur has no outline while it is softening.** The outline arrives as the
+  word comes into focus. On a look with a heavy outline that last step is
+  visible; on CLEAN or a thin outline it isn't.
+- **Blink goes fully dark twice.** That is deliberate, not a dropped frame.
+  Two reads as a flash; more would read as a fault in the file.
+
+---
+
+## Part 7 — Moving a caption
 
 Every look puts the caption at a fixed spot: bottom, centre, top or lower
 third. When that spot covers a face, a logo or a lower-third graphic, drag
@@ -362,13 +408,13 @@ changing the look and is what gets burned.
 Picking another look keeps your position. **Burn this look** uses the
 position you see, and so does the `.ass` in the output folder.
 
-## Part 7 — Checking captions in a language you don't speak
+## Part 8 — Checking captions in a language you don't speak
 
 A Spanish interview for a client, and nobody on the desk speaks Spanish. The
 **Check** tab beside the video tells you *where to look*.
 
 The panel beside the video has two tabs: **Words**, for fixing what was
-heard (Part 8), and **Check**, for reading each line against its English.
+heard (Part 9), and **Check**, for reading each line against its English.
 A dot on the **Check** tab means the model was unsure of something in there.
 ![The transcript panel: Spanish lines with the English underneath and uncertain words underlined](images/check-captions.png)
 
@@ -384,14 +430,14 @@ A dot on the **Check** tab means the model was unsure of something in there.
   job already has, so it takes seconds, and it writes the `.en.srt` into the
   output folder.
 
-When a word is wrong, fix it here: see Part 8. For anything you are unsure
+When a word is wrong, fix it here: see Part 9. For anything you are unsure
 about, ask a speaker of the language to check the moments the chip points at.
 Underlines mark doubt, not errors: most amber words are right, red ones are
 worth a listen.
 
 ---
 
-## Part 8 — Fixing a word
+## Part 9 — Fixing a word
 
 The speech model gets a name wrong, or hears "haramienta" for "herramienta".
 Click the word in the transcript and type the right one. Nothing is
@@ -404,7 +450,7 @@ the `.srt`, `.ass` and `.txt` in the output folder are rewritten with it.
    - **Fix every "haramienta"** changes all of them in this video, and says
      how many that is.
 3. **Always spell it this way** also adds it to the client's glossary
-   (Part 13), so the next job for that client gets it right while it is
+   (Part 14), so the next job for that client gets it right while it is
    still transcribing.
 
 - **Splitting and joining lines.** Put the cursor where the line should break
@@ -420,7 +466,7 @@ changed and offered a reload, rather than quietly overwriting your work.
 
 ---
 
-## Part 9 — Making one word stand out
+## Part 10 — Making one word stand out
 
 One word in a sentence deserves to be bigger, or amber, or bold. Click it and
 set it, without touching the look and without affecting any other video.
@@ -429,12 +475,21 @@ set it, without touching the look and without affecting any other video.
 2. Set its colour, its size as a percentage of the look's own size, bold or
    italic. The controls start at whatever the look already gives that word,
    so you are adjusting rather than starting from nothing.
-3. The line above the controls says what you are changing: **this word only**.
+3. **Animation** gives that one word its own movement: **Fade in**, **Zoom
+   in**, **Bounce in**, **Blur in** or **Blink**. It stays on **Follow the
+   look** until you change it, which is what every other word keeps doing.
+4. The line above the controls says what you are changing: **this word only**.
    To change every caption in every video instead, that is the look, and the
    link takes you there.
 
 - A word you have changed carries a small dot in the transcript, so you can
   see later what you touched.
+- **The animation replaces what the look does to that word, it does not add
+  to it.** A word set to Bounce in stops doing the look's own pop; it keeps
+  the look's colour change. That is why the name is a replacement, not an
+  extra: two movements on one word fight each other and neither reads.
+- Use it on one word in a sentence, at most. It works because it is the
+  exception — a whole line of bounced words is just a wobbly line.
 - **Reset word** puts one back; **Reset all overrides on this job** puts them
   all back.
 - Font and outline stay properties of the look, on purpose: mixing five
@@ -442,7 +497,7 @@ set it, without touching the look and without affecting any other video.
 
 ---
 
-## Part 10 — The reel look
+## Part 11 — The reel look
 
 Three looks — **REEL ESTATE**, **QUIET SPLIT** and **BIG NUMBER** — do not
 put the caption on one line. They place each word at its own spot, at its own
@@ -465,7 +520,7 @@ treatment on the property and coaching reels that get shared around.
 
 ---
 
-## Part 11 — Getting your files out
+## Part 12 — Getting your files out
 
 **Export** hands you the file. It is in the Studio's top bar, on every
 finished row in the queue, and on the Styles page.
@@ -488,7 +543,7 @@ comes from Export.
 
 ---
 
-## Part 12 — Captions behind the speaker
+## Part 13 — Captions behind the speaker
 
 For reels: tick **Captions behind the speaker** when you submit, and the
 captions are drawn *behind* the person, so their head and hands pass in front
@@ -505,7 +560,7 @@ the person back on top.
 - The first use downloads the model once (15 MB); the installed version ships
   it.
 
-## Part 13 — Clients and glossaries
+## Part 14 — Clients and glossaries
 
 Every job can carry a **Client**. Type the client's name in the **Client** box
 on the control page (it remembers the last one, and suggests the ones it has
@@ -521,7 +576,7 @@ seen). Then:
 - **Watch folder**: a video dropped into `C:\AshCaptions\in\<Client>\` is a
   job for that client, with that client's glossary.
 
-## Part 14 — Punch-in (zooming the footage)
+## Part 15 — Punch-in (zooming the footage)
 
 A punch-in is the picture pushing in slightly on a word. It is **off by
 default**, because it changes how a client's video is framed. To turn it on,
@@ -549,7 +604,7 @@ on hour-long files and costs almost no extra render time.
 
 ---
 
-## Part 15 — Sound effects
+## Part 16 — Sound effects
 
 A look can fire a short sound on the word the caption lands on — a pop, a
 whoosh, a low impact. It is the same idea as the punch-in: the captions say
@@ -590,7 +645,7 @@ Sound is only mixed in when **Burn captions into the video** is ticked — an
 `.srt` cannot carry a whoosh. The video keeps its original length and its
 dialogue; the sounds are added underneath, nothing is replaced or ducked.
 
-## Part 16 — Problems and fixes
+## Part 17 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
@@ -617,7 +672,7 @@ C:\AshCaptions\ash-captions.log
 
 ---
 
-## Part 17 — Uninstalling
+## Part 18 — Uninstalling
 
 Double-click `Uninstall-AshCaptions.bat`. It sits beside
 `Install-AshCaptions.bat`, wherever Ghazi gave you that; if you no longer
@@ -633,7 +688,7 @@ back up.
 
 ---
 
-## Part 18 — Worth knowing
+## Part 19 — Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
   languages very good. **Arabic**: the `.srt` and transcript are fine; for a

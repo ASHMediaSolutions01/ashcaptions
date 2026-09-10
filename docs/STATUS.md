@@ -25,6 +25,27 @@ running it, not inferred.
 animation vocabulary, per-word animation, the Studio layout and behaviour
 fixes, and an updater that finally says where you stand.
 
+**The guide now documents what shipped.** With v0.7 out, the note below
+about leaving the guide until the release was cut had expired: the six
+editors had the animation vocabulary and the per-word animation control,
+and the guide had zero mentions of bounce, blink or Animation. There is now
+a **Part 6, "How captions move"** -- the Motion tab, all eight entrances and
+exits with what each is for, the speed control, and two things that would
+otherwise read as bugs (blur has no outline while it softens; blink goes
+dark exactly twice). Part 10 gained the per-word **Animation** control and
+the fact that it *replaces* the look's own movement on that word rather
+than adding to it. Both copies were then read in a browser: 19 parts
+numbered in order, every side-nav link resolving to a real section, all 11
+figures loading, no console errors.
+
+Two things the guide was quietly wrong about are fixed: it said **36 looks**
+when the library has 39, and it never said that **none of the 39 built-in
+looks uses zoom, bounce, blur or blink** -- they are for looks you make
+yourself, which is otherwise a control an editor hunts for and never finds.
+All eleven screenshots were recaptured at v0.7 (`scripts/guide_screenshots.py
+--job 5`), including a new `motion-tab.png`, and
+`docs/ASH-Captions-Guide.html` was regenerated.
+
 **The updater worked and looked broken.** "Check the upgrade feature, it
 doesn't work" -- driven end to end on the real frozen bundle, every step
 completed: check, consent, 662MB download, sha256 verify, extract, detached
@@ -100,7 +121,7 @@ cannot quietly stop covering what it is for.
 
 Left alone deliberately: `docs/EDITOR-GUIDE.md` and `/guide` still describe
 the v0.6 vocabulary. They are written and screenshotted per release, and
-v0.7 is not cut.
+v0.7 is not cut. *(Done once it was — see the top of this file.)*
 
 `studio_word.js` and `studio_edit.js` are both at 499 lines, the ceiling
 the tests enforce. The next change to either should extract its pure

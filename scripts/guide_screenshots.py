@@ -21,7 +21,7 @@ the live elements (``.caption-drag`` / ``.transcript-panel``). The fallback
 that injects the markup and prints "staged" survives only for a tree where
 those two features are missing; a normal run never reaches it.
 
-All nine figures were last captured for v0.6.0. After changing anything the
+All eleven figures were last captured for v0.7.0. After changing anything the
 guide shows, rerun this with ``--job 5`` and then scripts/export_guide.py,
 so the in-app guide and docs/ASH-Captions-Guide.html agree with the build.
 
@@ -423,6 +423,19 @@ def fig_style_editor(s: Session) -> None:
     shoot(s, "style-editor.png")
 
 
+def fig_motion_tab(s: Session) -> None:
+    """Guide Part 6. The Motion tab, where the v0.7 vocabulary lives: the
+    reader has to see that Entrance and Exit offer the same eight, so the
+    figure is the whole panel rather than one row."""
+    s.page.goto(f"{s.base}/style-editor", wait_until="networkidle")
+    s.page.wait_for_function("document.querySelectorAll('#style-list .style-item').length > 0", timeout=30000)
+    s.page.click("#tab-motion")
+    s.page.wait_for_selector("#entrance-effect-group label", timeout=10000)
+    s.page.evaluate("document.fonts.ready")
+    s.page.wait_for_timeout(500)
+    shoot(s, "motion-tab.png")
+
+
 @dataclass(frozen=True)
 class Figure:
     name: str
@@ -440,6 +453,7 @@ FIGURES: list[Figure] = [
     Figure("export-menu.png", fig_export_menu),
     Figure("burned-example.png", fig_burned_example),
     Figure("style-editor.png", fig_style_editor),
+    Figure("motion-tab.png", fig_motion_tab),
 ]
 
 

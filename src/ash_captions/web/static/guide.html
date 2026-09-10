@@ -35,19 +35,20 @@
     <li><a href="#caption">3 · Caption a video</a></li>
     <li><a href="#long">4 · Long videos</a></li>
     <li><a href="#styles">5 · Choosing a look</a></li>
-    <li><a href="#moving">6 · Moving a caption</a></li>
-    <li><a href="#check">7 · Checking captions</a></li>
-    <li><a href="#fixing">8 · Fixing a word</a></li>
-    <li><a href="#oneword">9 · One word standing out</a></li>
-    <li><a href="#reel">10 · The reel look</a></li>
-    <li><a href="#files">11 · Getting your files out</a></li>
-    <li><a href="#behind">12 · Behind the speaker</a></li>
-    <li><a href="#clients">13 · Clients and glossaries</a></li>
-    <li><a href="#punch">14 · Punch-in</a></li>
-    <li><a href="#sound">15 · Sound effects</a></li>
-    <li><a href="#problems">16 · Problems and fixes</a></li>
-    <li><a href="#uninstall">17 · Uninstalling</a></li>
-    <li><a href="#worth">18 · Worth knowing</a></li>
+    <li><a href="#motion">6 · How captions move</a></li>
+    <li><a href="#moving">7 · Moving a caption</a></li>
+    <li><a href="#check">8 · Checking captions</a></li>
+    <li><a href="#fixing">9 · Fixing a word</a></li>
+    <li><a href="#oneword">10 · One word standing out</a></li>
+    <li><a href="#reel">11 · The reel look</a></li>
+    <li><a href="#files">12 · Getting your files out</a></li>
+    <li><a href="#behind">13 · Behind the speaker</a></li>
+    <li><a href="#clients">14 · Clients and glossaries</a></li>
+    <li><a href="#punch">15 · Punch-in</a></li>
+    <li><a href="#sound">16 · Sound effects</a></li>
+    <li><a href="#problems">17 · Problems and fixes</a></li>
+    <li><a href="#uninstall">18 · Uninstalling</a></li>
+    <li><a href="#worth">19 · Worth knowing</a></li>
   </ol>
   <div class="guide-progress">
     <strong id="progress-label">Setup: 0 of 6 steps done</strong>
@@ -246,7 +247,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p class="note">What you see in the Studio is what gets burned: the browser draws the captions with the same engine ffmpeg uses.</p>
   <p>The <code>.ass</code> in the output folder is rewritten each time you pick a look, so dragging it into Premiere gives you the same style; the plain <code>.srt</code> is unchanged.</p>
 
-  <h3>The 36 looks</h3>
+  <h3>The 39 looks</h3>
   <p>Every look is a small JSON file in the <code>styles</code> folder, so the library grows without a release. The original nine, for reference:</p>
   <table class="plain">
     <tr><th>Style</th><th>Use it for</th></tr>
@@ -277,8 +278,33 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p class="note warn">If you save a style under a built-in name like <code>POP</code>, every future job using <code>POP</code> on this PC gets <em>your</em> version. To make your own look, use <strong>Save as…</strong> with a new name. The editor marks a changed built-in as "customized locally".</p>
 </section>
 
+<section id="motion">
+  <h2>Part 6 · How captions move</h2>
+  <p class="lede">A look decides three things about movement: what the <strong>active word</strong> does while it is being said, how a caption <strong>arrives</strong>, and how it <strong>leaves</strong>. All three sit on the <strong>Motion</strong> tab in the style editor, next to each other, because you can only really judge them together.</p>
+  <figure><img src="/static/guide/motion-tab.png" alt="The Motion tab of the style editor: active word effects, then Entrance and Exit, each a row of eight choices with a Speed box"><figcaption>The Motion tab. Entrance and Exit offer the same eight choices, each with its own speed in milliseconds.</figcaption></figure>
+  <table class="plain">
+    <tr><th>Effect</th><th>What it does</th><th>When it's the right one</th></tr>
+    <tr><td><strong>None</strong></td><td>The caption is simply there</td><td>The look already moves enough — a karaoke sweep, a punch-in.</td></tr>
+    <tr><td><strong>Fade</strong></td><td>Fades up, fades out</td><td>Client work. It is the one nobody notices, which is the point.</td></tr>
+    <tr><td><strong>Rise</strong></td><td>Slides up into place</td><td>Lower thirds. Reads as the caption settling onto the frame.</td></tr>
+    <tr><td><strong>Slide</strong></td><td>Comes in from the side</td><td>Alternating left and right looks, where the direction means something.</td></tr>
+    <tr><td><strong>Zoom</strong></td><td>Starts small and grows to full size</td><td>Short-form. The word arrives rather than appears.</td></tr>
+    <tr><td><strong>Bounce</strong></td><td>A zoom that overshoots and settles back</td><td>The most energetic one. One word at a time, on content that is already loud.</td></tr>
+    <tr><td><strong>Blur</strong></td><td>Starts soft and sharpens</td><td>A softer arrival than a zoom. Good under a voice that is calm.</td></tr>
+    <tr><td><strong>Blink</strong></td><td>Flashes twice, then holds</td><td>A warning or a punchline. It draws the eye hard, so use it on one look, not as a house style.</td></tr>
+  </table>
+  <p><strong>Speed (ms)</strong> beside each one is how long the movement takes. 100 to 200 is the usable range for an entrance: below about 80 nobody sees it happen, and above 400 the caption is still arriving when the next one is due. If you set a speed longer than the caption is on screen, it is trimmed to fit rather than cut off half-finished.</p>
+  <p class="note"><strong>Zoom, Bounce, Blur and Blink are not used by any of the 39 built-in looks.</strong> They are there for looks you make yourself. Pick a look you like, <strong>Duplicate</strong> it, change the entrance, and <strong>Save as…</strong> with your own name.</p>
+  <p><strong>Always use Preview 3 seconds on real footage before you save.</strong> Motion is the one thing a still preview cannot show you, and the whole point of these is how they feel at speed.</p>
+  <p>Two things worth knowing so they don't read as bugs:</p>
+  <ul>
+    <li><strong>Blur has no outline while it is softening.</strong> The outline arrives as the word comes into focus. On a look with a heavy outline that last step is visible; on CLEAN or a thin outline it isn't.</li>
+    <li><strong>Blink goes fully dark twice.</strong> That is deliberate, not a dropped frame. Two reads as a flash; more would read as a fault in the file.</li>
+  </ul>
+</section>
+
 <section id="moving">
-  <h2>Part 6 · Moving a caption</h2>
+  <h2>Part 7 · Moving a caption</h2>
   <p class="lede">Every look puts the caption at a fixed spot: bottom, centre, top or lower third. When that spot covers a face, a logo or a lower-third graphic, drag the caption somewhere else. The position belongs to the job, so it survives changing the look and is what gets burned.</p>
   <figure><img src="/static/guide/moving-caption.png" alt="A dashed outline around the caption on the video, ready to drag"><figcaption>Point at the caption and a dashed outline appears. Drag it anywhere on the frame.</figcaption></figure>
   <ol>
@@ -295,21 +321,21 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="check">
-  <h2>Part 7 · Checking captions in a language you don't speak</h2>
+  <h2>Part 8 · Checking captions in a language you don't speak</h2>
   <p class="lede">A Spanish interview for a client, and nobody on the desk speaks Spanish. The <strong>Check</strong> tab beside the video tells you <em>where to look</em>: which words the speech model was unsure of, and what each line says in English.</p>
-  <p>The panel beside the video has two tabs: <strong>Words</strong>, for fixing what was heard (Part 8), and <strong>Check</strong>, for reading each line against its English. A dot on the <strong>Check</strong> tab means the model was unsure of something in there.</p>
+  <p>The panel beside the video has two tabs: <strong>Words</strong>, for fixing what was heard (Part 9), and <strong>Check</strong>, for reading each line against its English. A dot on the <strong>Check</strong> tab means the model was unsure of something in there.</p>
   <figure><img src="/static/guide/check-captions.png" alt="The transcript panel: Spanish lines with the English underneath, one word underlined in amber, and a chip counting the uncertain words"><figcaption>Spanish above, English below, and the words the model was unsure of underlined. The chip counts them and jumps to the next one.</figcaption></figure>
   <ul>
     <li><strong>Uncertain words</strong> are underlined: amber when the model was unsure, red when it was guessing. The chip above the panel says how many there are; click it to jump to the next one, and the video seeks there so you can listen.</li>
     <li><strong>Show English.</strong> When the job was translated ("Also translate to English" was ticked), switch it on to see the English line under each source line, in time with the video.</li>
     <li><strong>Translate to check.</strong> When the job was not translated, this button takes the toggle's place. It runs only the translation, from the transcript the job already has, so it takes seconds rather than a re-listen, and it writes the <code>.en.srt</code> into the output folder.</li>
   </ul>
-  <p>When a word is wrong, fix it here: see <a href="#fixing">Part 8</a>. For anything you are unsure about, ask a speaker of the language to check the moments the chip points at.</p>
+  <p>When a word is wrong, fix it here: see <a href="#fixing">Part 9</a>. For anything you are unsure about, ask a speaker of the language to check the moments the chip points at.</p>
   <p class="note">Underlines mark doubt, not errors. A rare name, a mumbled word or two people talking at once all lower the model's confidence, and most amber words are right. Red ones are worth a listen.</p>
 </section>
 
 <section id="fixing">
-  <h2>Part 8 · Fixing a word</h2>
+  <h2>Part 9 · Fixing a word</h2>
   <p class="lede">The speech model gets a name wrong, or hears "haramienta" for "herramienta". Click the word in the transcript and type the right one. Nothing is transcribed again: the captions redraw in about a quarter of a second, and the <code>.srt</code>, <code>.ass</code> and <code>.txt</code> in the output folder are rewritten with it.</p>
   <ol>
     <li>In the Studio, click the word in the <strong>Words</strong> panel beside the video.</li>
@@ -319,7 +345,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
         <li><strong>Fix every "haramienta"</strong> changes all of them in this video, and says how many that is.</li>
       </ul>
     </li>
-    <li><strong>Always spell it this way</strong> also adds it to the client's glossary (<a href="#clients">Part 13</a>), so the next job for that client gets it right while it is still transcribing.</li>
+    <li><strong>Always spell it this way</strong> also adds it to the client's glossary (<a href="#clients">Part 14</a>), so the next job for that client gets it right while it is still transcribing.</li>
   </ol>
   <ul>
     <li><strong>Splitting and joining lines.</strong> Put the cursor where the line should break and press <kbd>Enter</kbd>, or use <strong>Join with the line above</strong>. Use it when a caption breaks mid-phrase.</li>
@@ -330,22 +356,25 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="oneword">
-  <h2>Part 9 · Making one word stand out</h2>
+  <h2>Part 10 · Making one word stand out</h2>
   <p class="lede">One word in a sentence deserves to be bigger, or amber, or bold. Click it and set it, without touching the look and without affecting any other video.</p>
   <ol>
     <li>Click a word, on the video or in the transcript. A small toolbar appears.</li>
     <li>Set its colour, its size as a percentage of the look's own size, bold or italic. The controls start at whatever the look already gives that word, so you are adjusting rather than starting from nothing.</li>
+    <li><strong>Animation</strong> gives that one word its own movement: <strong>Fade in</strong>, <strong>Zoom in</strong>, <strong>Bounce in</strong>, <strong>Blur in</strong> or <strong>Blink</strong>. It stays on <strong>Follow the look</strong> until you change it, which is what every other word keeps doing.</li>
     <li>The line above the controls says what you are changing: <strong>this word only</strong>. To change every caption in every video instead, that is the look, and the link takes you there.</li>
   </ol>
   <ul>
     <li>A word you have changed carries a small dot in the transcript, so you can see later what you touched.</li>
+    <li><strong>The animation replaces what the look does to that word, it does not add to it.</strong> A word set to Bounce in stops doing the look's own pop; it keeps the look's colour change. Two movements on one word fight each other and neither reads.</li>
+    <li>Use it on one word in a sentence, at most. It works because it is the exception — a whole line of bounced words is just a wobbly line.</li>
     <li><strong>Reset word</strong> puts one back. <strong>Reset all overrides on this job</strong> puts them all back.</li>
     <li>Font and outline stay properties of the look, on purpose: mixing five typefaces into one caption makes a mess faster than it makes a point.</li>
   </ul>
 </section>
 
 <section id="reel">
-  <h2>Part 10 · The reel look</h2>
+  <h2>Part 11 · The reel look</h2>
   <p class="lede">Three looks &mdash; <strong>REEL ESTATE</strong>, <strong>QUIET SPLIT</strong> and <strong>BIG NUMBER</strong> &mdash; do not put the caption on one line. They place each word at its own spot, at its own size and colour, and leave it there while the next word arrives. It is the treatment on the property and coaching reels that get shared around.</p>
   <ol>
     <li>Pick one in the Studio like any other look.</li>
@@ -360,7 +389,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="files">
-  <h2>Part 11 · Getting your files out</h2>
+  <h2>Part 12 · Getting your files out</h2>
   <p class="lede"><strong>Export</strong> hands you the file. It is in the Studio's top bar, on every finished row in the queue, and on the Styles page.</p>
   <figure><img src="/static/guide/export-menu.png" alt="The Export menu open in the Studio, listing the video, subtitles, styled subtitles, transcript and English subtitles, each with its size"><figcaption>Every file the job produced, with its size. Click one and it downloads.</figcaption></figure>
   <ul>
@@ -375,7 +404,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="behind">
-  <h2>Part 12 · Captions behind the speaker</h2>
+  <h2>Part 13 · Captions behind the speaker</h2>
   <p class="lede">For reels: tick <strong>Captions behind the speaker</strong> when you submit, and the captions are drawn behind the person, so their head and hands pass in front of the words.</p>
   <p>The tool works out where the person is in every frame by itself (a small matting model that runs on the CPU), then burns the captions and lays the person back on top. The queue shows a <strong>Finding the speaker</strong> stage before the burn.</p>
   <ul>
@@ -387,7 +416,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="clients">
-  <h2>Part 13 · Clients and glossaries</h2>
+  <h2>Part 14 · Clients and glossaries</h2>
   <p class="lede">Every job can carry a <strong>Client</strong>. Type the name in the Client box on the control page; it remembers the last one and suggests the ones it has seen.</p>
   <ul>
     <li>The job card and the Studio show the client, so you can tell whose job is whose.</li>
@@ -397,7 +426,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="punch">
-  <h2>Part 14 · Punch-in (zooming the footage)</h2>
+  <h2>Part 15 · Punch-in (zooming the footage)</h2>
   <p>A punch-in is the picture pushing in slightly on a word. On a talking-head video where the camera never moves, it's most of the difference between a captioned video and an edited one. It's <strong>off by default</strong>, because it changes how a client's video is framed.</p>
   <p>To turn it on, ask Ghazi to set it in <code>C:\AshCaptions\settings.json</code>:</p>
   <div class="cmd"><pre>{
@@ -417,7 +446,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="sound">
-  <h2>Part 15 · Sound effects</h2>
+  <h2>Part 16 · Sound effects</h2>
   <p>A look can fire a short sound on the word the caption lands on — a pop, a whoosh, a low impact. It is the same idea as the punch-in: the captions say what is being said, and the sound says it matters. Five sounds ship with the app; nothing is downloaded and nothing needs a licence.</p>
   <p>Unlike the punch-in, this belongs to the <strong>look</strong>, not to a settings file. Open <strong>Styles</strong>, pick a look, and go to the <strong>Sound</strong> tab.</p>
   <ol class="steps">
@@ -439,7 +468,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="problems">
-  <h2>Part 16 · Problems and fixes</h2>
+  <h2>Part 17 · Problems and fixes</h2>
   <details class="fix"><summary>'python' is not recognised</summary><p>Python isn't on PATH. Re-run the installer, choose Modify, tick "Add python.exe to PATH".</p></details>
   <details class="fix"><summary>The browser page won't load, or an amber "Lost contact" banner appears</summary><p>The terminal window was closed or the app crashed. Start it again with the Step 6 command. A job that was running restarts from the beginning.</p></details>
   <details class="fix"><summary>"ASH Captions is already running"</summary><p>It's already open. Look for the icon near the clock, or another terminal window.</p></details>
@@ -458,14 +487,14 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 </section>
 
 <section id="uninstall">
-  <h2>Part 17 · Uninstalling</h2>
+  <h2>Part 18 · Uninstalling</h2>
   <p>Double-click <code>Uninstall-AshCaptions.bat</code>. It sits beside <code>Install-AshCaptions.bat</code>, wherever Ghazi gave you that; if you no longer have it, ask for it again. Windows may show the same blue "protected your PC" box as at install time: <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
   <p>It quits the app, removes the logon task and the Desktop and Start Menu icons, and deletes the program folder. <strong>Your captions stay:</strong> <code>C:\AshCaptions</code> (the <code>in</code>, <code>out</code> and <code>glossaries</code> folders, the settings and the log) is kept, and the script says so when it finishes. Delete that folder yourself if you want it gone.</p>
   <p>Reinstalling later with <code>Install-AshCaptions.bat</code> picks the kept folder straight back up.</p>
 </section>
 
 <section id="worth">
-  <h2>Part 18 · Worth knowing</h2>
+  <h2>Part 19 · Worth knowing</h2>
   <ul>
     <li><strong>Accuracy.</strong> English, Spanish and Portuguese are excellent; most European languages very good. <strong>Arabic</strong>: the <code>.srt</code> and transcript are fine; for a styled look use CLEAN or POP, not the karaoke looks (the sweep runs the wrong way for right-to-left text). <strong>Always skim the result before delivering.</strong> Names, brands and technical words are where mistakes hide.</li>
     <li><strong>Apostrophes, commas and accents in file names are fine.</strong> So are network drives, as long as they stay connected for the whole job.</li>
