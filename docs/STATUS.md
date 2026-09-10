@@ -1,11 +1,12 @@
 # ASH Captions — Status
 
-Last verified: **2026-09-09**. Everything under "verified" below was checked by
-running it, not inferred.
+Last verified: **2026-09-10**, in a freshly built bundle rather than from
+source. Everything under "verified" below was checked by running it, not
+inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2130 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2231 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -74,6 +75,44 @@ outline blur does change the picture -- but the letterform's solid core
 never softens (1424 -> 1441 -> 1432 solid px at radius 0, 6, 18, against
 1413 -> 0 -> 0 with no outline). The v0.7 fix was right; its stated reason
 was not.
+
+**Landscape to 9:16 has a crop planner, measured first** (`engine/reframe.py`,
+v0.6 held list item 1). Not yet wired to the pipeline or the page: this is the
+part that decides *where* the crop sits. Five measurements on the studio's own
+1920x1080 Spanish interview shaped it, and three of them contradicted the
+obvious design:
+
+- **Nobody moves inside a shot.** The matte's centroid drifts 13-31px over
+  twelve seconds in a 1920-wide frame. So the crop is decided once per shot
+  and *held*. There is no path to smooth and no jitter to filter, because
+  there is no per-frame tracking at all -- which is also what makes it
+  affordable: 120 inferences (~3.6s) for a 4:48 clip against 8658 (~260s) to
+  matte every frame.
+- **The "head" estimator is worse than the centroid**, not better. Of three
+  tried, the centroid of the top third of the blob drifted 56-131px against
+  the mass centroid's 13-31px. The intuitive choice lost, so the code uses
+  mass.
+- **A centroid over the whole matte frames nobody on a two-shot.** The two
+  people sat 1167px apart; a 9:16 crop of a 1080-tall frame is 606px, so
+  they cannot both fit, and the centroid of both lands in the empty sofa
+  between them. The alpha is split into blobs and one is chosen.
+- **The choice is common, not a corner case**: 10 of 24 shots had more than
+  one person. `choose_subject` takes the largest by mass and accepts an
+  editor override, because nothing here listens -- telling the *speaker*
+  apart needs diarisation, which is a separate model and a separate download.
+- **Cut detection misses dissolves.** ffmpeg's scene score found 24 hard cuts
+  but never spiked at the title card cross-dissolving into the first two-shot
+  at ~5.5s, at any threshold down to 0.10. A shot list from the scene score
+  alone would hold one framing across two unrelated pictures, so the samples
+  subdivide a shot when they disagree with each other.
+
+Verified by running it: the real interview rendered to a real 1080x1920 reel,
+and then the *output* frames were matted again to ask where the person
+actually landed. 34 of 36 windows framed the subject within a quarter-width
+of centre; the two that did not are the title card and the end card, which
+contain no person. Known and not yet solved: a 1080p landscape source gives
+606px of real detail, so a 1080-wide reel is a 1.8x upscale, and wide title
+cards lose their text to the crop.
 
 `look_card_ass.js` crossed the 500-line ceiling, so the ports of
 `ass_format.py` were split into `look_card_style.js` -- a real seam:
