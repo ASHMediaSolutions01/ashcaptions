@@ -25,9 +25,21 @@
   function place(pop, span) {
     if (!pop || !span) return;
     const box = span.getBoundingClientRect();
+    // Clamp to the column the word lives in, not to the window. Clamping
+    // to the window let the popup run out of a 340px words column and
+    // across the looks list beside it, hiding the very looks the editor
+    // is choosing between -- seen at 1024x768, where the column is
+    // narrowest and the popup is not.
+    const column = span.closest && span.closest(".edit-column");
+    const bounds = column ? column.getBoundingClientRect() : null;
+    const minX = bounds ? bounds.left + MARGIN : MARGIN;
+    const maxX = bounds ? bounds.right - MARGIN : window.innerWidth - MARGIN;
+    // A popup wider than its column can never be placed inside it, so cap
+    // the width first and let the content wrap.
+    if (bounds) pop.style.maxWidth = `${Math.round(bounds.width - MARGIN * 2)}px`;
     const width = pop.offsetWidth || 280;
     const height = pop.offsetHeight || 150;
-    const left = Math.max(MARGIN, Math.min(window.innerWidth - width - MARGIN, box.left + window.scrollX));
+    const left = Math.max(minX, Math.min(maxX - width, box.left)) + window.scrollX;
     let top = box.bottom + GAP;
     if (top + height > window.innerHeight - MARGIN) {
       top = Math.max(MARGIN, box.top - height - GAP);

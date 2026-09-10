@@ -470,3 +470,46 @@ class TestSounds:
         assert [entry.name for entry in entries] == ["pop", "click", "whoosh", "impact", "riser"]
         assert all(entry.path.is_file() for entry in entries)
         assert all(entry.label and entry.description for entry in entries)
+
+
+class TestSoundVolumeIsReachable:
+    """The Volume control used to live inside #sound-settings, which is
+    hidden while the look is silent. So on all 39 shipped looks the panel
+    offered Play buttons and a line reading "the volume you set here is
+    the volume you hear" -- with nothing on screen to set."""
+
+    def _static(self, name: str) -> str:
+        from ash_captions.web.app import STATIC_DIR
+
+        return (STATIC_DIR / name).read_text(encoding="utf-8")
+
+    def test_volume_sits_outside_the_block_that_hides_with_the_trigger(self):
+        html = self._static("style_editor.html")
+        settings = html.split('<div id="sound-settings"', 1)[1]
+        assert "sound-gain-range" not in settings, "volume must not be inside #sound-settings"
+        assert 'id="sound-volume-field"' in html
+        assert html.index('id="sound-volume-field"') < html.index('<div id="sound-settings"')
+
+    def test_volume_is_shown_whenever_there_are_sounds_to_play(self):
+        source = self._static("style_editor_sound.js")
+        assert "volumeField.hidden = !block || !available.length;" in source
+
+    def test_volume_is_a_slider_as_well_as_a_number(self):
+        """Level is judged by ear while a sound plays, which a number
+        field you have to type into cannot support."""
+        html = self._static("style_editor.html")
+        assert 'type="range" id="sound-gain-range"' in html
+        assert 'type="number" id="sound-gain-input"' in html
+        assert 'id="sound-gain-readout"' in html
+
+    def test_both_controls_write_the_same_field(self):
+        source = self._static("style_editor_sound.js")
+        assert 'gainRange.addEventListener("input", () => setGain(gainRange.value));' in source
+        assert 'gainInput.addEventListener("input", () => setGain(gainInput.value));' in source
+
+    def test_the_range_matches_the_schema(self):
+        from ash_captions.styles.schema import Sound
+
+        html = self._static("style_editor.html")
+        assert 'min="-40" max="6"' in html
+        assert Sound().gain_db == -8.0, "the default the guide and the hint both name"

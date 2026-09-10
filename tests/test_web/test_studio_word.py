@@ -267,7 +267,10 @@ class TestTheFilesAreWiredIn:
         assert "Changing " in source and "this word" in source and " only. " in source
         assert "Change the look instead" in source
         assert "Reset word" in source
-        assert "Reset all overrides on this job" in source
+        # Short label, long title: the full sentence made the toolbar
+        # wrap to five rows at 1024px wide.
+        assert '"Reset all"' in source
+        assert "Put every word on this job back to the look" in source
 
     def test_font_and_outline_are_never_sent(self):
         # The design's line: per-word colour, size, weight and slant; font

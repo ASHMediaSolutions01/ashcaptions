@@ -296,6 +296,20 @@ live on it, and every look one click away.
    reuses the transcript, so it starts rendering immediately. About two
    minutes for a 5-minute 1080p file.
 
+### Setting the three columns to suit you
+
+The video, the words and the looks are divided by two thin seams. **Drag a
+seam** to give one column room and take it off another — more picture for a
+reel, more words for a long interview. The video keeps a floor, so no drag can
+squeeze it down to a line.
+
+- **Double-click a seam** to put that column back to its normal width.
+- **Drag the right-hand seam all the way over** to close the looks list and
+  give everything else the room. The rail stays where it was: **click it once**
+  to bring the looks back.
+- Your widths are remembered on this PC, so you set them once.
+- Keyboard: tab to a seam and use **←** and **→**, or **Home** to reset it.
+
 What you see in the Studio is what gets burned: the browser draws the captions
 with the same engine ffmpeg uses. The `.ass` in the output folder is rewritten
 each time you pick a look; the `.srt` (plain text, no styling) is unchanged.
@@ -639,8 +653,10 @@ app; nothing is downloaded and nothing needs a licence.
 Unlike the punch-in, this belongs to the **look**, not to a settings file.
 Open **Styles**, pick a look, and go to the **Sound** tab.
 
-1. **Play them first.** Every sound has a **Play** button. The volume you set
-   is the volume you hear, so set it before you judge.
+1. **Play them first.** Every sound has a **Play** button, and the **Volume**
+   slider sits right above them. Drag it *while* a sound is playing — level is
+   judged by ear, and the volume you set is the volume you hear. **−8 dB** is
+   the default: under a voice without disappearing.
 2. **Choose when it fires.** *Each sentence* is the safe one on a talking
    head. *Keywords* uses the same word list the punch-in uses. *Every word*
    only works with a very short sound — use Click — and a look that shows

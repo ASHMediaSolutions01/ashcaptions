@@ -209,3 +209,23 @@
   .sound-pick { grid-template-columns: 22px 1fr; }
   .sound-why { grid-column: 1 / -1; }
 }
+
+/* Volume: the slider is the control, the number is for typing an exact
+   value, and the readout is what you actually look at while dragging. */
+.gain-row { display: flex; align-items: center; gap: 12px; }
+.gain-row input[type="range"] { flex: 1 1 auto; min-width: 120px; cursor: pointer; }
+.gain-row input[type="number"] { width: 86px; flex: none; }
+.sound-gain-readout {
+  flex: none;
+  min-width: 62px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+@media (max-width: 900px) {
+  /* The typed field is the one to drop: the slider and readout still set
+     and show the level. */
+  .gain-row input[type="number"] { display: none; }
+}

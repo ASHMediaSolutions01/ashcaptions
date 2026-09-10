@@ -245,6 +245,15 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
     <li><strong>Burn this look</strong> when it's right. A burn-only job goes into the queue and reuses the transcript, so it starts rendering immediately instead of listening to the video again. On a 5-minute 1080p file that is about two minutes.</li>
   </ol>
   <p class="note">What you see in the Studio is what gets burned: the browser draws the captions with the same engine ffmpeg uses.</p>
+  <h3>Setting the three columns to suit you</h3>
+  <p>The video, the words and the looks are divided by two thin seams. <strong>Drag a seam</strong> to give one column room and take it off another — more picture for a reel, more words for a long interview. The video keeps a floor, so no drag can squeeze it down to a line.</p>
+  <ul>
+    <li><strong>Double-click a seam</strong> to put that column back to its normal width.</li>
+    <li><strong>Drag the right-hand seam all the way over</strong> to close the looks list. The rail stays where it was: <strong>click it once</strong> to bring the looks back.</li>
+    <li>Your widths are remembered on this PC, so you set them once.</li>
+    <li>Keyboard: tab to a seam and use <kbd>←</kbd> and <kbd>→</kbd>, or <kbd>Home</kbd> to reset it.</li>
+  </ul>
+
   <p>The <code>.ass</code> in the output folder is rewritten each time you pick a look, so dragging it into Premiere gives you the same style; the plain <code>.srt</code> is unchanged.</p>
 
   <h3>The 39 looks</h3>
@@ -467,7 +476,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p>A look can fire a short sound on the word the caption lands on — a pop, a whoosh, a low impact. It is the same idea as the punch-in: the captions say what is being said, and the sound says it matters. Five sounds ship with the app; nothing is downloaded and nothing needs a licence.</p>
   <p>Unlike the punch-in, this belongs to the <strong>look</strong>, not to a settings file. Open <strong>Styles</strong>, pick a look, and go to the <strong>Sound</strong> tab.</p>
   <ol class="steps">
-    <li><strong>Play them first.</strong> Every sound has a <strong>Play</strong> button. The volume you set is the volume you hear, so set it before you judge.</li>
+    <li><strong>Play them first.</strong> Every sound has a <strong>Play</strong> button, and the <strong>Volume</strong> slider sits right above them. Drag it <em>while</em> a sound is playing — level is judged by ear, and the volume you set is the volume you hear. <strong>−8 dB</strong> is the default: under a voice without disappearing.</li>
     <li><strong>Choose when it fires.</strong> <em>Each sentence</em> is the safe one on a talking head. <em>Keywords</em> uses the same word list the punch-in uses. <em>Every word</em> only works with a very short sound — use Click — and a look that shows one word at a time.</li>
     <li><strong>Pick up to four sounds.</strong> They play in the order you picked them and then start again, so two sounds alternate. The number on the left is the play order.</li>
     <li><strong>Nudge</strong> is a fine offset in milliseconds. Negative starts the sound slightly <em>before</em> the word, which usually sounds better: the ear places a sound by its attack.</li>

@@ -19,6 +19,9 @@
   const library = $("sound-library");
   const emptyNote = $("sound-empty");
   const gainInput = $("sound-gain-input");
+  const gainRange = $("sound-gain-range");
+  const gainReadout = $("sound-gain-readout");
+  const volumeField = $("sound-volume-field");
   const offsetInput = $("sound-offset-input");
   const spacingInput = $("sound-spacing-input");
 
@@ -165,7 +168,31 @@
     const block = sound();
     syncTrigger();
     settings.hidden = !block || (block.trigger || "off") === "off" || !available.length;
+    // Volume follows the Play buttons, not the trigger: if this build has
+    // sounds you can audition, you can set the level you audition at.
+    volumeField.hidden = !block || !available.length;
   }
+
+  // dB is the stored unit and the honest one, but a bare number field is
+  // not how anyone sets a level. The slider is the control; the number
+  // stays for typing an exact value, and both write the same field.
+  function showGain(db) {
+    const value = isFinite(db) ? db : DEFAULTS.gain_db;
+    gainRange.value = String(value);
+    gainInput.value = String(value);
+    gainReadout.textContent = (value > 0 ? "+" : "") + value.toFixed(1) + " dB";
+  }
+
+  function setGain(raw) {
+    const block = sound();
+    const value = Number(raw);
+    const db = isFinite(value) ? Math.max(-40, Math.min(6, value)) : DEFAULTS.gain_db;
+    if (block) block.gain_db = db;
+    showGain(db);
+  }
+
+  gainRange.addEventListener("input", () => setGain(gainRange.value));
+  gainInput.addEventListener("input", () => setGain(gainInput.value));
 
   function number(input, key, fallback) {
     input.addEventListener("input", () => {
@@ -175,7 +202,6 @@
       block[key] = isFinite(value) ? value : fallback;
     });
   }
-  number(gainInput, "gain_db", DEFAULTS.gain_db);
   number(offsetInput, "offset_ms", DEFAULTS.offset_ms);
   number(spacingInput, "min_spacing_seconds", DEFAULTS.min_spacing_seconds);
 
@@ -184,7 +210,7 @@
   function apply() {
     const block = sound();
     if (!block) return;
-    gainInput.value = block.gain_db != null ? block.gain_db : DEFAULTS.gain_db;
+    showGain(block.gain_db != null ? Number(block.gain_db) : DEFAULTS.gain_db);
     offsetInput.value = block.offset_ms != null ? block.offset_ms : DEFAULTS.offset_ms;
     spacingInput.value =
       block.min_spacing_seconds != null ? block.min_spacing_seconds : DEFAULTS.min_spacing_seconds;

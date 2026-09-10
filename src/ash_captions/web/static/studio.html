@@ -74,6 +74,10 @@
        the stage, because the stage was the only row that could give: on a
        1366x768 laptop the video was 105px tall, and clicking a word cut it
        to 11. -->
+  <button type="button" class="splitter" data-splitter="edit" role="separator"
+          aria-orientation="vertical" aria-label="Resize the words column"
+          title="Drag to resize. Double-click to reset."></button>
+
   <section class="edit-column" id="edit-column">
     <div class="transcript" id="transcript" aria-label="Transcript" hidden></div>
     <div class="panes" id="panes" data-pane="words">
@@ -86,6 +90,10 @@
       <section class="check" id="check" aria-label="Caption check" hidden></section>
     </div>
   </section>
+
+  <button type="button" class="splitter" data-splitter="looks" role="separator"
+          aria-orientation="vertical" aria-label="Resize the looks column"
+          title="Drag to resize. Double-click to reset."></button>
 
   <aside class="looks" id="looks">
     <div class="looks-head">
@@ -112,6 +120,7 @@
 <script src="/static/studio_edit.js?v=__VERSION__"></script>
 <script src="/static/studio_word.js?v=__VERSION__"></script>
 <script src="/static/studio_panes.js?v=__VERSION__"></script>
+<script src="/static/studio_resize.js?v=__VERSION__"></script>
 <script src="/static/export.js?v=__VERSION__"></script>
 </body>
 </html>

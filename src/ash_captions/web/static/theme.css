@@ -14,31 +14,46 @@
 [hidden] { display: none !important; }
 
 :root {
-  --bg: #15171c;
-  --panel: #1c1f26;
-  --raised: #242833;
-  --line: #303542;
-  --line-strong: #3d4352;
-  --ink: #eceef3;
-  --ink-soft: #c9ceda;
-  --muted: #9ba3b4;
-  --accent: #a89dff;          /* text/links/outlines on dark */
-  --accent-fill: #5b4be0;     /* filled buttons, white text */
-  --accent-fill-hover: #6d5ef0;
-  --accent-soft: rgba(143, 130, 255, 0.16);
-  --ok: #3ecf8e;
-  --ok-soft: rgba(62, 207, 142, 0.14);
-  --run: #6ea8ff;
-  --run-soft: rgba(110, 168, 255, 0.14);
-  --warn: #f5b84a;
-  --warn-soft: rgba(245, 184, 74, 0.14);
-  --bad: #ff7a7a;
-  --bad-soft: rgba(255, 122, 122, 0.14);
-  --pending: #a3aab8;
-  --pending-soft: rgba(163, 170, 184, 0.14);
+  /* Neutral on purpose: R = G = B on every grey.
+     This tool exists to judge caption colour against footage, and the
+     chrome sits 12px from the frame. The greys it replaced carried a
+     blue lift (#1c1f26 is B+10 over R), which is a tint on the surround
+     of the one thing the editor is looking at. Nothing in the chrome
+     has a hue now; hue is reserved for the footage and for state. */
+  --bg: #1b1b1b;
+  --panel: #212121;
+  --raised: #2a2a2a;
+  --line: #363636;
+  --line-strong: #454545;
+  /* The mat around the video. Lighter than the panel, still neutral: it
+     separates "video" from "not video" so the letterbox stops reading as
+     part of the picture, and a light caption stops looking brighter than
+     it is against a black surround. */
+  --mat: #242424;
+  --ink: #f0f0f0;
+  --ink-soft: #c8c8c8;
+  --muted: #969696;
+  /* The one accent, and it is the client's own: #C8542A is the ASH BRAND
+     look's accent colour, so the tool is coloured by the same ember its
+     captions are. Text tint is lifted for contrast on dark (6.8:1); the
+     fill is the brand value darkened until white on it clears 4.5:1. */
+  --accent: #f0906a;          /* text/links/outlines on dark */
+  --accent-fill: #c24e24;     /* filled buttons, white text (4.76:1) */
+  --accent-fill-hover: #d65b2d;
+  --accent-soft: rgba(194, 78, 36, 0.18);
+  --ok: #4ec98a;
+  --ok-soft: rgba(78, 201, 138, 0.14);
+  --run: #6aa6f5;
+  --run-soft: rgba(106, 166, 245, 0.14);
+  --warn: #e8b44f;
+  --warn-soft: rgba(232, 180, 79, 0.14);
+  --bad: #ff8080;
+  --bad-soft: rgba(255, 128, 128, 0.14);
+  --pending: #a0a0a0;
+  --pending-soft: rgba(160, 160, 160, 0.14);
   --radius: 10px;
   --radius-sm: 6px;
-  --focus: 0 0 0 3px rgba(168, 157, 255, 0.55);
+  --focus: 0 0 0 3px rgba(240, 144, 106, 0.55);
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
   --mono: Consolas, "Cascadia Mono", "Courier New", monospace;
   color-scheme: dark;
@@ -53,6 +68,12 @@ body {
   font: 14px/1.45 var(--font);
   overflow-x: hidden;
 }
+/* Timecodes, durations, dB and percentages: fixed-width digits so a
+   number does not change width as it counts. A running clock whose
+   digits jitter is the kind of small wrongness an editor feels without
+   being able to name it. */
+.time, .job-elapsed, .tedit-time, .wait-text .hint, .sound-gain-readout,
+input[type="number"], .duration, .job-eta { font-variant-numeric: tabular-nums; }
 h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.25; }
 h1 { font-size: 22px; }
 h2 { font-size: 16px; }

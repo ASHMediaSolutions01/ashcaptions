@@ -25,6 +25,63 @@ running it, not inferred.
 animation vocabulary, per-word animation, the Studio layout and behaviour
 fixes, and an updater that finally says where you stand.
 
+**The Studio's columns are the editor's to set, and the chrome stopped
+tinting the footage.** Unreleased, on master. Ghazi: "the studio was
+getting cramped and I couldn't change the size of transcript and fixes",
+plus "choose a better colour scheme" and "-8 is okay but we should be able
+to control it".
+
+Measured first, at the six sizes the editors run. At 1440x900 the video
+was 646x363 inside a 648x745 stage -- **382px of dead black**, nearly half
+the widest column -- while the words were fixed at 480px by a media query
+with no way to ask for more. Three columns, no handles.
+
+- **Two drag handles**, either side of the words column, with the widths
+  written as inline custom properties so a dragged width beats every
+  breakpoint. Double-click resets one; arrow keys move it 24px; the widths
+  are remembered per browser and re-clamped against the *current* window,
+  so a width saved on a 1920 monitor cannot leave a 1024 laptop with no
+  video. The stage keeps a 320px floor no drag can cross -- the same
+  failure the three-column layout was built to prevent.
+- **The looks column collapses** when dragged past 120px, and this is
+  where the first version was wrong: it hid the handle with the column,
+  which is a one-way door. The rail now stays, widens to 16px, retitles
+  itself "Click to bring the looks back", and reopens on one click. A
+  second bug found the same way: the click that ends a drag reopened what
+  the drag had just closed, so a drag that moved now suppresses it.
+- **The palette is neutral.** Every grey is R = G = B. The old ones carried
+  a blue lift (`#1c1f26` is B+10 over R) and a periwinkle accent, sitting
+  12px from footage whose colour the editor is judging. The one accent is
+  now the ASH ember (`#c24e24` filled, `#f0906a` for text) -- the client's
+  own brand colour out of `ash_brand.json`, not a borrowed default. The
+  stage's `#000` became a neutral mat, so the letterbox stops reading as
+  part of the picture.
+- **Volume was invisible.** `settings.hidden = trigger === "off"` hid it on
+  every silent look -- which is all 39 -- while the same panel showed Play
+  buttons and the line "the volume you set here is the volume you hear".
+  It now follows the Play buttons rather than the trigger, sits above the
+  sound list where it is reachable without scrolling, and is a slider with
+  a dB readout beside a number field: level is judged by ear while a sound
+  plays. Ghazi settled the default at **-8 dB**.
+- **The word popup was clamped to the window, not to its column**, so at
+  1024 it ran out of a 340px words column across the looks list. It is
+  clamped to `.edit-column` now, and capped to its width.
+- **"Reset all overrides on this job"** became "Reset all" with the
+  sentence moved to the tooltip: that one label was what wrapped the word
+  toolbar to five rows. The toolbar is **255px -> 161px** at 1024.
+
+Verified by running it: every splitter behaviour driven with a real mouse
+(drag both ways, the floor, collapse, one-click restore, reload, arrow
+keys, double-click reset), and a sweep of all four pages at all six sizes
+-- **24/24 clean**: no horizontal scroll, nothing off screen, no interface
+text under 4.5:1, no chrome surface carrying a hue, no console errors.
+
+The contrast harness lied twice before it was trusted, which is the usual
+lesson: first it scored every coloured badge at exactly 1.00 because it
+never composited translucent backgrounds over what was behind them, and
+then it flagged the caption-look previews -- which are drawn in the look's
+own colours on purpose and are product output, not chrome.
+
 **Case and punctuation modes** (v0.6 spec, held item 5) are in on master,
 unreleased. `uppercase: true/false` became `case_mode` -- **Aa** as
 transcribed, **AA** ALL CAPS, **aa** all lower case -- next to a new

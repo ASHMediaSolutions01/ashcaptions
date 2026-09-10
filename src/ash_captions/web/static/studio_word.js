@@ -228,7 +228,7 @@
     face.className = "word-pair";
     face.append(bold, italic);
     const resetWord = button("Reset word", "Put this word back to the look", "btn small");
-    const resetAll = button("Reset all overrides on this job", "Put every word back to the look", "btn small");
+    const resetAll = button("Reset all", "Put every word on this job back to the look", "btn small");
     const close = button("Close", "Close the toolbar (Escape)", "btn small word-close");
 
     controls.append(which, colourLabel, sizeLabel, animLabel, face, resetWord, resetAll, close);

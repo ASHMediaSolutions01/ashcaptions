@@ -144,6 +144,19 @@
         <div class="radio-row" id="sound-trigger-group"></div>
         <p class="hint" id="sound-trigger-help"></p>
       </div>
+      <!-- Volume sits outside #sound-settings on purpose. It governs the
+           Play buttons above as well as the burn, so hiding it on a silent
+           look left a panel that offers auditioning with no way to set the
+           level it auditions at. -->
+      <div class="field" id="sound-volume-field">
+        <label for="sound-gain-range">Volume</label>
+        <div class="gain-row">
+          <input type="range" id="sound-gain-range" min="-40" max="6" step="0.5" aria-describedby="sound-gain-readout">
+          <output class="sound-gain-readout" id="sound-gain-readout" for="sound-gain-range"></output>
+          <input type="number" id="sound-gain-input" min="-40" max="6" step="0.5" aria-label="Volume in decibels">
+        </div>
+        <p class="hint">Drag while a sound plays — level is judged by ear, not by number. −8 dB sits under a voice without disappearing.</p>
+      </div>
       <div class="field">
         <span class="field-label">Sounds</span>
         <div class="sound-library" id="sound-library"></div>
@@ -151,10 +164,6 @@
       </div>
       <div id="sound-settings" hidden>
         <div class="field-grid">
-          <div class="field">
-            <label for="sound-gain-input">Volume (dB)</label>
-            <input type="number" id="sound-gain-input" min="-40" max="6" step="0.5">
-          </div>
           <div class="field">
             <label for="sound-offset-input">Nudge (ms)</label>
             <input type="number" id="sound-offset-input" min="-500" max="500" step="10">
