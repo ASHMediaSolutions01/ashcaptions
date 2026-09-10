@@ -46,6 +46,7 @@ class JobOptions(BaseModel):
     burn_in: bool = False
     translate_to_english: bool = False
     behind_speaker: bool = Field(False, description="Draw the captions behind the person (reels; slower)")
+    reframe: bool = Field(False, description="Crop a landscape video to a 9:16 reel, following whoever is on screen")
     client: str | None = Field(
         None,
         description=(
@@ -86,6 +87,7 @@ class JobPathRequest(BaseModel):
     burn_in: bool = False
     translate_to_english: bool = False
     behind_speaker: bool = False
+    reframe: bool = False
     client: str | None = None
 
 
@@ -306,9 +308,15 @@ class PresetRequest(BaseModel):
     ``caption_y`` as fractions of the frame, both or neither, each in
     [0, 1]. Keys left out mean "keep the job's current position"; both
     sent as ``null`` clear it. Burn ignores them and reads the stored
-    position."""
+    position.
+
+    Burn also takes ``reframe``: crop a landscape source to a 9:16 reel,
+    following whoever is on screen. It is per-burn rather than a property
+    of the footage, because the same interview is cut for a reel and for
+    YouTube from the same transcript."""
 
     preset: str = Field(..., min_length=1)
+    reframe: bool = False
     caption_x: float | None = Field(None, ge=0.0, le=1.0)
     caption_y: float | None = Field(None, ge=0.0, le=1.0)
 

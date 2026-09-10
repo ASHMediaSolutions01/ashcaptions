@@ -14,6 +14,7 @@
     styleName: $("style-name"),
     status: $("status-pill"),
     burnBtn: $("burn-btn"),
+    reframeBtn: $("reframe-btn"),
     revealBtn: $("reveal-btn"),
     copyBtn: $("copy-btn"),
     stage: $("stage"),
@@ -26,7 +27,7 @@
   };
   const STAGE_LABEL = {
     extract: "Extracting audio", transcribe: "Transcribing", translate: "Translating to English",
-    postprocess: "Cleaning up the text", write: "Writing captions", matte: "Finding the speaker", burn: "Burning captions in",
+    postprocess: "Cleaning up the text", write: "Writing captions", matte: "Finding the speaker", reframe: "Framing the reel", burn: "Burning captions in",
   };
   const api = (suffix) => `/api/jobs/${encodeURIComponent(jobId)}${suffix}`;
   const assUrl = () => `${api("/ass")}?v=${Date.now()}`; // bust the browser cache per restyle
@@ -193,6 +194,19 @@
     }
   }
 
+  // 9:16 reel. Offered only for landscape footage -- a vertical source has
+  // nothing to crop -- and read at burn time rather than stored, because the
+  // same interview is cut for a reel and for YouTube from one transcript.
+  function reframeOn() {
+    return !!els.reframeBtn && els.reframeBtn.getAttribute("aria-pressed") === "true";
+  }
+
+  function offerReframe() {
+    const v = els.video;
+    if (!els.reframeBtn || !v || !v.videoWidth || !v.videoHeight) return;
+    els.reframeBtn.hidden = v.videoWidth <= v.videoHeight;
+  }
+
   async function burn() {
     if (!job || els.burnBtn.disabled) return;
     setBurnState("pending");
@@ -201,7 +215,7 @@
       const res = await AshApi.request(api("/burn"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preset: job.options.preset }),
+        body: JSON.stringify({ preset: job.options.preset, reframe: reframeOn() }),
       });
       if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't queue the burn"));
       burnJobId = (await res.json()).id;
@@ -437,6 +451,13 @@
   }
 
   els.burnBtn.addEventListener("click", burn);
+  if (els.reframeBtn) {
+    els.reframeBtn.addEventListener("click", () => {
+      els.reframeBtn.setAttribute("aria-pressed", reframeOn() ? "false" : "true");
+    });
+    els.video.addEventListener("loadedmetadata", offerReframe);
+    offerReframe();
+  }
   els.revealBtn.addEventListener("click", revealFolder);
   els.copyBtn.addEventListener("click", copyPath);
   document.addEventListener("keydown", (e) => {

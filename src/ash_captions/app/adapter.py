@@ -240,10 +240,14 @@ class QueueAdapter:
         self._notify()
         return _to_web_job(updated)
 
-    def submit_burn(self, job_id: str, preset: str) -> WebJob:
+    def submit_burn(self, job_id: str, preset: str, *, reframe: bool = False) -> WebJob:
         """Enqueue a burn-only job for the same input, in ``preset``, into the
         same output folder. Reuses the saved transcript; fails at run time
-        if the input has since changed."""
+        if the input has since changed.
+
+        ``reframe`` crops a landscape source to a 9:16 reel. It is set per
+        burn rather than inherited from the original job, because the same
+        interview is cut for a reel and for YouTube from one transcript."""
         self._capture_loop()
         job = self._require_job(job_id)
         self._transcript_for(job)  # raise now, not an hour later in the worker
@@ -251,7 +255,13 @@ class QueueAdapter:
             raise ValueError(f"Unknown caption style {preset!r}")
         if not Path(job.input_path).is_file():
             raise ValueError("The original video is no longer where it was, so it cannot be burned.")
-        options = dataclasses.replace(job.options, preset=styles.resolve_style(preset).name, burn=True, mode="burn_only")
+        options = dataclasses.replace(
+            job.options,
+            preset=styles.resolve_style(preset).name,
+            burn=True,
+            mode="burn_only",
+            reframe=bool(reframe),
+        )
         new_id = self._store.insert_job(job.input_path, job.output_dir, options)
         created = self._store.get_job(new_id)
         assert created is not None

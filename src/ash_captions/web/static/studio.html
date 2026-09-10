@@ -37,6 +37,10 @@
     <button type="button" class="btn small" id="copy-btn" hidden>Copy path</button>
     <button type="button" class="btn small" id="reset-position-btn" hidden title="Put the caption back where the look places it (Escape)">Reset position</button>
     <div id="export"></div>
+    <!-- Only shown for landscape footage: a video that is already vertical
+         has nothing to crop, and offering the choice there is noise. -->
+    <button type="button" class="btn small" id="reframe-btn" aria-pressed="false" hidden
+            title="Crop this landscape video to a 9:16 reel, following whoever is on screen. Applies to the burn.">9:16 reel</button>
     <button type="button" class="btn primary" id="burn-btn" disabled>Burn this look</button>
   </div>
 </header>

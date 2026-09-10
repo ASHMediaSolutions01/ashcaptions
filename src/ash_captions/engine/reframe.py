@@ -56,6 +56,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from fractions import Fraction
 
+# The same balanced sum punch-in uses, and for the same discovered reason:
+# ffmpeg's expression parser refuses to recurse past 100 levels, so a flat
+# chain of about 80 '+' terms fails to parse. One implementation, so a fix
+# to one cannot leave the other broken.
+from .punch import _balanced_sum
+
 # A 9:16 reel. Kept as a Fraction so the crop width of an odd source
 # height is still exact before it is rounded to an even number of pixels.
 PORTRAIT = Fraction(9, 16)
@@ -179,6 +185,21 @@ def crop_size(width: int, height: int, ratio: Fraction = PORTRAIT) -> tuple[int,
     w = max(2, w - (w % 2))
     h = max(2, h - (h % 2))
     return w, h
+
+
+def reel_size(width: int, height: int, ratio: Fraction = PORTRAIT) -> tuple[int, int]:
+    """What the reel is delivered at: 1080x1920, but never a wild upscale.
+
+    A 1080p landscape source crops to 606px of real detail, so a 1080-wide
+    reel is a 1.8x upscale -- which is what every tool in this category
+    ships, and the reason to shoot 4K when the reel is the deliverable.
+    Doubling is where that stops being a trade and starts being mush, so a
+    small source is delivered smaller rather than blown up to fit a number.
+    """
+    crop_w, crop_h = crop_size(width, height, ratio)
+    out_h = min(1920, crop_h * 2)
+    out_w = int(out_h * ratio)
+    return (max(2, out_w - (out_w % 2)), max(2, out_h - (out_h % 2)))
 
 
 def blobs_from_columns(
@@ -474,13 +495,3 @@ def build_crop_filter(plan: CropPlan, *, output: tuple[int, int] | None = None) 
             raise ReframeError("the output size must be positive")
         graph += f",scale={out_w}:{out_h}:flags=lanczos"
     return graph
-
-
-_SUM_LEAF_TERMS = 16
-
-
-def _balanced_sum(terms: list[str]) -> str:
-    if len(terms) <= _SUM_LEAF_TERMS:
-        return "+".join(terms)
-    middle = len(terms) // 2
-    return f"({_balanced_sum(terms[:middle])})+({_balanced_sum(terms[middle:])})"

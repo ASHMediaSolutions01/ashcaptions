@@ -6,7 +6,7 @@ inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2231 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2253 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -113,6 +113,32 @@ of centre; the two that did not are the title card and the end card, which
 contain no person. Known and not yet solved: a 1080p landscape source gives
 606px of real detail, so a 1080-wide reel is a 1.8x upscale, and wide title
 cards lose their text to the crop.
+
+**The reel is wired end to end and testable**: a "9:16 reel" toggle in the
+Studio topbar (shown only for landscape footage), a matching checkbox on the
+upload form, a `reframe` job option, a "Framing the reel" stage, and a queue
+label. The crop is chained *before* the punch and the captions, because it is
+the one filter that changes the frame's shape -- so the .ass is written at the
+reel's size, and everything past the crop works in reel pixels. Behind-the-
+speaker composes with it: the matte is cropped identically, or it would mask
+the wrong part of a reframed picture.
+
+Driven in a built bundle on the 4:48 interview: 1920x1080 in, a 1080x1920
+reel out with captions at PlayRes 1080x1920. **Running it found a bug three
+suites of unit tests had not**: `JobStore.set_stage` validates against a
+whitelist, so the new "reframe" stage failed every reel job at run time with
+"unknown stage". A test now walks the runner's own source and asserts every
+stage it sets is one the database accepts and the queue page can label.
+
+Still to come, and the plan already supports it: an editor's per-shot
+override. `CropWindow.contested` marks the 42% of shots with more than one
+person, and `plan_crops(overrides=...)` rebuilds from the same samples without
+re-scanning -- but nothing surfaces it yet, so today the reel always follows
+the largest person.
+
+The last three blue-tinted greys are gone from the chrome (`#2b303c`,
+`#4a5162`, `#6e7686` -- B+17 to B+24 over R), which is the tint the neutral
+palette exists to remove.
 
 `look_card_ass.js` crossed the 500-line ceiling, so the ports of
 `ass_format.py` were split into `look_card_style.js` -- a real seam:

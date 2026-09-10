@@ -95,19 +95,28 @@ def _escape_path_for_filtergraph(path: Path) -> str:
     return escaped
 
 
-def build_filtergraph(*, fontsdir: Path | str | None = None, punch_filter: str | None = None) -> str:
-    """The ``-vf`` chain: punch-in (if any), then ``ass=captions.ass``.
+def build_filtergraph(
+    *,
+    fontsdir: Path | str | None = None,
+    punch_filter: str | None = None,
+    reframe_filter: str | None = None,
+) -> str:
+    """The ``-vf`` chain: reframe, then punch-in, then ``ass=captions.ass``.
 
-    Punch-in goes first so captions are drawn on top at their true size.
-    Chained the other way round the zoom magnifies the captions too, which
-    looks like a rendering fault rather than an edit.
+    Punch-in goes before the captions so they are drawn on top at their
+    true size. Chained the other way round the zoom magnifies the captions
+    too, which looks like a rendering fault rather than an edit.
+
+    Reframing goes before *both*, because it is the one filter that changes
+    the frame's shape: cropping a 1920x1080 interview to 9:16 and scaling
+    it to 1080x1920. Everything after it works in reel pixels -- which is
+    also why the .ass must be written at the reel's size, not the source's.
     """
     subtitle_filter = f"ass={CAPTIONS_FILENAME}"
     if fontsdir is not None:
         subtitle_filter += f":fontsdir='{_escape_path_for_filtergraph(Path(fontsdir))}'"
-    if punch_filter:
-        return f"{punch_filter},{subtitle_filter}"
-    return subtitle_filter
+    chain = [f for f in (reframe_filter, punch_filter, subtitle_filter) if f]
+    return ",".join(chain)
 
 
 def part_path_for(output_path: Path | str) -> Path:
@@ -137,6 +146,7 @@ def build_burn_command(
     use_nvenc: bool = False,
     fontsdir: Path | str | None = None,
     punch_filter: str | None = None,
+    reframe_filter: str | None = None,
     audio_codec: str | None = None,
     width: int = 0,
     height: int = 0,
@@ -144,6 +154,7 @@ def build_burn_command(
     fps: float = 0.0,
     sfx: SfxPlan | None = None,
     duration_seconds: float | None = None,
+    output_size: tuple[int, int] | None = None,
 ) -> list[str]:
     """Stage ``work_dir`` and return the ffmpeg argv that burns the captions.
 
@@ -182,13 +193,16 @@ def build_burn_command(
         if width <= 0 or height <= 0:
             raise BurnInError("Captions behind the speaker need the video's frame size (probe failed)")
         graph = composite_filtergraph(
-            caption_filter=caption_filter, width=width, height=height, fps=fps, punch_filter=punch_filter
+            caption_filter=caption_filter, width=width, height=height, fps=fps,
+            punch_filter=punch_filter, reframe_filter=reframe_filter,
         )
         inputs = ["-i", str(video_path), "-i", str(Path(os.path.abspath(matte_path)))]
         video_map = "[out]"
         complex_graph = True
     else:
-        graph = build_filtergraph(fontsdir=fontsdir, punch_filter=punch_filter)
+        graph = build_filtergraph(
+            fontsdir=fontsdir, punch_filter=punch_filter, reframe_filter=reframe_filter
+        )
         inputs = ["-i", str(video_path)]
         # Exactly the first video and (if present) first audio stream: a
         # camera file's data/timecode tracks would otherwise fail the mux
@@ -225,6 +239,7 @@ def build_burn_command(
     filter_args = [filter_file_option(ffmpeg_path, complex_graph=complex_graph), FILTER_SCRIPT_FILENAME]
     (work_dir / FILTER_SCRIPT_FILENAME).write_text(graph, encoding="utf-8")
 
+    out_w, out_h = output_size if output_size else (width, height)
     encoder = select_video_encoder(ffmpeg_path, use_nvenc=use_nvenc)
 
     return [
@@ -236,7 +251,11 @@ def build_burn_command(
         *inputs,
         *maps,
         *filter_args,
-        *encoder_args(encoder, width=width, height=height),
+        # Rate control sizes the OUTPUT. `width`/`height` are the source's,
+        # because that is the shape the matte was rendered at and what
+        # `composite_filtergraph` scales it to; reframing changes only what
+        # comes out the far end.
+        *encoder_args(encoder, width=out_w, height=out_h),
         *audio_options,
         "-progress", "pipe:1",
         "-nostats",
@@ -291,6 +310,8 @@ def burn_captions(
     use_nvenc: bool | None = None,
     fontsdir: Path | str | None = None,
     punch_filter: str | None = None,
+    reframe_filter: str | None = None,
+    output_size: tuple[int, int] | None = None,
     on_progress: ProgressCallback | None = None,
     should_stop: StopCheck | None = None,
     video_info: VideoInfo | None = None,
@@ -355,9 +376,11 @@ def burn_captions(
             use_nvenc=use_nvenc,
             fontsdir=fontsdir,
             punch_filter=punch_filter,
+            reframe_filter=reframe_filter,
             audio_codec=video_info.audio_codec if video_info else None,
             width=video_info.width if video_info else 0,
             height=video_info.height if video_info else 0,
+            output_size=output_size,
             matte_path=matte_path,
             fps=video_info.fps if video_info else 0.0,
             sfx=sfx,

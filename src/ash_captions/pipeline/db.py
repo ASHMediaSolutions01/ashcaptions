@@ -42,8 +42,15 @@ class JobStatus(str, Enum):
 LIVE_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
 # Pipeline stages, in order, as stored in ``jobs.stage`` while a job runs
-# so the control page can say "Transcribing - 12 min elapsed".
-STAGES = ("extract", "transcribe", "translate", "postprocess", "write", "matte", "burn")
+# so the control page can say "Transcribing - 12 min elapsed". Setting a
+# stage that is not listed here raises, which is the point -- but it also
+# means a new stage has to be added in *two* places, and forgetting this
+# one fails the job at run time rather than in a test. "reframe" did
+# exactly that, and only a real burn in a built bundle caught it.
+STAGES = (
+    "extract", "transcribe", "translate", "postprocess", "write",
+    "reframe", "matte", "burn",
+)
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,11 @@ class JobOptions:
     # Off by default: it costs about the video's length in extra time and
     # is meant for reels.
     behind_speaker: bool = False
+    # Crop a landscape video to a 9:16 reel, following whoever is on
+    # screen (engine/reframe.py). Off by default for the same reason
+    # punch-in is: it reframes a client's footage, and that should never
+    # happen to it silently.
+    reframe: bool = False
     # Where the editor dragged the caption in the Studio (v0.5): fractions
     # of the frame width/height in [0, 1], both set or both None. Fractions,
     # not pixels, so one value is right at 1080x1920 and 1920x1080 and
@@ -119,6 +131,7 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     "mode": "full",
     "client": None,
     "behind_speaker": False,
+    "reframe": False,
     "caption_x": None,
     "caption_y": None,
 }

@@ -40,6 +40,13 @@ from ash_captions.pipeline.queue import AfterDone, JobCancelled
 from ash_captions.styles.render import anchor_pixels
 
 from .catalogue import dialect_preset_id
+from .runner_video import (
+    SCAN_PROGRESS_SHARE,
+    build_punch,
+    build_reframe,
+    caption_play_res,
+    wants_reframe,
+)
 from .runner_transcript import _reusable_transcript, _save_transcript
 from .runner_translate import run_translate_only
 from .lifecycle import write_job_marker
@@ -272,7 +279,10 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
                 breaks=card_breaks(saved) if saved is not None else None,
             )
             atomic_write(lambda p: engine.write_srt(cards, p), output_dir / f"{stem}.srt")
-            ass_optional = {"play_res": (info.width, info.height)} if info is not None else {}
+            # A reel's size when the job asks for one: past the crop, the
+            # captions included, everything works in reel pixels.
+            play_res = caption_play_res(job.options, info)
+            ass_optional = {"play_res": play_res} if play_res else {}
             if saved is not None and word_style_map(saved):
                 ass_optional["word_styles"] = word_style_map(saved)
             # The Studio's caption position (fractions of the frame, v0.5)
@@ -384,46 +394,28 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
         def on_burn_progress(pct: float) -> None:
             report(round(start + (end - start) * (pct / 100)))
 
-        # Punch-in (engine/punch.py). Off unless the studio turned it on,
-        # because it changes how a client's video is framed and should
-        # never happen to footage silently. Any failure to build it
-        # degrades to a normal burn rather than losing the job: captions
-        # are the deliverable, the zoom is a flourish.
-        punch_filter = None
-        if settings.punch_mode != "off":
-            try:
-                geometry = info if info is not None else engine.probe_video(
-                    video_path, ffprobe_path=_ffprobe_beside(resolved_ffmpeg)
-                )
-                moments = engine.select_punch_moments(
-                    words,
-                    mode=settings.punch_mode,
-                    keywords=tuple(settings.punch_keywords),
-                    duration=settings.punch_duration_seconds,
-                    min_spacing=settings.punch_min_spacing_seconds,
-                    video_duration=geometry.duration_seconds,
-                )
-                # build_punch_filter is the timestamp-preserving scale/crop
-                # chain and needs no geometry (it works in iw/ih and t);
-                # build_zoompan_filter is the older zoompan form, which must
-                # be told the output size and fps. Passing geometry to the
-                # new one raised TypeError, which the guard below turned
-                # into a silent "no punch-in" on every job.
-                build_punch = getattr(engine, "build_punch_filter", None)
-                if build_punch is not None:
-                    punch_filter = build_punch(moments, zoom=settings.punch_zoom)
-                else:
-                    punch_filter = engine.build_zoompan_filter(
-                        moments,
-                        width=geometry.width,
-                        height=geometry.height,
-                        fps=geometry.fps,
-                        zoom=settings.punch_zoom,
-                    )
-                log.info("punch-in: %d moment(s) at zoom %.2f", len(moments), settings.punch_zoom)
-            except Exception:  # noqa: BLE001
-                log.warning("punch-in unavailable; burning without it", exc_info=True)
-                punch_filter = None
+        # Punch-in and reframing both shape the picture; see runner_video.
+        punch_filter = build_punch(
+            settings, words, info, video_path=video_path, ffmpeg_path=resolved_ffmpeg
+        )
+        # Landscape to a 9:16 reel. The scan takes the front of the burn's
+        # progress span, the way the matte does. A failure raises: an
+        # editor who asked for a reel must not silently get the original.
+        reframe_end = start + round((end - start) * SCAN_PROGRESS_SHARE)
+        reframe = None
+        if wants_reframe(job.options):
+            _stage(report, "reframe")
+            reframe = build_reframe(
+                job.options, video_path, info,
+                duration_seconds=duration,
+                models_dir=settings.model_cache_dir,
+                ffmpeg_path=resolved_ffmpeg,
+                threads=settings.cpu_threads,
+                on_progress=lambda pct: report(round(start + (reframe_end - start) * (pct / 100))),
+                should_stop=should_stop,
+            )
+            start = reframe_end
+            _stage(report, "burn")
 
         # Sound effects (engine/sfx.py). The keyword list is punch-in's,
         # on purpose: "the words that matter to this client" is one list,
@@ -478,7 +470,11 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
             fontsdir=styles.fontsdir_arg(),
             punch_filter=punch_filter,
             on_progress=on_burn_progress,
-            optional={"should_stop": should_stop, "matte_path": matte_path, "sfx": sfx_plan},
+            optional={
+                "should_stop": should_stop, "matte_path": matte_path, "sfx": sfx_plan,
+                "reframe_filter": reframe.crop_filter if reframe else None,
+                "output_size": reframe.output_size if reframe else None,
+            },
         )
         report(end)
 

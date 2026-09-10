@@ -21,6 +21,7 @@
     write: "Writing captions",
     cards_and_write: "Writing captions",
     matte: "Finding the speaker",
+    reframe: "Framing the reel",
     burn: "Burning captions in",
   };
 
@@ -67,7 +68,7 @@
 
   function metaFor(job) {
     const o = job.options || {};
-    const bits = [o.dialect || o.language, o.preset, o.burn_in ? "burn-in" : null, o.translate_to_english ? "+ English" : null, o.behind_speaker ? "behind speaker" : null];
+    const bits = [o.dialect || o.language, o.preset, o.burn_in ? "burn-in" : null, o.translate_to_english ? "+ English" : null, o.behind_speaker ? "behind speaker" : null, o.reframe ? "9:16 reel" : null];
     return bits.filter(Boolean).join(" · ");
   }
 

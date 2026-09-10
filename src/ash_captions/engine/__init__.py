@@ -32,6 +32,15 @@ from .matte import (
     working_size,
 )
 from .probe import ProbeError, VideoInfo, ffprobe_beside, probe_video
+from .reframe import (
+    CropPlan,
+    CropWindow,
+    ReframeError,
+    build_crop_filter,
+    crop_size,
+    reel_size,
+)
+from .reframe_scan import ReframeScanError, scan_reframe
 from .punch import (
     MAX_DURATION_SECONDS,
     MIN_DURATION_SECONDS,
@@ -124,6 +133,14 @@ __all__ = [
     "matte_model_path",
     "render_matte",
     "working_size",
+    "CropPlan",
+    "CropWindow",
+    "ReframeError",
+    "ReframeScanError",
+    "build_crop_filter",
+    "crop_size",
+    "reel_size",
+    "scan_reframe",
     "ffprobe_beside",
     "VideoInfo",
     "ProbeError",

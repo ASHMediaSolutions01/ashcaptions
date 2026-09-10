@@ -152,6 +152,17 @@ class _RvmSession:
         return (np.clip(pha[0, 0], 0.0, 1.0) * 255.0).astype(np.uint8).tobytes()
 
 
+def open_session(model_path: Path | str, *, threads: int | None = None) -> _RvmSession:
+    """An RVM session for callers that feed it frames themselves.
+
+    ``render_matte`` mattes a whole video into a clip; ``engine.reframe_scan``
+    instead needs a handful of frames per shot and no output file. Both want
+    the same model loaded the same way, so the construction lives here
+    rather than being duplicated against the private class.
+    """
+    return _RvmSession(Path(model_path), threads=threads)
+
+
 @dataclass(frozen=True)
 class MatteResult:
     path: Path
@@ -266,26 +277,35 @@ def composite_filtergraph(
     height: int,
     fps: float,
     punch_filter: str | None = None,
+    reframe_filter: str | None = None,
 ) -> str:
     """The ``-filter_complex`` graph for captions behind the speaker.
 
     Input 0 is the source video, input 1 the matte. The source is made
-    constant-rate (matching the matte), optionally punched, then split:
-    one copy gets the captions; the other is masked by the upscaled matte
-    and laid over the captioned copy, so the person covers the captions.
-    The punch is applied to the matte too, so the two stay aligned, and
-    both inputs are rebased to start at t=0: a camera file whose first
-    video pts is not zero (MXF, AVCHD, some trimmed MOVs) would otherwise
-    pair frame N of the video with a later matte frame.
+    constant-rate (matching the matte), optionally reframed and punched,
+    then split: one copy gets the captions; the other is masked by the
+    upscaled matte and laid over the captioned copy, so the person covers
+    the captions. The punch is applied to the matte too, so the two stay
+    aligned, and both inputs are rebased to start at t=0: a camera file
+    whose first video pts is not zero (MXF, AVCHD, some trimmed MOVs)
+    would otherwise pair frame N of the video with a later matte frame.
+
+    ``reframe_filter`` is applied to the matte as well, and for the same
+    reason as the punch: it crops and rescales the frame, so a matte left
+    at the source's shape would mask the wrong part of a reframed picture.
+    It goes after the matte has been scaled back up to the source size,
+    which is the only point at which the two are the same shape.
     """
     if fps <= 0:
         fps = 30.0
     punch = f",{punch_filter}" if punch_filter else ""
+    reframe = f",{reframe_filter}" if reframe_filter else ""
     return (
-        f"[0:v]setpts=PTS-STARTPTS,fps={fps:g}{punch}[base];"
+        f"[0:v]setpts=PTS-STARTPTS,fps={fps:g}{reframe}{punch}[base];"
         "[base]split[b1][b2];"
         f"[b1]{caption_filter}[cap];"
-        f"[1:v]setpts=PTS-STARTPTS,fps={fps:g},scale={width}:{height}:flags=bicubic,format=gray{punch}[al];"
+        f"[1:v]setpts=PTS-STARTPTS,fps={fps:g},scale={width}:{height}:flags=bicubic,"
+        f"format=gray{reframe}{punch}[al];"
         "[b2][al]alphamerge[fg];"
         "[cap][fg]overlay=0:0:format=auto,format=yuv420p[out]"
     )

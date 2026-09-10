@@ -331,3 +331,11 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   .looks { max-height: 42vh; border-left: none; border-top: 1px solid var(--line); }
   .topbar { flex-wrap: wrap; }
 }
+
+/* A topbar toggle that is on. Same treatment as the word toolbar's B and I
+   (studio_word.css) so "this is switched on" reads the same everywhere. */
+.topbar-actions .btn.small[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}

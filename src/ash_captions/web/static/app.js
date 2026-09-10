@@ -20,6 +20,7 @@
   const dialectSelect = $("dialect-select");
   const presetSelect = $("preset-select");
   const burnInCheck = $("burn-in-check");
+  const reframeCheck = $("reframe-check");
   const translateCheck = $("translate-check");
   const behindCheck = $("behind-check");
   const startBtn = $("start-btn");
@@ -194,9 +195,14 @@
   });
   cancelBtn.addEventListener("click", resetSelection);
 
-  // Behind-the-speaker only applies to a burn; say so by ticking burn-in.
+  // Both of these only apply to a burn -- the crop lives in the burned
+  // video, and a .srt has no shape -- so asking for either ticks burn-in,
+  // and unticking burn-in unticks them.
   behindCheck.addEventListener("change", () => { if (behindCheck.checked) burnInCheck.checked = true; });
-  burnInCheck.addEventListener("change", () => { if (!burnInCheck.checked) behindCheck.checked = false; });
+  reframeCheck.addEventListener("change", () => { if (reframeCheck.checked) burnInCheck.checked = true; });
+  burnInCheck.addEventListener("change", () => {
+    if (!burnInCheck.checked) { behindCheck.checked = false; reframeCheck.checked = false; }
+  });
 
   // ---- Submit (a real <form>, so Enter in the path field starts the job) ----
 
@@ -235,6 +241,7 @@
         burn_in: burnInCheck.checked,
         translate_to_english: translateCheck.checked,
         behind_speaker: behindCheck.checked,
+        reframe: reframeCheck.checked,
         client: AshClients.value() || null,
       }),
     });
@@ -249,6 +256,7 @@
     form.append("burn_in", burnInCheck.checked ? "true" : "false");
     form.append("translate_to_english", translateCheck.checked ? "true" : "false");
     form.append("behind_speaker", behindCheck.checked ? "true" : "false");
+    form.append("reframe", reframeCheck.checked ? "true" : "false");
     if (AshClients.value()) form.append("client", AshClients.value());
     return AshApi.request("/api/jobs", { method: "POST", body: form });
   }

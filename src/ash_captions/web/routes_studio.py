@@ -69,7 +69,13 @@ def build_studio_router(
 
     @router.post("/api/jobs/{job_id}/burn", response_model=Job, status_code=201)
     async def burn_job(job_id: str, body: PresetRequest, queue: JobQueue = Depends(get_queue)) -> Job:
-        return await _call_optional(queue, "submit_burn", job_id, body.preset, missing=CANNOT_BURN_DETAIL)
+        # Only sent when asked for: `_call_optional` forwards keywords
+        # unchanged, so a queue implementation that predates reframing
+        # keeps working for every ordinary burn.
+        extra = {"reframe": True} if body.reframe else {}
+        return await _call_optional(
+            queue, "submit_burn", job_id, body.preset, missing=CANNOT_BURN_DETAIL, **extra
+        )
 
     @router.get("/api/jobs/{job_id}/srt")
     async def serve_srt(job_id: str, queue: JobQueue = Depends(get_queue)) -> FileResponse:
