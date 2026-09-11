@@ -850,6 +850,72 @@ cloud ones do is that client footage never leaves the building.
 
 ---
 
+## Licensing: what "internal only" fixes, and what it does not
+
+Ghazi, 2026-09-11: "we will be using only internally". That helps, but it
+answers one of two questions and the other one is the sharper one. Facts
+checked rather than recalled; none of this is legal advice, and the two
+starred items are worth twenty minutes of a solicitor's time before the
+emoji feature is used on paid work.
+
+**Both repositories are public right now.** `ashcaptions` and
+`ashcaptions-releases` are both PUBLIC, and the 663 MB v0.8.0 artifact
+downloads with an unauthenticated `curl` -- verified by doing it during this
+session. So the bundle is being distributed to the world today, whatever the
+intent. Every redistribution obligation is live.
+
+**Making the releases repo private is the single highest-leverage action.**
+Copyleft binds on conveying a copy to another party; handing software to your
+own employees within one company is not that. Private repo + installer from a
+share would retire almost all of the tool-side obligations at once, including
+the awkward ones:
+
+- **ffmpeg is GPL-2.0-or-later** and we ship the binaries. Public
+  distribution means owing *corresponding source for that exact build*.
+  NOTICES points at ffmpeg.org and BtbN, which is common practice but is
+  the weakest link in the current set-up.
+- **The matting model is GPL-3.0** (`rvm_mobilenetv3_fp32.onnx`), bundled
+  inside a proprietary product that the public can download. The "separate
+  onnxruntime session, mere aggregation" argument in NOTICES is reasonable
+  and it is not airtight. Private distribution makes the question go away.
+
+**None of that touches the client's video, and one thing does.*** The burned
+`.mp4` leaves the building by design, so anything whose pixels land in it is
+distributed no matter how private the repo is. Exactly one bundled asset does:
+the **OpenMoji emoji artwork, CC BY-SA 4.0**.
+
+- CC BY-SA §3(a) requires attribution wherever the material is *Shared* --
+  and a reel handed to a client and posted is Sharing. Attribution on every
+  reel is not practical.
+- Whether a scaled emoji composited into a video is "Adapted Material" (which
+  would put the reel itself under CC BY-SA) is a real question. The licence's
+  automatic "synched in timed relation with a moving image" rule covers only
+  music and sound recordings, not images -- so it is not automatic -- but the
+  general test is whether the work was "altered, arranged, transformed"; we
+  scale it and composite it.
+
+**I picked OpenMoji on the wrong axis, and that was my mistake.** The choice
+was made on image quality -- OpenMoji ships 618x618 where Twemoji ships only
+72x72 -- when the licence difference matters far more, because ShareAlike can
+reach the deliverable and a 1.8x upscale cannot.
+
+**The clean fix is an OFL emoji font, not another PNG set.*** The SIL Open
+Font License says the requirement for fonts to stay under it "does not apply
+to any document created using the fonts" -- so a reel made with one carries
+nothing. `googlefonts/noto-emoji` is OFL-1.1, the bundle already ships 24 OFL
+fonts with the licence plumbing in place, and Pillow (already a dependency)
+renders colour emoji with `embedded_color=True`, so the PNGs can be rasterised
+at build time. Twemoji would swap ShareAlike for a still-impractical
+attribution-on-every-reel, so it is not the answer either.
+
+Also corrected this session: the speaker-embedding **weights are CC BY 4.0,
+not Apache-2.0** as NOTICES first claimed -- Apache-2.0 is the WeSpeaker
+*code*. Attribution only, no ShareAlike, so it does not reach the output. It
+is trained on VoxCeleb2, whose own terms read as research-oriented; an
+upstream question, but worth knowing.
+
+---
+
 ## Things Ghazi needs to do
 
 1. **Roll the installer out.** v0.6.0 is published at

@@ -4,6 +4,30 @@ ASH Captions itself is proprietary (see `LICENSE`). The built application
 redistributes the following third-party components, each under its own
 licence. The licence texts ship with the application at the paths given.
 
+## Two different questions, and only one of them is about this bundle
+
+Almost every licence below binds on **distribution**, not on use. That splits
+the problem in two, and the halves have different answers:
+
+1. **Who can get the tool.** Both repositories are **public** today, and the
+   release artifact downloads with a plain unauthenticated request -- verified
+   by doing it. That is distribution to the world, whatever the intent, so
+   every redistribution obligation below is live right now. Making the
+   releases repository private would end most of them: handing software to
+   your own employees inside one company is not "conveying" it to a third
+   party.
+
+2. **What ends up in the client's video.** Making the repo private does
+   *nothing* for this half, because the burned `.mp4` leaves the building by
+   design. Only one bundled thing is literally copied into that file: the
+   **emoji artwork**. Fonts are not -- the SIL OFL says in terms that its
+   requirements do "not apply to any document created using the fonts". The
+   Whisper and WeSpeaker models emit our own text. The matte shapes the
+   client's own footage and none of its pixels survive into the output.
+
+So "we only use it internally" answers question 1 and not question 2. See
+`docs/STATUS.md` for what follows from that.
+
 ## ffmpeg / ffprobe -- GPL v2 or later (built with `--enable-gpl --enable-version3`)
 
 `bin/ffmpeg.exe` and `bin/ffprobe.exe` are BtbN's static Windows build of
@@ -58,13 +82,24 @@ under the GPL-3.0 so "captions behind the speaker" works offline. It runs in
 its own onnxruntime session; ASH Captions calls it, it is not linked in. The
 project's licence text is at that repository.
 
-## WeSpeaker voxceleb-resnet34-LM (speaker labels) -- Apache-2.0
+## WeSpeaker voxceleb-resnet34-LM (speaker labels) -- CC BY 4.0
 
 `models/voxceleb_resnet34_LM.onnx` is WeSpeaker's VoxCeleb ResNet34-LM speaker
-embedding (github.com/wenet-e2e/wespeaker), redistributed unmodified from
+embedding, redistributed unmodified from
 huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM so "name who is
 speaking" works offline. Like the matting model it runs in its own
 onnxruntime session; ASH Captions calls it, it is not linked in.
+
+**The weights and the code are under different licences.** The WeSpeaker
+*project* (github.com/wenet-e2e/wespeaker) is Apache-2.0; these *weights* are
+published under **CC BY 4.0**, which is what the model card declares. Only the
+weights are redistributed here, so CC BY 4.0 is the term that applies:
+attribution, and no ShareAlike. Attribution is this notice.
+
+The model is trained on VoxCeleb2. VoxCeleb's own terms are usually read as
+research-oriented, and whether that reaches a model trained on it is an
+upstream question this project cannot settle. Worth knowing before the feature
+is used on work that leaves the building.
 
 ## OpenMoji (emoji bursts) -- CC BY-SA 4.0
 
