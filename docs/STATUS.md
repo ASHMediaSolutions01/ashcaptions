@@ -740,9 +740,10 @@ Ranked by how often an editor would hit the gap, from the 2026-09-04
 competitor scan (Veed, CapCut, Submagic, Captions.ai, Opus Clip, Descript,
 Premiere, Resolve, and the regional tools Kalakar, Bayaan and Bolti):
 
-- Turning a landscape interview into a 9:16 reel, cropping to follow the
-  speaker. Every short-form competitor does this; the matting model already
-  in the bundle can supply the tracking signal.
+- ~~Turning a landscape interview into a 9:16 reel~~ **shipped in v0.8.0**,
+  with one honest gap: it follows the largest person, not the one speaking.
+  Following the speaker needs diarisation -- see the podcast item below,
+  which turns out to be the same model and would close both at once.
 - Emoji and sticker bursts (a compositing pass; not possible in ASS).
 - Arabic and Urdu styled captions (right-to-left ASS; Noto Naskh is
   bundled). The karaoke looks sweep the wrong way in Arabic today, which
