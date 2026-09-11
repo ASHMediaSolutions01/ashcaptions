@@ -232,27 +232,33 @@ def _reuse_saved_plan(output_path: Path | str | None, info: Any):
     return plan
 
 
-def build_stickers(settings: Any, words: tuple, info: Any, *, duration_seconds: float):
-    """The emoji-burst plan for this burn, or None.
+def build_stickers(
+    style: Any, words: tuple, info: Any, *, keywords: tuple = (), duration_seconds: float
+):
+    """The look's emoji bursts, placed on its words -- or None.
+
+    Reads the look, not the settings: emoji moved off settings.json in
+    v0.9 for the reason ``schema.EmojiBursts`` gives. The keyword list is
+    still the client's one shared list, handed in by the caller exactly
+    as it is for sound and punch-in.
 
     Degrades like punch-in rather than failing like the reel: a sticker
     is a flourish on top of the deliverable, and a look asking for an
     emoji this build does not ship should cost the editor a picture, not
     a video.
     """
-    trigger = getattr(settings, "emoji_trigger", "off")
-    names = tuple(getattr(settings, "emoji", ()) or ())
-    if trigger == "off" or not names:
+    block = getattr(style, "emoji", None)
+    if block is None or not getattr(block, "enabled", False):
         return None
     try:
         from ash_captions import styles
 
         bursts = engine.select_bursts(
             words,
-            trigger=trigger,
-            emoji=names,
-            keywords=tuple(getattr(settings, "punch_keywords", ()) or ()),
-            min_spacing=float(getattr(settings, "emoji_min_spacing_seconds", 2.5)),
+            trigger=block.trigger,
+            emoji=block.emoji,
+            keywords=keywords,
+            min_spacing=block.min_spacing_seconds,
             video_duration=duration_seconds or None,
         )
         width = getattr(info, "width", 0) or 1080
@@ -266,3 +272,52 @@ def build_stickers(settings: Any, words: tuple, info: Any, *, duration_seconds: 
     except Exception:  # noqa: BLE001
         log.warning("emoji bursts unavailable; burning without them", exc_info=True)
         return None
+
+
+def render_matte_first(
+    video_path: Path,
+    matte_path: Path,
+    info: Any,
+    *,
+    settings: Any,
+    duration_seconds: float,
+    ffmpeg_path: Path,
+    span: tuple[int, int],
+    report: Callable[[int], None],
+    should_stop: Any,
+    on_stage: Callable[[str], None],
+) -> int:
+    """Render the person matte the "captions behind the speaker" burn needs.
+
+    Returns the progress point the burn itself should start from: the
+    matte is about the video's own length on a CPU, so it takes the first
+    40% of the burn's span the way the reel scan takes the front of it.
+
+    Fails the job rather than degrading, which is the same rule reframing
+    follows and for the same reason: the editor asked for the effect, and
+    quietly handing back a normal burn is handing back the wrong
+    deliverable.
+    """
+    if info is None or getattr(info, "width", 0) <= 0:
+        raise RuntimeError(
+            "Captions behind the speaker need the video's frame size, and ffprobe could not read it."
+        )
+    start, end = span
+    matte_end = start + round((end - start) * 0.4)
+    on_stage("matte")
+    model_path = engine.ensure_matte_model(settings.model_cache_dir, download=True)
+    engine.render_matte(
+        video_path,
+        matte_path,
+        model_path=model_path,
+        width=info.width,
+        height=info.height,
+        fps=info.fps,
+        duration_seconds=duration_seconds,
+        ffmpeg_path=ffmpeg_path,
+        threads=settings.cpu_threads,
+        on_progress=lambda pct: report(round(start + (matte_end - start) * (pct / 100))),
+        should_stop=should_stop,
+    )
+    on_stage("burn")
+    return matte_end

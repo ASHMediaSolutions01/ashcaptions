@@ -248,3 +248,66 @@
   /* Two per row rather than four squeezed to nothing. */
   .slider-field { flex: 1 1 45%; }
 }
+
+/* ---- the emoji picker (v0.9) --------------------------------------
+
+   A grid where the sound library is a list, because the artwork is what
+   you are choosing: twelve names in a column would make an editor read
+   when they could look. The order badge is the same control it is on a
+   sound -- the pick order is the throw order, so two emoji alternate. */
+.emoji-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.emoji-pick {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 6px 8px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.emoji-pick:hover { border-color: var(--border, rgba(127, 127, 127, 0.35)); }
+
+.emoji-pick.chosen {
+  background: var(--accent-soft, rgba(0, 226, 138, 0.12));
+  border-color: var(--accent, #00e28a);
+}
+
+.emoji-art {
+  width: 44px;
+  height: 44px;
+  display: block;
+}
+
+.emoji-name {
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.emoji-order {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.emoji-pick.chosen .emoji-order {
+  background: var(--accent, #00e28a);
+  color: #05261a;
+}

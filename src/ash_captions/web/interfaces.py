@@ -185,6 +185,20 @@ class BundledSound(NamedTuple):
     path: "Path"
 
 
+class BundledEmoji(NamedTuple):
+    """One bundled emoji with the .png behind it, so the route can serve
+    it without ever joining a browser-supplied name onto a path.
+
+    No description and no duration where ``BundledSound`` has both: you
+    audition a sound because you cannot see it, and an emoji is a
+    picture the picker simply shows you.
+    """
+
+    name: str
+    label: str
+    path: "Path"
+
+
 class BundledFontFile(NamedTuple):
     """One bundled face and where its file lives -- what the optional
     ``StyleProvider.list_font_files()`` returns so the Studio page can serve
@@ -273,8 +287,13 @@ class StyleProvider(Protocol):
         """
         ...
 
-    # Optional extra, probed with getattr() like the queue's:
+    # Optional extras, probed with getattr() like the queue's:
     #
+    # * ``list_emoji() -> list[BundledEmoji]`` -- every bundled emoji, for
+    #   the Styles page's emoji picker (GET /api/emoji, /api/emoji/{name}).
+    #   Optional rather than required for the reason every fake in the
+    #   tests is: a provider written before v0.9 has no such method, and
+    #   must give an empty library rather than a 500.
     # * ``list_font_files() -> list[BundledFontFile]`` -- every manifest
     #   entry with the path its file is expected at (present or not). The
     #   Studio page serves exactly these files to the browser renderer

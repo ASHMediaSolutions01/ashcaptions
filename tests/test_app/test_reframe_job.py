@@ -175,10 +175,18 @@ class TestStagesAreRegistered:
     """
 
     def _stages_the_runner_sets(self):
-        source = Path(runner_video.__file__).with_name("runner.py").read_text(encoding="utf-8")
-        return set(re.findall(r'_stage\(report,\s*"([a-z_]+)"\)', source)) | set(
-            re.findall(r'set_stage\("([a-z_]+)"\)', source)
-        )
+        # Every runner module, not just runner.py: the matte stage moved
+        # into runner_video.py when runner.py hit the line ceiling, and a
+        # walk of one file would have stopped seeing it -- which is the
+        # same silence this test exists to prevent.
+        folder = Path(runner_video.__file__).parent
+        found: set[str] = set()
+        for path in sorted(folder.glob("runner*.py")):
+            source = path.read_text(encoding="utf-8")
+            found |= set(re.findall(r'_stage\(report,\s*"([a-z_]+)"\)', source))
+            found |= set(re.findall(r'set_stage\("([a-z_]+)"\)', source))
+            found |= set(re.findall(r'on_stage\("([a-z_]+)"\)', source))
+        return found
 
     def test_the_runner_sets_at_least_the_stages_we_know_about(self):
         found = self._stages_the_runner_sets()

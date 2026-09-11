@@ -562,3 +562,116 @@ class TestBoxAndShadowControls:
         assert "shadowOffset(style)" in source
         assert "boxPaddingPx(style)" in source
         assert "textShadow" in source
+
+
+class TestEmoji:
+    """GET /api/emoji and GET /api/emoji/{name} (v0.9).
+
+    The picker shows the artwork rather than a list of names, which is
+    the whole difference between choosing an emoji and guessing one --
+    so the .png the burn composites is the .png the page is served.
+    """
+
+    PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+
+    def _library(self, tmp_path):
+        directory = tmp_path / "emoji"
+        directory.mkdir()
+        for name in ("fire", "star"):
+            (directory / f"{name}.png").write_bytes(self.PNG)
+        return directory
+
+    def test_lists_the_library_with_a_url_for_each(self, client, tmp_path):
+        client.app.state.style_provider = FakeStyleProvider(emoji_dir=self._library(tmp_path))
+        res = client.get("/api/emoji")
+        assert res.status_code == 200
+        assert res.json() == [
+            {"name": "fire", "label": "Fire", "url": "/api/emoji/fire"},
+            {"name": "star", "label": "Star", "url": "/api/emoji/star"},
+        ]
+
+    def test_serves_a_listed_emoji_as_a_png(self, client, tmp_path):
+        client.app.state.style_provider = FakeStyleProvider(emoji_dir=self._library(tmp_path))
+        res = client.get("/api/emoji/fire")
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "image/png"
+        assert res.content.startswith(b"\x89PNG")
+
+    def test_a_listed_emoji_whose_file_vanished_is_404(self, client, tmp_path):
+        client.app.state.style_provider = FakeStyleProvider(emoji_dir=tmp_path / "empty")
+        res = client.get("/api/emoji/fire")
+        assert res.status_code == 404
+        assert "not installed" in res.json()["detail"]
+
+    def test_refuses_any_name_the_library_does_not_list(self, client, tmp_path):
+        directory = self._library(tmp_path)
+        (tmp_path / "secret.txt").write_text("nope")
+        client.app.state.style_provider = FakeStyleProvider(emoji_dir=directory)
+        for name in ("secret.txt", "unicorn", "..%2Fsecret.txt", "%2E%2E%2Fsecret.txt"):
+            res = client.get(f"/api/emoji/{name}")
+            assert res.status_code == 404, name
+            assert b"nope" not in res.content
+
+    def test_a_provider_with_no_emoji_library_lists_nothing(self, client):
+        """A bundle from before v0.9. An empty list, not a 500 -- the
+        Styles page then says the build carries no emoji."""
+        client.app.state.style_provider = FakeStyleProvider()
+        assert client.get("/api/emoji").json() == []
+        assert client.get("/api/emoji/fire").status_code == 404
+
+    def test_a_provider_predating_the_method_entirely_lists_nothing(self, client):
+        class Older(FakeStyleProvider):
+            list_emoji = None
+
+        client.app.state.style_provider = Older()
+        assert client.get("/api/emoji").json() == []
+
+    def test_the_real_adapter_lists_exactly_what_is_on_disk(self):
+        from ash_captions.styles.emoji import assets_emoji_dir, list_emoji
+        from ash_captions.web.styles_adapter import StylesPackageAdapter
+
+        on_disk = list_emoji()
+        if not on_disk:
+            pytest.skip("this checkout has no emoji")
+        listed = StylesPackageAdapter().list_emoji()
+        assert [e.name for e in listed] == list(on_disk)
+        assert all(e.path.parent == assets_emoji_dir() for e in listed)
+        assert all(e.path.is_file() for e in listed)
+
+
+class TestEmojiPicker:
+    """The Emoji tab of the style editor."""
+
+    def _static(self, name):
+        from pathlib import Path
+
+        import ash_captions.web as web
+
+        return (Path(web.__file__).parent / "static" / name).read_text(encoding="utf-8")
+
+    def test_the_page_carries_the_tab_the_module_reaches_for(self):
+        html = self._static("style_editor.html")
+        for element_id in (
+            "tab-emoji", "panel-emoji", "emoji-trigger-group", "emoji-trigger-help",
+            "emoji-library", "emoji-settings", "emoji-spacing-input", "emoji-empty",
+        ):
+            assert f'id="{element_id}"' in html, element_id
+        assert "style_editor_emoji.js" in html
+
+    def test_every_trigger_the_schema_allows_is_offered(self):
+        from ash_captions.styles.schema import EMOJI_TRIGGERS
+
+        source = self._static("style_editor_emoji.js")
+        offered = set(re.findall(r'\["([a-z_]+)", "[^"]+"\]', source))
+        assert EMOJI_TRIGGERS <= offered, sorted(EMOJI_TRIGGERS - offered)
+
+    def test_the_picker_caps_at_the_same_four_the_schema_does(self):
+        from ash_captions.styles.schema import _MAX_EMOJI
+
+        assert f"MAX_EMOJI = {_MAX_EMOJI};" in self._static("style_editor_emoji.js")
+
+    def test_the_gap_input_matches_the_range_the_schema_accepts(self):
+        from ash_captions.styles.schema import _MAX_EMOJI_SPACING, _MIN_EMOJI_SPACING
+
+        html = self._static("style_editor.html")
+        assert f'id="emoji-spacing-input" min="{_MIN_EMOJI_SPACING}" max="{int(_MAX_EMOJI_SPACING)}"' in html

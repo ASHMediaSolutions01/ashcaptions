@@ -38,7 +38,6 @@ PUNCH_MODES: tuple[str, ...] = ("off", "sentence", "keyword", "both")
 # Emoji bursts share punch-in's trigger vocabulary on purpose: "the words
 # that matter to this client" is one idea, and an editor should not have to
 # keep two lists of them in step.
-EMOJI_TRIGGERS: tuple[str, ...] = ("off", "sentence", "keyword", "both")
 
 APP_NAME = "AshCaptions"
 DEFAULT_ROOT = Path("C:/AshCaptions")
@@ -169,18 +168,10 @@ class Settings:
     punch_min_spacing_seconds: float = 5.0
     punch_keywords: tuple[str, ...] = ()
 
-    # Emoji bursts (engine/stickers.py): a picture composited over the
-    # burned frame, which is the one caption treatment ASS cannot draw.
-    # Off by default for the same reason punch-in is -- it puts something
-    # on a client's video that was not in the footage. The names are the
-    # files in assets/emoji; they are cycled in order, so two alternate
-    # and one repeats. Keywords come from `punch_keywords`.
-    emoji_trigger: str = "off"  # off | sentence | keyword | both
-    emoji: tuple[str, ...] = ()
-    # Wider than the sound effects' spacing on purpose: a noise every
-    # third of a second is a rhythm, a picture every third of a second is
-    # a mess.
-    emoji_min_spacing_seconds: float = 2.5
+    # Emoji bursts were three fields here until v0.9. They are a look's
+    # property now (styles/schema.py's EmojiBursts), the same as sound:
+    # "REEL POP with the fire emoji" is not a different look from "REEL
+    # POP". `punch_keywords` above is still the one shared keyword list.
 
     # Housekeeping
     retention_days: int = 30
@@ -374,9 +365,6 @@ _VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "punch_duration_seconds": lambda v: _as_float(v, minimum=0.1, maximum=10.0),
     "punch_min_spacing_seconds": lambda v: _as_float(v, minimum=0.0, maximum=600.0),
     "punch_keywords": _as_keywords,
-    "emoji_trigger": lambda v: _as_choice(v, EMOJI_TRIGGERS),
-    "emoji": _as_keywords,
-    "emoji_min_spacing_seconds": lambda v: _as_float(v, minimum=0.05, maximum=60.0),
     "retention_days": lambda v: _as_int(v, minimum=0),
     "port": lambda v: _as_int(v, minimum=1024, maximum=65535),
     "min_free_disk_gb": lambda v: _as_float(v, minimum=0.0, maximum=100_000.0),

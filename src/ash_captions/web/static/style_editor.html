@@ -58,6 +58,7 @@
       <button type="button" class="tab" role="tab" id="tab-motion" aria-controls="panel-motion" aria-selected="false">Motion</button>
       <button type="button" class="tab" role="tab" id="tab-placement" aria-controls="panel-placement" aria-selected="false">Placement</button>
       <button type="button" class="tab" role="tab" id="tab-sound" aria-controls="panel-sound" aria-selected="false">Sound</button>
+      <button type="button" class="tab" role="tab" id="tab-emoji" aria-controls="panel-emoji" aria-selected="false">Emoji</button>
     </div>
 
     <div class="panel" id="panel-type" role="tabpanel" aria-labelledby="tab-type">
@@ -220,6 +221,27 @@
       <p class="hint" id="sound-empty" hidden>This build carries no sounds.</p>
     </div>
 
+    <div class="panel" id="panel-emoji" role="tabpanel" aria-labelledby="tab-emoji" hidden>
+      <div class="field">
+        <span class="field-label">Throw an emoji</span>
+        <div class="radio-row" id="emoji-trigger-group"></div>
+        <p class="hint" id="emoji-trigger-help"></p>
+      </div>
+      <div class="field">
+        <span class="field-label">Emoji</span>
+        <div class="emoji-library" id="emoji-library"></div>
+        <p class="hint">Pick up to four. They are thrown in the order you picked them and then start again, so two emoji alternate.</p>
+      </div>
+      <div id="emoji-settings" hidden>
+        <div class="field">
+          <label for="emoji-spacing-input">Least gap (s)</label>
+          <input type="number" id="emoji-spacing-input" min="0.5" max="60" step="0.5">
+        </div>
+        <p class="hint">Wider than the sounds&#39; gap on purpose: a noise every third of a second is a rhythm, a picture every third of a second is a mess.</p>
+      </div>
+      <p class="hint" id="emoji-empty" hidden>This build carries no emoji.</p>
+    </div>
+
     <div class="form-actions">
       <button type="button" class="btn primary" id="save-btn">Save</button>
       <button type="button" class="btn" id="save-as-btn">Save as…</button>
@@ -292,6 +314,7 @@
 <script src="/static/export.js?v=__VERSION__"></script>
 <script src="/static/style_editor_preview.js?v=__VERSION__"></script>
 <script src="/static/style_editor_sound.js?v=__VERSION__"></script>
+<script src="/static/style_editor_emoji.js?v=__VERSION__"></script>
 <script src="/static/style_editor_effects.js?v=__VERSION__"></script>
 <script src="/static/style_editor.js?v=__VERSION__"></script>
 </body>

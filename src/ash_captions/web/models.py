@@ -197,6 +197,19 @@ class SoundSummary(BaseModel):
     url: str
 
 
+class EmojiSummary(BaseModel):
+    """One bundled emoji, as returned by GET /api/emoji.
+
+    ``url`` points at the same .png the burn composites, so the picker
+    shows the artwork rather than a name -- which is the whole difference
+    between choosing an emoji and guessing one.
+    """
+
+    name: str
+    label: str
+    url: str
+
+
 class PreviewRequest(BaseModel):
     """Body of POST /api/styles/preview (spec 7A.3)."""
 

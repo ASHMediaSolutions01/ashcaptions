@@ -724,6 +724,115 @@ def _reject_unbundled_sounds(names: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# emoji bursts (v0.9)
+# ---------------------------------------------------------------------------
+
+# Kept in step with ``engine.stickers`` by
+# ``tests/test_styles/test_emoji_schema.py``, and duplicated rather than
+# imported for the same reason ``SOUND_TRIGGERS`` is.
+#
+# There is no "word" here where sound has one. A sound on every word is a
+# rhythm you can just about defend on a one-word look; a picture on every
+# word is confetti, and ``stickers.select_bursts`` has no such trigger.
+EMOJI_TRIGGERS = frozenset({"off", "sentence", "keyword", "both"})
+
+_MAX_EMOJI = 4  # the same four, for the same reason as _MAX_SOUNDS
+# Wider than sound's 0.35 floor on purpose: a noise every third of a
+# second is a rhythm, a picture every third of a second is a mess.
+_MIN_EMOJI_SPACING, _MAX_EMOJI_SPACING = 0.5, 60.0
+
+
+@dataclass(frozen=True, slots=True)
+class EmojiBursts:
+    """The emoji a look throws up, and when.
+
+    A settings.json field until v0.9, which is where punch-in's keywords
+    started too. It belongs to the look for the reason ``Sound`` gives:
+    "REEL POP with the fire emoji" is not a different look from "REEL
+    POP", and an editor picking a look should get the whole treatment.
+
+    The keyword list stays in Settings, shared with punch-in and sound --
+    "the words that matter to this client" is one list, and nobody should
+    have to keep three of them in step.
+    """
+
+    trigger: str = "off"
+    emoji: tuple[str, ...] = ()
+    min_spacing_seconds: float = 2.5
+
+    @property
+    def enabled(self) -> bool:
+        return self.trigger != "off" and bool(self.emoji)
+
+    @classmethod
+    def from_dict(cls, data: dict, *, check_emoji: bool = True) -> "EmojiBursts":
+        _reject_unknown_keys("emoji", data, {"trigger", "emoji", "min_spacing_seconds"})
+        defaults = cls()
+        trigger = _require_choice(
+            "emoji.trigger", data.get("trigger", defaults.trigger), EMOJI_TRIGGERS
+        )
+
+        raw = data.get("emoji", list(defaults.emoji))
+        if not isinstance(raw, (list, tuple)):
+            raise StyleValidationError(f"emoji.emoji: {raw!r} is not a list of emoji names")
+        if len(raw) > _MAX_EMOJI:
+            raise StyleValidationError(
+                f"emoji.emoji: {len(raw)} emoji is more than the {_MAX_EMOJI} a look may cycle"
+            )
+        names: list[str] = []
+        for index, value in enumerate(raw):
+            if not isinstance(value, str) or not value.strip():
+                raise StyleValidationError(f"emoji.emoji[{index}]: {value!r} is not an emoji name")
+            names.append(value)
+
+        if check_emoji:
+            _reject_unbundled_emoji(names)
+
+        if trigger != "off" and not names:
+            raise StyleValidationError(
+                f"emoji.trigger is {trigger!r} but emoji.emoji is empty -- a look that fires "
+                "nothing should have trigger 'off', so the Styles page can say so"
+            )
+
+        spacing = _require_number(
+            "emoji.min_spacing_seconds",
+            data.get("min_spacing_seconds", defaults.min_spacing_seconds),
+            lo=_MIN_EMOJI_SPACING, hi=_MAX_EMOJI_SPACING,
+        )
+        return cls(
+            trigger=trigger,
+            emoji=tuple(names),
+            min_spacing_seconds=float(spacing),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "trigger": self.trigger,
+            "emoji": list(self.emoji),
+            "min_spacing_seconds": self.min_spacing_seconds,
+        }
+
+
+def _reject_unbundled_emoji(names: list[str]) -> None:
+    """Reject an emoji this build does not ship -- but only when it ships
+    any at all. Same rule, and same reason, as ``_reject_unbundled_sounds``:
+    a checkout that has not run ``scripts/fetch_emoji.py`` must not make
+    every look carrying an emoji unloadable.
+    """
+    from .emoji import list_emoji
+
+    available = list_emoji()
+    if not available:
+        return
+    unknown = [name for name in names if name not in available]
+    if unknown:
+        raise StyleValidationError(
+            f"emoji.emoji: {', '.join(repr(n) for n in unknown)} is not a bundled emoji -- "
+            f"available: {', '.join(available)}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # the style itself
 # ---------------------------------------------------------------------------
 
@@ -746,6 +855,7 @@ _TOP_LEVEL_FIELDS = {
     "exit",
     "layout",
     "sound",
+    "emoji",
 }
 
 
@@ -765,6 +875,7 @@ class Style:
     shadow: Shadow = field(default_factory=Shadow)
     layout: Layout = field(default_factory=Layout)
     sound: Sound = field(default_factory=Sound)
+    emoji: EmojiBursts = field(default_factory=EmojiBursts)
 
     @property
     def uppercase(self) -> bool:
@@ -854,6 +965,9 @@ class Style:
         # test that does not want a fonts manifest does not want a sounds
         # one either.
         sound = Sound.from_dict(_require_dict("sound", data.get("sound", {})), check_sounds=check_font)
+        emoji = EmojiBursts.from_dict(
+            _require_dict("emoji", data.get("emoji", {})), check_emoji=check_font
+        )
 
         return cls(
             name=name,
@@ -870,6 +984,7 @@ class Style:
             shadow=shadow,
             layout=layout,
             sound=sound,
+            emoji=emoji,
         )
 
     def to_dict(self) -> dict:
@@ -890,6 +1005,7 @@ class Style:
             "shadow": self.shadow.to_dict(),
             "layout": self.layout.to_dict(),
             "sound": self.sound.to_dict(),
+            "emoji": self.emoji.to_dict(),
         }
 
 

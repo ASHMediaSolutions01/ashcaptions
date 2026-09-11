@@ -42,7 +42,7 @@ from ash_captions.styles.render import anchor_pixels
 from .catalogue import dialect_preset_id
 from .runner_video import (
     SCAN_PROGRESS_SHARE,
-    build_punch, build_reframe, build_stickers,
+    build_punch, build_reframe, build_stickers, render_matte_first,
     caption_play_res, wants_reframe,
 )
 from .runner_speakers import card_speakers
@@ -430,36 +430,21 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
             duration_seconds=duration,
         )
 
-        # Captions behind the speaker: a person matte first (about the
-        # video's own length on a CPU), then a two-input burn. The matte is
-        # the first 40% of the burn's progress span. Any failure here is a
-        # job failure with a plain message, not a silent fall-through to a
-        # normal burn: the editor asked for the effect.
+        # Captions behind the speaker: a person matte first, then a
+        # two-input burn. See runner_video.render_matte_first.
         matte_path = None
         if getattr(job.options, "behind_speaker", False):
-            if info is None or info.width <= 0:
-                raise RuntimeError(
-                    "Captions behind the speaker need the video's frame size, and ffprobe could not read it."
-                )
-            matte_end = start + round((end - start) * 0.4)
-            _stage(report, "matte")
-            model_path = engine.ensure_matte_model(settings.model_cache_dir, download=True)
             matte_path = _matte_work_dir(job) / "matte.mp4"
-            engine.render_matte(
-                video_path,
-                matte_path,
-                model_path=model_path,
-                width=info.width,
-                height=info.height,
-                fps=info.fps,
+            start = render_matte_first(
+                video_path, matte_path, info,
+                settings=settings,
                 duration_seconds=duration,
                 ffmpeg_path=resolved_ffmpeg,
-                threads=settings.cpu_threads,
-                on_progress=lambda pct: report(round(start + (matte_end - start) * (pct / 100))),
+                span=(start, end),
+                report=report,
                 should_stop=should_stop,
+                on_stage=lambda name: _stage(report, name),
             )
-            start = matte_end
-            _stage(report, "burn")
 
         # fontsdir points libass at the bundled font directory (spec 7A.4)
         # so a style's font resolves identically on all six machines
@@ -476,7 +461,11 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
             on_progress=on_burn_progress,
             optional={
                 "should_stop": should_stop, "matte_path": matte_path, "sfx": sfx_plan,
-                "stickers": build_stickers(settings, words, info, duration_seconds=duration),
+                "stickers": build_stickers(
+                    style, words, info,
+                    keywords=tuple(settings.punch_keywords),
+                    duration_seconds=duration,
+                ),
                 "reframe_filter": reframe.crop_filter if reframe else None,
                 "output_size": reframe.output_size if reframe else None,
             },

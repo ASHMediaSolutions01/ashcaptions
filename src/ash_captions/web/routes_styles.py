@@ -20,7 +20,14 @@ from .interfaces import (
     StyleProvider,
     StyleValidationFailedError,
 )
-from .models import PreviewJob, PreviewRequest, PreviewStatus, SoundSummary, StyleSummary
+from .models import (
+    EmojiSummary,
+    PreviewJob,
+    PreviewRequest,
+    PreviewStatus,
+    SoundSummary,
+    StyleSummary,
+)
 from .validation import validate_local_path
 
 
@@ -126,6 +133,40 @@ def build_styles_router(get_style_provider, get_preview_renderer) -> APIRouter: 
             content_disposition_type="inline",
         )
 
+    @router.get("/api/emoji", response_model=list[EmojiSummary])
+    async def list_emoji(style_provider: StyleProvider = Depends(get_style_provider)) -> list[EmojiSummary]:
+        """The bundled emoji, with a URL for each so the picker can show
+        the artwork. An empty list is a real answer: a bundle from before
+        v0.9, or a checkout that has not run scripts/fetch_emoji.py."""
+        entries = await run_in_threadpool(_bundled_emoji, style_provider)
+        return [
+            EmojiSummary(
+                name=entry.name, label=entry.label,
+                url=f"/api/emoji/{quote(entry.name)}",
+            )
+            for entry in entries
+        ]
+
+    @router.get("/api/emoji/{name}")
+    async def serve_emoji(
+        name: str, style_provider: StyleProvider = Depends(get_style_provider)
+    ) -> FileResponse:
+        """Serve one bundled emoji so the Styles page can show it.
+
+        The name is matched against the library and the *library's* own
+        path is served; nothing the browser sent is ever joined onto a
+        directory. Same rule as ``serve_sound``.
+        """
+        entry = next((e for e in _bundled_emoji(style_provider) if e.name == name), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"{name!r} is not a bundled emoji.")
+        if not await run_in_threadpool(entry.path.is_file):
+            raise HTTPException(status_code=404, detail=f"The emoji {name!r} is not installed.")
+        return FileResponse(
+            entry.path, media_type="image/png", filename=entry.path.name,
+            content_disposition_type="inline",
+        )
+
     @router.post("/api/styles/preview", response_model=PreviewJob, status_code=202)
     async def submit_preview(
         body: PreviewRequest,
@@ -182,6 +223,15 @@ def _bundled_sounds(style_provider: StyleProvider) -> list:
     must give an empty library rather than a 500.
     """
     lister = getattr(style_provider, "list_sounds", None)
+    if not callable(lister):
+        return []
+    return list(lister())
+
+
+def _bundled_emoji(style_provider: StyleProvider) -> list:
+    """The provider's emoji library, or nothing -- probed the same
+    way, for the same reason."""
+    lister = getattr(style_provider, "list_emoji", None)
     if not callable(lister):
         return []
     return list(lister())

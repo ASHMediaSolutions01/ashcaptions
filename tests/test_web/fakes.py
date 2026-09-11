@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from ash_captions.web.interfaces import (
+    BundledEmoji,
     BundledFontFile,
     BundledSound,
     JobNotFoundError,
@@ -349,6 +350,8 @@ class FakeStyleProvider:
         fonts_dir: Path | None = None,
         sounds: tuple[str, ...] = ("pop", "whoosh"),
         sounds_dir: Path | None = None,
+        emoji: tuple[str, ...] = ("fire", "star"),
+        emoji_dir: Path | None = None,
     ) -> None:
         self._shipped: dict[str, dict[str, Any]] = shipped if shipped is not None else {
             name: default_style_definition(name) for name in DEFAULT_SHIPPED_STYLE_NAMES
@@ -363,6 +366,9 @@ class FakeStyleProvider:
         # Same contract as `_fonts_dir`: None means the provider carries
         # no sound library.
         self._sounds_dir = sounds_dir
+        self._emoji = emoji
+        # Same contract again: None is a bundle from before v0.9.
+        self._emoji_dir = emoji_dir
 
     def list_styles(self) -> list[StyleSummary]:
         merged = {**self._shipped, **self._user}
@@ -434,6 +440,17 @@ class FakeStyleProvider:
                 duration_seconds=0.2, path=self._sounds_dir / f"{name}.wav",
             )
             for name in self._sounds
+        ]
+
+    def list_emoji(self) -> list[BundledEmoji]:
+        if self._emoji_dir is None:
+            return []
+        return [
+            BundledEmoji(
+                name=name, label=name.replace("-", " ").capitalize(),
+                path=self._emoji_dir / f"{name}.png",
+            )
+            for name in self._emoji
         ]
 
     def _validate(self, definition: dict[str, Any]) -> None:

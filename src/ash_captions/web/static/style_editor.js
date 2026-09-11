@@ -278,6 +278,7 @@
     // Styles saved before v0.7 have no sound block at all; the Sound tab
     // owns its shape, so ask it rather than repeating the defaults here.
     if (!copy.sound && window.AshStyleSound) copy.sound = AshStyleSound.defaults();
+    if (!copy.emoji && window.AshStyleEmoji) copy.emoji = AshStyleEmoji.defaults();
     return copy;
   }
 
@@ -300,6 +301,7 @@
     setRadioValue(positionGroup, draft.layout.position);
     setRadioValue(alignGroup, draft.layout.align || DEFAULT_ALIGN);
     if (window.AshStyleSound) AshStyleSound.apply();
+    if (window.AshStyleEmoji) AshStyleEmoji.apply();
     if (window.AshStyleEffects) AshStyleEffects.apply();
     renderSample();
   }
@@ -442,6 +444,7 @@
   loadStyles();
   AshEditorPreview.init({ getDraft: () => draft });
   if (window.AshStyleSound) AshStyleSound.init({ getDraft: () => draft });
+  if (window.AshStyleEmoji) AshStyleEmoji.init({ getDraft: () => draft });
   if (window.AshStyleEffects) {
     AshStyleEffects.init({ getDraft: () => draft, onChange: renderSample });
   }

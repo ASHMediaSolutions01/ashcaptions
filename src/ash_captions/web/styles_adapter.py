@@ -25,7 +25,14 @@ from ash_captions.styles import (
 # from `ash_captions.styles` so it no longer has to.
 from ash_captions.styles import assets_fonts_dir, load_manifest
 
-from .interfaces import BundledFontFile, BundledSound, StyleIsShippedError, StyleNotFoundError, StyleValidationFailedError
+from .interfaces import (
+    BundledEmoji,
+    BundledFontFile,
+    BundledSound,
+    StyleIsShippedError,
+    StyleNotFoundError,
+    StyleValidationFailedError,
+)
 from .models import StyleSummary
 
 # `get_style(shipped_only=True)` needs `list_styles()` to see *only* the
@@ -132,6 +139,26 @@ class StylesPackageAdapter:
                     duration_seconds=entry.duration_seconds, path=path,
                 ))
         return found
+
+    def list_emoji(self) -> list[BundledEmoji]:
+        """The bundled emoji, in name order.
+
+        There is no manifest here as there is for sounds -- the directory
+        listing is the manifest -- so the label is derived from the file
+        name. That is enough: the picker shows the picture, and the name
+        is what a look stores.
+        """
+        from ash_captions.styles.emoji import assets_emoji_dir, list_emoji
+
+        directory = assets_emoji_dir()
+        return [
+            BundledEmoji(
+                name=name,
+                label=name.replace("-", " ").capitalize(),
+                path=directory / f"{name}.png",
+            )
+            for name in list_emoji()
+        ]
 
     def list_font_files(self) -> list[BundledFontFile]:
         """Every manifest face with the path its file is expected at (the
