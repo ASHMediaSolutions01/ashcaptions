@@ -6,7 +6,7 @@ inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2295 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2351 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -166,6 +166,45 @@ directory straight afterwards. Reaching that point already means the
 artifact matched the manifest's sha256, so an archive that does this is a
 compromised manifest rather than a corrupt download -- which is exactly
 when "the hash matched" is not a reason to trust it.
+
+**Speaker names in the .srt**, unreleased (v0.6 held list, the podcast
+item). Tick "Name who is speaking" and the transcript names the voice each
+time it changes, the way a podcast transcript is written. 5 seconds for a
+4:48 file; a 26 MB model downloads once.
+
+Measured on the reference interview before it was built:
+
+- **A voice matches itself across the halves of one turn at cosine 0.655,
+  against 0.486 for halves of different turns.** That margin of 0.169 is
+  what says the hand-written Kaldi fbank front-end is *right* rather than
+  merely plausible -- wrong features still produce embeddings, those still
+  cluster, and the result still looks like an answer.
+- **Clustered into two: 0.828 similarity within a speaker against 0.270
+  across, a separation of 0.557.** One voice diced in half scores near
+  zero, so a monologue is detected and gets no labels at all rather than a
+  speaker change in the middle of somebody talking.
+- The turn structure came out as an interview really is: one voice with 4
+  turns and 48s, the other with 4 turns and 229s.
+
+**Running it found a defect the numbers had not.** The first .srt read
+"Speaker 1: Son una herramienta para / Speaker 2: autores que deciden
+liberar" -- one sentence with two people's names on it. The clustering was
+right; the VAD's boundaries are breaths, so a turn can begin mid-clause. A
+speaker change is now held until the previous card has finished a
+sentence. After that, every change lands at a full stop, and the voice the
+model calls "Speaker 1" asks both of the questions -- which is the
+interviewer, and is the check that the labels are the right way round.
+
+**FOLLOWING THE SPEAKER WITH THE REEL IS NOT BUILDABLE THIS WAY, and that
+is measured.** Diarisation says *when* a speaker talks, never *where* they
+are on screen. The cheap link -- frame differencing on each face -- does
+not work: mouth motion against speech loudness correlated at **+0.07**,
+measured three times, the last with head boxes confirmed by eye on a shot
+with no cut in it. Two faces in a two-shot move *together* (+0.65),
+because what frame differencing mostly sees is the camera and the
+lighting. A real audio-visual active-speaker model would be needed, which
+is a much heavier proposition than this was. The reel still follows the
+largest person, and the Framing tab is still how that gets corrected.
 
 `look_card_ass.js` crossed the 500-line ceiling, so the ports of
 `ass_format.py` were split into `look_card_style.js` -- a real seam:

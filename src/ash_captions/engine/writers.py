@@ -35,17 +35,33 @@ from .transcribe import Segment
 # ---------------------------------------------------------------------------
 
 
-def render_srt(cards: Sequence[Card]) -> str:
-    """Render clean, line-per-card SRT captions."""
-    blocks = [
-        f"{index}\n{_format_srt_time(card.start)} --> {_format_srt_time(card.end)}\n{card.text}"
-        for index, card in enumerate(cards, start=1)
-    ]
+def render_srt(cards: Sequence[Card], speakers: Sequence[str | None] | None = None) -> str:
+    """Render clean, line-per-card SRT captions.
+
+    ``speakers`` is one name per card, or None for the transcript as it
+    has always been written. A name is printed only when it *changes*:
+    four hundred cards each prefixed "Ana:" is unreadable, and naming the
+    speaker at the turn is the convention every podcast transcript uses.
+    """
+    blocks = []
+    previous: str | None = None
+    for index, card in enumerate(cards, start=1):
+        name = speakers[index - 1] if speakers is not None and index - 1 < len(speakers) else None
+        text = card.text
+        if name is not None:
+            if name != previous:
+                text = f"{name}: {text}"
+            previous = name
+        blocks.append(
+            f"{index}\n{_format_srt_time(card.start)} --> {_format_srt_time(card.end)}\n{text}"
+        )
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
-def write_srt(cards: Sequence[Card], path: Path | str) -> Path:
-    return _write(render_srt(cards), path)
+def write_srt(
+    cards: Sequence[Card], path: Path | str, speakers: Sequence[str | None] | None = None
+) -> Path:
+    return _write(render_srt(cards, speakers), path)
 
 
 def _format_srt_time(seconds: float) -> str:

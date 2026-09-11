@@ -31,6 +31,14 @@ from .matte import (
     render_matte,
     working_size,
 )
+from .diarise import (
+    Diarisation,
+    DiarisationError,
+    Turn,
+    label_words,
+    speaker_name,
+)
+from .diarise_run import diarise_media, ensure_speaker_model, speaker_model_path
 from .probe import ProbeError, VideoInfo, ffprobe_beside, probe_video
 from .reframe import (
     CropPlan,
@@ -140,6 +148,14 @@ __all__ = [
     "matte_model_path",
     "render_matte",
     "working_size",
+    "Diarisation",
+    "DiarisationError",
+    "Turn",
+    "diarise_media",
+    "ensure_speaker_model",
+    "label_words",
+    "speaker_model_path",
+    "speaker_name",
     "CropPlan",
     "CropWindow",
     "ReframeError",

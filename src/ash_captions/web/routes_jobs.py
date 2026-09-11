@@ -94,6 +94,7 @@ def build_jobs_router(
             client=body.client,
             behind_speaker=body.behind_speaker,
             reframe=body.reframe,
+            speaker_labels=body.speaker_labels,
         )
         path = await run_in_threadpool(validate_local_path, body.path)
         return queue.submit(path, options)
@@ -110,6 +111,7 @@ def build_jobs_router(
         client: str | None = Form(None),
         behind_speaker: bool = Form(False),
         reframe: bool = Form(False),
+        speaker_labels: bool = Form(False),
         queue: JobQueue = Depends(get_queue),
         catalogue: LanguageCatalogueProvider = Depends(get_catalogue),
         style_provider: StyleProvider = Depends(get_style_provider),
@@ -123,6 +125,7 @@ def build_jobs_router(
         options = validate_options(
             catalogue, style_provider, language, dialect, preset, burn_in, translate_to_english,
             client=client, behind_speaker=behind_speaker, reframe=reframe,
+            speaker_labels=speaker_labels,
         )
         _validate_upload(file)
 
@@ -171,6 +174,7 @@ def validate_options(
     client: str | None = None,
     behind_speaker: bool = False,
     reframe: bool = False,
+    speaker_labels: bool = False,
 ) -> JobOptions:
     languages = {lang.code: lang for lang in catalogue.list_languages()}
     lang_entry = languages.get(language)
@@ -206,6 +210,7 @@ def validate_options(
         client=validate_client_name(client),
         behind_speaker=bool(behind_speaker),
         reframe=bool(reframe),
+        speaker_labels=bool(speaker_labels),
     )
 
 

@@ -46,6 +46,7 @@ def _to_web_options(options: PipelineJobOptions) -> WebJobOptions:
         client=getattr(options, "client", None),
         behind_speaker=bool(getattr(options, "behind_speaker", False)),
         reframe=bool(getattr(options, "reframe", False)),
+        speaker_labels=bool(getattr(options, "speaker_labels", False)),
         caption_x=options.caption_x,
         caption_y=options.caption_y,
     )
@@ -61,6 +62,7 @@ def _to_pipeline_options(options: WebJobOptions) -> PipelineJobOptions:
         client=getattr(options, "client", None),
         behind_speaker=bool(getattr(options, "behind_speaker", False)),
         reframe=bool(getattr(options, "reframe", False)),
+        speaker_labels=bool(getattr(options, "speaker_labels", False)),
         caption_x=options.caption_x,
         caption_y=options.caption_y,
     )

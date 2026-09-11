@@ -21,6 +21,7 @@
   const presetSelect = $("preset-select");
   const burnInCheck = $("burn-in-check");
   const reframeCheck = $("reframe-check");
+  const speakersCheck = $("speakers-check");
   const translateCheck = $("translate-check");
   const behindCheck = $("behind-check");
   const startBtn = $("start-btn");
@@ -242,6 +243,7 @@
         translate_to_english: translateCheck.checked,
         behind_speaker: behindCheck.checked,
         reframe: reframeCheck.checked,
+        speaker_labels: speakersCheck.checked,
         client: AshClients.value() || null,
       }),
     });
@@ -257,6 +259,7 @@
     form.append("translate_to_english", translateCheck.checked ? "true" : "false");
     form.append("behind_speaker", behindCheck.checked ? "true" : "false");
     form.append("reframe", reframeCheck.checked ? "true" : "false");
+    form.append("speaker_labels", speakersCheck.checked ? "true" : "false");
     if (AshClients.value()) form.append("client", AshClients.value());
     return AshApi.request("/api/jobs", { method: "POST", body: form });
   }

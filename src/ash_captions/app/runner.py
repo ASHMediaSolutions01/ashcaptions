@@ -47,6 +47,7 @@ from .runner_video import (
     caption_play_res,
     wants_reframe,
 )
+from .runner_speakers import card_speakers
 from .runner_transcript import _reusable_transcript, _save_transcript
 from .runner_translate import run_translate_only
 from .lifecycle import write_job_marker
@@ -278,7 +279,10 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
                 silence_gap=settings.silence_gap_seconds,
                 breaks=card_breaks(saved) if saved is not None else None,
             )
-            atomic_write(lambda p: engine.write_srt(cards, p), output_dir / f"{stem}.srt")
+            speakers = card_speakers(job.options, video_path, cards,
+                                     models_dir=settings.model_cache_dir,
+                                     ffmpeg_path=resolved_ffmpeg, should_stop=should_stop)
+            atomic_write(lambda p: engine.write_srt(cards, p, speakers), output_dir / f"{stem}.srt")
             # A reel's size when the job asks for one: past the crop, the
             # captions included, everything works in reel pixels.
             play_res = caption_play_res(job.options, info)

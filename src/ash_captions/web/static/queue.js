@@ -68,7 +68,7 @@
 
   function metaFor(job) {
     const o = job.options || {};
-    const bits = [o.dialect || o.language, o.preset, o.burn_in ? "burn-in" : null, o.translate_to_english ? "+ English" : null, o.behind_speaker ? "behind speaker" : null, o.reframe ? "9:16 reel" : null];
+    const bits = [o.dialect || o.language, o.preset, o.burn_in ? "burn-in" : null, o.translate_to_english ? "+ English" : null, o.behind_speaker ? "behind speaker" : null, o.reframe ? "9:16 reel" : null, o.speaker_labels ? "speaker names" : null];
     return bits.filter(Boolean).join(" · ");
   }
 

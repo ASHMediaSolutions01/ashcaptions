@@ -87,6 +87,10 @@ class JobOptions:
     # punch-in is: it reframes a client's footage, and that should never
     # happen to it silently.
     reframe: bool = False
+    # Name who is speaking in the .srt, for podcasts and panels. Off by
+    # default: it downloads a 26 MB model on first use and is meaningless
+    # on a single-speaker video, where it deliberately does nothing.
+    speaker_labels: bool = False
     # Which person each reel shot follows, when the editor disagreed with
     # the default. Window index -> index into that window's candidates.
     # Keys are strings because this round-trips through JSON, where an
@@ -141,6 +145,7 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     "client": None,
     "behind_speaker": False,
     "reframe": False,
+    "speaker_labels": False,
     "reframe_overrides": {},
     "caption_x": None,
     "caption_y": None,

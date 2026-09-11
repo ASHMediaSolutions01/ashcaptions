@@ -47,6 +47,7 @@ class JobOptions(BaseModel):
     translate_to_english: bool = False
     behind_speaker: bool = Field(False, description="Draw the captions behind the person (reels; slower)")
     reframe: bool = Field(False, description="Crop a landscape video to a 9:16 reel, following whoever is on screen")
+    speaker_labels: bool = Field(False, description="Name who is speaking in the .srt (podcasts and panels)")
     client: str | None = Field(
         None,
         description=(
@@ -88,6 +89,7 @@ class JobPathRequest(BaseModel):
     translate_to_english: bool = False
     behind_speaker: bool = False
     reframe: bool = False
+    speaker_labels: bool = False
     client: str | None = None
 
 
