@@ -446,6 +446,8 @@
     (window.AshStudio && AshStudio.onReady || []).forEach((fn) => fn({ player, live, api, assUrl, getJob: () => job, setJob: (next) => { job = next; renderTitle(); } }));
     looks.setStyles(styles, live, job.options.preset);
     if (window.AshStudioCheck) AshStudioCheck.mount({ jobId, job, player, live }); else loadTranscript();
+    // Only shows itself once this job has been burned as a reel.
+    if (window.AshStudioFraming) AshStudioFraming.mount({ jobId, job, player });
     refreshBurnState();
     setInterval(refreshBurnState, 3000);
   }

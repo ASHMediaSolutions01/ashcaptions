@@ -276,10 +276,18 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   gap: 6px;
 }
 .panes > #transcript-edit,
-.panes > .check { grid-row: 3; min-height: 0; }
+.panes > .check,
+.panes > .framing { grid-row: 3; min-height: 0; }
 .panes > #transcript-edit { display: flex; }
-.panes[data-pane="words"] > .check { display: none; }
-.panes[data-pane="check"] > #transcript-edit { display: none; }
+.panes[data-pane="words"] > .check,
+.panes[data-pane="words"] > .framing,
+.panes[data-pane="check"] > .framing { display: none; }
+.panes[data-pane="check"] > #transcript-edit,
+.panes[data-pane="framing"] > #transcript-edit,
+.panes[data-pane="framing"] > .check { display: none; }
+/* The word toolbar edits the transcript, which the Framing pane does not
+   show; left visible it offers Bold on words nobody can see. */
+.panes[data-pane="framing"] > .word-toolbar { display: none; }
 /* The tab already names the pane; the heading inside it would say it
    twice. Both class names are their scripts' documented contract. */
 .panes .tedit-head h2,

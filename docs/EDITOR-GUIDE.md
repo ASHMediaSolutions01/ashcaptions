@@ -515,7 +515,7 @@ the `.srt`, `.ass` and `.txt` in the output folder are rewritten with it.
    - **Fix every "haramienta"** changes all of them in this video, and says
      how many that is.
 3. **Always spell it this way** also adds it to the client's glossary
-   (Part 14), so the next job for that client gets it right while it is
+   (Part 15), so the next job for that client gets it right while it is
    still transcribing.
 
 - **Splitting and joining lines.** Put the cursor where the line should break
@@ -625,7 +625,61 @@ the person back on top.
 - The first use downloads the model once (15 MB); the installed version ships
   it.
 
-## Part 14 — Clients and glossaries
+## Part 14 — Landscape into a 9:16 reel
+
+A 1920x1080 interview is the wrong shape for Reels, Shorts and TikTok. Tick
+**Crop landscape to a 9:16 reel** when you submit, or press **9:16 reel** in
+the Studio's top bar before you burn, and you get a 1080x1920 video that
+follows whoever is on screen.
+
+It does not pan around. It decides where to sit **once per shot** and holds
+there, because that is what the footage actually does: measured on a real
+interview, a seated subject moves about 30 pixels in a 1920-wide frame over
+twelve seconds. A crop that chased that would wander for no reason.
+
+- It only applies when **Burn captions into the video** is ticked. The `.srt`
+  has no shape, so nothing else changes.
+- The captions are drawn **after** the crop, at the reel's size. They are not
+  shrunk or stretched by it.
+- A video that is already vertical is left alone.
+- The queue shows a **Framing the reel** stage before the burn. It is quick —
+  a few seconds for a five-minute video, because it looks at a handful of
+  frames per shot rather than all of them.
+
+### When two people are on screen
+
+A 9:16 crop of a 1080-tall frame is 606 pixels wide. On the interview it was
+measured against, the two people sat 1167 pixels apart — **they cannot both
+fit**, so something has to choose. It follows the largest person in the shot,
+which is usually the one nearest the camera.
+
+**It is not listening to the audio**, so it does not know who is talking. On
+that interview, 10 of 24 shots had more than one person in them, so this is
+worth checking rather than trusting.
+
+After you burn a reel, a **Framing** tab appears in the Studio next to Words
+and Check. It lists only the shots where there was a choice:
+
+1. Click the timecode to play that shot and see who is who.
+2. Click **left** or **right** to follow the other person.
+3. Click **Burn the reel again**.
+
+The second burn skips the looking-around step, so it is quicker than the
+first.
+
+> **Shot on 1080p?** A 9:16 crop keeps 606 pixels of your 1920, and the reel
+> is scaled up to 1080 wide from that. It is what every tool of this kind
+> does and it looks fine on a phone, but if the reel is the deliverable,
+> shoot 4K and it stays sharp.
+
+> **Title cards get cropped.** A wide title or lower third that fills a
+> landscape frame will lose its ends. The crop centres on the frame when
+> there is nobody in it, which is the best it can do without knowing what the
+> text says.
+
+---
+
+## Part 15 — Clients and glossaries
 
 Every job can carry a **Client**. Type the client's name in the **Client** box
 on the control page (it remembers the last one, and suggests the ones it has
@@ -641,7 +695,7 @@ seen). Then:
 - **Watch folder**: a video dropped into `C:\AshCaptions\in\<Client>\` is a
   job for that client, with that client's glossary.
 
-## Part 15 — Punch-in (zooming the footage)
+## Part 16 — Punch-in (zooming the footage)
 
 A punch-in is the picture pushing in slightly on a word. It is **off by
 default**, because it changes how a client's video is framed. To turn it on,
@@ -669,7 +723,7 @@ on hour-long files and costs almost no extra render time.
 
 ---
 
-## Part 16 — Sound effects
+## Part 17 — Sound effects
 
 A look can fire a short sound on the word the caption lands on — a pop, a
 whoosh, a low impact. It is the same idea as the punch-in: the captions say
@@ -712,7 +766,7 @@ Sound is only mixed in when **Burn captions into the video** is ticked — an
 `.srt` cannot carry a whoosh. The video keeps its original length and its
 dialogue; the sounds are added underneath, nothing is replaced or ducked.
 
-## Part 17 — Problems and fixes
+## Part 18 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
@@ -739,7 +793,7 @@ C:\AshCaptions\ash-captions.log
 
 ---
 
-## Part 18 — Uninstalling
+## Part 19 — Uninstalling
 
 Double-click `Uninstall-AshCaptions.bat`. It sits beside
 `Install-AshCaptions.bat`, wherever Ghazi gave you that; if you no longer
@@ -755,7 +809,7 @@ back up.
 
 ---
 
-## Part 19 — Worth knowing
+## Part 20 — Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
   languages very good. **Arabic**: the `.srt` and transcript are fine; for a

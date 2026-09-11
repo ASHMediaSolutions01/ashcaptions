@@ -89,10 +89,18 @@ def build_reframe(
     ffmpeg_path: Path | str,
     threads: int | None = None,
     overrides: dict[int, int] | None = None,
+    output_path: Path | str | None = None,
     on_progress: Callable[[float], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
 ) -> Reframe | None:
-    """Scan the footage and return the crop, or None when not reframing.
+    """Return the crop for this job, or None when not reframing.
+
+    ``output_path`` is where the deliverable goes; the plan is saved
+    beside it so an editor can correct the framing later. When a saved
+    plan is already there for footage of this shape, a correction reuses
+    it and **skips the scan** -- the plan carries every candidate's
+    position, so re-aiming a window is arithmetic, not measurement. That
+    makes a corrected re-burn faster than the first one.
 
     Raises ``engine.ReframeScanError`` if the scan cannot run -- see the
     module note on why this is not degraded to a normal burn.
@@ -111,18 +119,32 @@ def build_reframe(
         log.info("reframe: the source is already %dx%d; nothing to crop", *output_size)
         return None
 
-    plan = engine.scan_reframe(
-        video_path,
-        width=info.width,
-        height=info.height,
-        duration_seconds=duration_seconds,
-        models_dir=models_dir,
-        ffmpeg_path=ffmpeg_path,
-        threads=threads,
-        overrides=overrides,
-        on_progress=on_progress,
-        should_stop=should_stop,
-    )
+    plan = _reuse_saved_plan(output_path, info) if overrides else None
+    if plan is not None:
+        log.info("reframe: reusing the saved plan and applying %d correction(s)", len(overrides))
+        plan = engine.apply_overrides(plan, overrides)
+        if on_progress is not None:
+            on_progress(100.0)
+    else:
+        plan = engine.scan_reframe(
+            video_path,
+            width=info.width,
+            height=info.height,
+            duration_seconds=duration_seconds,
+            models_dir=models_dir,
+            ffmpeg_path=ffmpeg_path,
+            threads=threads,
+            overrides=overrides,
+            on_progress=on_progress,
+            should_stop=should_stop,
+        )
+    if output_path is not None:
+        try:
+            engine.save_plan(plan, output_path)
+        except OSError:
+            # The reel is the deliverable; losing the ability to correct
+            # its framing later is not worth failing the burn over.
+            log.warning("reframe: could not save the crop plan", exc_info=True)
     crop_filter = engine.build_crop_filter(plan, output=output_size)
     log.info(
         "reframe: %dx%d -> %dx%d over %d window(s); %d needed a choice between people",
@@ -185,3 +207,26 @@ def build_punch(
     except Exception:  # noqa: BLE001
         log.warning("punch-in unavailable; burning without it", exc_info=True)
         return None
+
+
+def _reuse_saved_plan(output_path: Path | str | None, info: Any):
+    """A saved plan for footage of this shape, or None to scan again.
+
+    Every way this can fail -- no file, unreadable, a different frame
+    size because the footage was replaced -- returns None, because the
+    answer to all of them is the same: measure it again.
+    """
+    if output_path is None:
+        return None
+    plan = engine.load_plan(output_path)
+    if plan is None:
+        return None
+    from ash_captions.engine.reframe_store import matches_source
+
+    if not matches_source(plan, info.width, info.height):
+        log.info(
+            "reframe: the saved plan is for %dx%d but the footage is %dx%d; scanning again",
+            plan.source_width, plan.source_height, info.width, info.height,
+        )
+        return None
+    return plan

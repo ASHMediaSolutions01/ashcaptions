@@ -259,6 +259,29 @@ def clean_update_leftovers(updates_dir: Path | str) -> int:
     return removed
 
 
+def _refuse_escaping_members(zf: zipfile.ZipFile, staging: Path) -> None:
+    """Raise unless every member lands inside ``staging``.
+
+    ``extractall`` happily writes a member named ``../../evil`` outside
+    the directory it was given. Reaching this point already means the
+    artifact matched the manifest's sha256, so a zip that does this is a
+    compromised manifest rather than a corrupt download -- which is
+    exactly when the app is about to copy the result over its own install
+    directory, and the worst possible moment to trust an archive's own
+    idea of where its files belong.
+    """
+    root = staging.resolve()
+    for name in zf.namelist():
+        # Zip member names are always "/"-separated; a backslash inside
+        # one is part of the name until it is joined onto a path.
+        target = (root / name.replace("\\", "/")).resolve()
+        if target != root and root not in target.parents:
+            raise UpdateApplyError(
+                f"The update archive contains a file that would be written outside "
+                f"the staging directory ({name!r}); refusing to extract it."
+            )
+
+
 def apply_update(
     artifact_path: Path,
     *,
@@ -327,6 +350,7 @@ def apply_update(
         if staging.exists():
             shutil.rmtree(staging)
         with zipfile.ZipFile(artifact_path) as zf:
+            _refuse_escaping_members(zf, staging)
             zf.extractall(staging)
     except (zipfile.BadZipFile, OSError) as exc:
         raise UpdateApplyError(f"Could not extract update artifact: {exc}") from exc

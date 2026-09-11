@@ -411,6 +411,8 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
                 models_dir=settings.model_cache_dir,
                 ffmpeg_path=resolved_ffmpeg,
                 threads=settings.cpu_threads,
+                overrides={int(k): v for k, v in job.options.reframe_overrides.items()},
+                output_path=output_dir / f"{stem}.captioned.mp4",
                 on_progress=lambda pct: report(round(start + (reframe_end - start) * (pct / 100))),
                 should_stop=should_stop,
             )

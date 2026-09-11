@@ -41,6 +41,13 @@ from .reframe import (
     reel_size,
 )
 from .reframe_scan import ReframeScanError, scan_reframe
+from .reframe_store import (
+    apply_overrides,
+    load_plan,
+    plan_path_for,
+    plan_to_dict,
+    save_plan,
+)
 from .punch import (
     MAX_DURATION_SECONDS,
     MIN_DURATION_SECONDS,
@@ -141,6 +148,11 @@ __all__ = [
     "crop_size",
     "reel_size",
     "scan_reframe",
+    "apply_overrides",
+    "load_plan",
+    "plan_path_for",
+    "plan_to_dict",
+    "save_plan",
     "ffprobe_beside",
     "VideoInfo",
     "ProbeError",

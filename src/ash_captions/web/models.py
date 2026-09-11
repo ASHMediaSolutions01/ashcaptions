@@ -317,6 +317,9 @@ class PresetRequest(BaseModel):
 
     preset: str = Field(..., min_length=1)
     reframe: bool = False
+    # Window index -> which person in that window to follow. Keys arrive
+    # as JSON object keys, so they are text; the queue converts them.
+    reframe_overrides: dict[str, int] = Field(default_factory=dict)
     caption_x: float | None = Field(None, ge=0.0, le=1.0)
     caption_y: float | None = Field(None, ge=0.0, le=1.0)
 

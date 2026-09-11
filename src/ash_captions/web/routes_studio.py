@@ -11,6 +11,13 @@ review page served at /studio/{job_id} from static/studio.html).
   playhead. Real work, so it runs in the threadpool like everything else.
 * `POST /api/jobs/{id}/burn {"preset"}` -- enqueue a burn-only job for the
   same footage in that look; the editor watches it in the queue.
+* `GET /api/jobs/{id}/reframe` -- the saved 9:16 crop plan, so the page can
+  show which person each shot follows and offer the others. Answers 200
+  with `{"available": false}` rather than 404 when the job has never been
+  burned as a reel: the Studio asks on every visit, and a 404 there put a
+  red line in the browser console of every ordinary job, which makes a
+  real error harder to see. The plan holds every candidate's position, so
+  a correction re-aims a window without re-scanning.
 * `GET /api/jobs/{id}/srt` -- the transcript cards, for the read-only strip.
 * `GET /api/jobs/{id}/output` -- the burned `.captioned.mp4` with HTTP Range
   support, what the page falls back to when the original footage has since
@@ -72,10 +79,19 @@ def build_studio_router(
         # Only sent when asked for: `_call_optional` forwards keywords
         # unchanged, so a queue implementation that predates reframing
         # keeps working for every ordinary burn.
-        extra = {"reframe": True} if body.reframe else {}
+        extra = {}
+        if body.reframe:
+            extra["reframe"] = True
+            if body.reframe_overrides:
+                extra["reframe_overrides"] = body.reframe_overrides
         return await _call_optional(
             queue, "submit_burn", job_id, body.preset, missing=CANNOT_BURN_DETAIL, **extra
         )
+
+    @router.get("/api/jobs/{job_id}/reframe")
+    async def serve_reframe_plan(job_id: str, queue: JobQueue = Depends(get_queue)) -> dict:
+        output_dir = output_dir_of(job_or_404(queue, job_id))
+        return await run_in_threadpool(_reframe_plan, output_dir, job_id)
 
     @router.get("/api/jobs/{job_id}/srt")
     async def serve_srt(job_id: str, queue: JobQueue = Depends(get_queue)) -> FileResponse:
@@ -130,6 +146,24 @@ async def _call_optional(
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc) or f"Job {job_id!r} can't use that look.")
+
+
+def _reframe_plan(output_dir: Path, job_id: str) -> dict:
+    """The stored crop plan for whatever this job burned, as JSON.
+
+    `available` keeps "never burned as a reel" and "a reel that follows
+    nobody" apart -- the page shows a different thing for each -- without
+    spending an HTTP error on the first, which is the ordinary case for
+    every job that is not a reel.
+    """
+    from ash_captions import engine
+
+    del job_id  # named for the caller's sake; the answer does not vary by it
+    burned = _first_match(output_dir, "*.captioned.mp4")
+    plan = None if burned is None else engine.load_plan(burned)
+    if plan is None:
+        return {"available": False, "windows": []}
+    return {"available": True, **engine.plan_to_dict(plan)}
 
 
 def _first_match(output_dir: Path, pattern: str) -> Path | None:

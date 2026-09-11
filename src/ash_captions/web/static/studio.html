@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/static/studio.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/studio_check.css?v=__VERSION__">
 <link rel="stylesheet" href="/static/studio_drag.css?v=__VERSION__">
+<link rel="stylesheet" href="/static/studio_framing.css?v=__VERSION__">
 </head>
 <body class="studio">
 
@@ -92,6 +93,9 @@
       <div class="word-toolbar" id="word-toolbar" hidden></div>
       <div id="transcript-edit"></div>
       <section class="check" id="check" aria-label="Caption check" hidden></section>
+      <!-- Stays hidden until this job has been burned as a reel; there is
+           no framing to show for footage nobody has cropped. -->
+      <section class="framing" id="framing" aria-label="Reel framing" hidden></section>
     </div>
   </section>
 
@@ -123,6 +127,7 @@
 <script src="/static/studio_edit_pop.js?v=__VERSION__"></script>
 <script src="/static/studio_edit.js?v=__VERSION__"></script>
 <script src="/static/studio_word.js?v=__VERSION__"></script>
+<script src="/static/studio_framing.js?v=__VERSION__"></script>
 <script src="/static/studio_panes.js?v=__VERSION__"></script>
 <script src="/static/studio_resize.js?v=__VERSION__"></script>
 <script src="/static/export.js?v=__VERSION__"></script>

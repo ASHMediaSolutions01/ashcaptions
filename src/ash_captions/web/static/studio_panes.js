@@ -20,12 +20,16 @@
   const bar = document.getElementById("pane-tabs");
   const words = document.getElementById("transcript-edit");
   const check = document.getElementById("check");
+  const framing = document.getElementById("framing");
   if (!panes || !bar || !words || !check) return;
 
   const TABS = [
     { pane: "words", label: "Words", el: words },
     { pane: "check", label: "Check", el: check },
-  ];
+    // Only a reel has framing to argue with, so this tab is absent --
+    // not merely disabled -- until one has been burned.
+    { pane: "framing", label: "Framing", el: framing },
+  ].filter((tab) => tab.el);
   const buttons = new Map();
 
   function available(tab) {
@@ -104,6 +108,9 @@
   // availability is watched rather than read once.
   const watch = new MutationObserver(sync);
   watch.observe(check, { attributes: true, attributeFilter: ["hidden"], childList: true, subtree: true });
+  // The framing pane unhides itself after fetching the saved plan, which
+  // is well after this file has built the tab bar.
+  if (framing) watch.observe(framing, { attributes: true, attributeFilter: ["hidden"] });
   watch.observe(words, { attributes: true, attributeFilter: ["hidden"], childList: true });
   sync();
 

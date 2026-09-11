@@ -1,12 +1,12 @@
 # ASH Captions — Status
 
-Last verified: **2026-09-10**, in a freshly built bundle rather than from
+Last verified: **2026-09-11**, in a freshly built bundle rather than from
 source. Everything under "verified" below was checked by running it, not
 inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2253 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2295 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -27,11 +27,18 @@ in the Veed / Submagic category, not a video editor. Ghazi, 2026-09-10.
 The chrome stays neutral because a caption's colour is judged against
 footage, not because the tool wants to look like an edit suite.
 
-**v0.7.0 is published.** Sound effects locked to the caption word, a wider
-animation vocabulary, per-word animation, the Studio layout and behaviour
-fixes, and an updater that finally says where you stand.
+**v0.8.0 is published: the reel release.** Landscape footage becomes a
+9:16 reel that follows whoever is on screen, and the editor can argue with
+who that is. Alongside it, the four features that had been sitting on
+master since v0.7.0: case and punctuation modes, draggable Studio columns
+with a neutral palette and a sound-volume slider, and box and shadow as
+real controls.
 
-**Box and shadow are real controls** (v0.6 spec, held item 4), unreleased.
+v0.7.0 before it: sound effects locked to the caption word, a wider
+animation vocabulary, per-word animation, the Studio layout and behaviour
+fixes, and an updater that says where you stand.
+
+**Box and shadow are real controls** (v0.6 spec, held item 4).
 Box: colour, opacity, size. Shadow: colour, opacity, angle, distance --
 seven of the nine properties the spec named. The shadow colour had round-
 tripped untouched through Save for four versions because the editor had
@@ -76,10 +83,9 @@ never softens (1424 -> 1441 -> 1432 solid px at radius 0, 6, 18, against
 1413 -> 0 -> 0 with no outline). The v0.7 fix was right; its stated reason
 was not.
 
-**Landscape to 9:16 has a crop planner, measured first** (`engine/reframe.py`,
-v0.6 held list item 1). Not yet wired to the pipeline or the page: this is the
-part that decides *where* the crop sits. Five measurements on the studio's own
-1920x1080 Spanish interview shaped it, and three of them contradicted the
+**Landscape to 9:16 was measured before it was designed** (`engine/reframe.py`,
+v0.6 held list item 1, shipped in v0.8.0). Five measurements on the studio's
+own 1920x1080 Spanish interview shaped it, and three of them contradicted the
 obvious design:
 
 - **Nobody moves inside a shot.** The matte's centroid drifts 13-31px over
@@ -130,15 +136,36 @@ whitelist, so the new "reframe" stage failed every reel job at run time with
 "unknown stage". A test now walks the runner's own source and asserts every
 stage it sets is one the database accepts and the queue page can label.
 
-Still to come, and the plan already supports it: an editor's per-shot
-override. `CropWindow.contested` marks the 42% of shots with more than one
-person, and `plan_crops(overrides=...)` rebuilds from the same samples without
-re-scanning -- but nothing surfaces it yet, so today the reel always follows
-the largest person.
+**The editor can now argue with the choice.** A **Framing** tab appears in
+the Studio beside Words and Check once a reel has been burned, listing only
+the shots where there was more than one person -- four or five rows, not the
+thirty-six the plan holds. Click the timecode to play that shot, click the
+other person, re-burn.
+
+The correction is cheap for a reason worth keeping: the saved plan carries
+every candidate's x, so re-aiming a window needs no footage, no model and no
+second scan. **A corrected re-burn skips the scan entirely and is faster than
+the first one.** The plan is written beside the deliverable as
+`<stem>.reframe.json`; every way that file can be bad -- missing, truncated, a
+version this build does not know, made for footage of a different frame size --
+reads as "measure it again" rather than as a plausible-looking wrong plan.
+
+It still does not know who is *speaking*: nothing in the pipeline listens to
+the audio, and telling speakers apart needs diarisation, which is its own
+model and its own download. The default follows the largest person, which on
+the measured interview is consistently the guest and never the interviewer.
 
 The last three blue-tinted greys are gone from the chrome (`#2b303c`,
 `#4a5162`, `#6e7686` -- B+17 to B+24 over R), which is the tint the neutral
 palette exists to remove.
+
+**The updater refuses an archive that would write outside its staging
+directory.** `zipfile.extractall` happily honours a member named
+`../../evil`, and the app mirrors the extracted tree over its own install
+directory straight afterwards. Reaching that point already means the
+artifact matched the manifest's sha256, so an archive that does this is a
+compromised manifest rather than a corrupt download -- which is exactly
+when "the hash matched" is not a reason to trust it.
 
 `look_card_ass.js` crossed the 500-line ceiling, so the ports of
 `ass_format.py` were split into `look_card_style.js` -- a real seam:

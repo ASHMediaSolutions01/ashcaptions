@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing, contextmanager
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -87,6 +87,11 @@ class JobOptions:
     # punch-in is: it reframes a client's footage, and that should never
     # happen to it silently.
     reframe: bool = False
+    # Which person each reel shot follows, when the editor disagreed with
+    # the default. Window index -> index into that window's candidates.
+    # Keys are strings because this round-trips through JSON, where an
+    # integer key comes back as text and would silently never match.
+    reframe_overrides: dict[str, int] = field(default_factory=dict)
     # Where the editor dragged the caption in the Studio (v0.5): fractions
     # of the frame width/height in [0, 1], both set or both None. Fractions,
     # not pixels, so one value is right at 1080x1920 and 1920x1080 and
@@ -119,6 +124,10 @@ class JobOptions:
         # coordinate, text) reads as "no position" rather than failing the row.
         if not (_is_fraction(merged["caption_x"]) and _is_fraction(merged["caption_y"])):
             merged["caption_x"] = merged["caption_y"] = None
+        # Anything but a {digits: int} map reads as "no corrections", the
+        # same way a bad position reads as "no position": the framing then
+        # falls back to the default, which is always a valid reel.
+        merged["reframe_overrides"] = _clean_overrides(merged.get("reframe_overrides"))
         return JobOptions(**merged)
 
 
@@ -132,9 +141,23 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     "client": None,
     "behind_speaker": False,
     "reframe": False,
+    "reframe_overrides": {},
     "caption_x": None,
     "caption_y": None,
 }
+
+
+def _clean_overrides(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, int] = {}
+    for key, choice in value.items():
+        if isinstance(choice, bool) or not isinstance(choice, int) or choice < 0:
+            continue
+        text = str(key)
+        if text.isdigit():
+            cleaned[text] = choice
+    return cleaned
 
 
 def _is_fraction(value: Any) -> bool:

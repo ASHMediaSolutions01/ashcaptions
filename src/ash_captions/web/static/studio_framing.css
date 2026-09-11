@@ -1,0 +1,79 @@
+/* Reel framing: one row per shot that had more than one person in it.
+
+   Deliberately a short list. Only contested shots appear, so the panel
+   is four or five rows on a real interview rather than the thirty-six
+   the plan holds -- a list of everything would bury the four that
+   matter. Neutral like the rest of the chrome; the accent marks only
+   which person a shot is following. */
+
+.framing {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 2px 2px 8px;
+}
+
+.framing-head {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.framing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.framing-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+/* The timecode is a button because it does something: it plays the shot,
+   which is the only way to know which person you are choosing between. */
+.framing-when {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  min-width: 92px;
+  text-align: left;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.framing-when:hover { color: var(--accent); }
+
+.framing-choices {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.framing-choice[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.framing-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.framing-note {
+  color: var(--muted);
+  font-size: 12px;
+}

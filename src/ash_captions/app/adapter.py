@@ -240,7 +240,10 @@ class QueueAdapter:
         self._notify()
         return _to_web_job(updated)
 
-    def submit_burn(self, job_id: str, preset: str, *, reframe: bool = False) -> WebJob:
+    def submit_burn(
+        self, job_id: str, preset: str, *, reframe: bool = False,
+        reframe_overrides: dict[str, int] | None = None,
+    ) -> WebJob:
         """Enqueue a burn-only job for the same input, in ``preset``, into the
         same output folder. Reuses the saved transcript; fails at run time
         if the input has since changed.
@@ -261,6 +264,7 @@ class QueueAdapter:
             burn=True,
             mode="burn_only",
             reframe=bool(reframe),
+            reframe_overrides=dict(reframe_overrides or {}),
         )
         new_id = self._store.insert_job(job.input_path, job.output_dir, options)
         created = self._store.get_job(new_id)
