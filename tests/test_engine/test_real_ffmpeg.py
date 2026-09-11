@@ -102,3 +102,35 @@ def test_burns_with_900_punch_moments(clip, captions):
         clip, captions, output, duration_seconds=3.0, ffmpeg_path=FFMPEG, use_nvenc=False, punch_filter=punch,
     )
     _assert_playable_yuv420p(output)
+
+
+def test_a_burn_with_an_emoji_burst_actually_finishes(clip, captions, tmp_path):
+    """The one that matters most in this file.
+
+    ``-loop 1`` on the emoji input made it an *infinite* stream, so
+    ffmpeg never reached the end of it: a real burn sat at a 0-byte part
+    file with no error and no progress, for as long as it was left. Every
+    mocked test passed throughout, because the graph and the argv were
+    both perfectly correct -- a fake ffmpeg exits whatever you hand it.
+
+    The timeout is the assertion. A regression here hangs rather than
+    fails, which is exactly why this runs the real binary.
+    """
+    from ash_captions.engine.stickers import Burst, build_plan
+
+    emoji = tmp_path / "fire.png"
+    subprocess.run(
+        [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "color=c=red:size=64x64:duration=0.1", "-frames:v", "1", str(emoji)],
+        check=True,
+    )
+    plan = build_plan(
+        [Burst(0.5, "fire", -1, "sentence"), Burst(1.5, "fire", 1, "sentence")],
+        lambda name: emoji, width=1080, height=1920,
+    )
+    output = clip.parent / "emoji.captioned.mp4"
+    burn_captions(
+        clip, captions, output, duration_seconds=3.0, ffmpeg_path=FFMPEG,
+        use_nvenc=False, stickers=plan,
+    )
+    _assert_playable_yuv420p(output)

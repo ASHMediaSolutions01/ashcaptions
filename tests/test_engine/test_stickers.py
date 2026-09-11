@@ -246,3 +246,46 @@ class TestEveryStreamIsConsumedOnce:
         graph = self._graph(["fire"] * 5)
         assert "split=5" in graph
         assert len(set(self._labels_consumed(graph))) == 5
+
+
+class TestTheBurnCommand:
+    """What ffmpeg is actually told to open.
+
+    ``StickerPlan`` only builds the graph; ``engine.burn`` adds the
+    inputs, and the one thing that has already gone wrong there cannot be
+    seen in the graph at all.
+    """
+
+    def _argv(self, tmp_path, count=2):
+        from ash_captions.engine.burn import build_burn_command
+
+        ass = tmp_path / "captions.ass"
+        ass.write_text("[Script Info]\n", encoding="utf-8")
+        work = tmp_path / "work"
+        work.mkdir()
+        names = ["fire", "star"][:count]
+        plan = StickerPlan(
+            files=tuple(str(tmp_path / ("%s.png" % n)) for n in names),
+            bursts=tuple(Burst(float(i), n, -1, "keyword") for i, n in enumerate(names)),
+            emoji_order=tuple(names), width=1080, height=1920,
+        )
+        return build_burn_command(
+            tmp_path / "in.mp4", ass, tmp_path / "out.mp4",
+            work_dir=work, ffmpeg_path="ffmpeg", stickers=plan, duration_seconds=3.0,
+        )
+
+    def test_an_emoji_input_is_never_looped(self, tmp_path):
+        """``-loop 1`` makes an image input infinite, and ffmpeg then
+        never reaches the end of it: a real burn sat at a 0-byte file
+        with no error and no progress. `overlay` already holds the last
+        frame of a finished input (eof_action=repeat), so the loop bought
+        nothing and cost the whole burn."""
+        assert "-loop" not in self._argv(tmp_path)
+
+    def test_each_emoji_is_opened_exactly_once(self, tmp_path):
+        argv = self._argv(tmp_path)
+        assert argv.count("-i") == 3  # the video, and one per emoji
+
+    def test_the_burn_maps_the_stickers_output(self, tmp_path):
+        argv = self._argv(tmp_path)
+        assert "[stuck]" in argv

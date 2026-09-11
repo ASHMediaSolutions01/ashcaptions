@@ -226,9 +226,21 @@ def build_burn_command(
         if sticker_graph:
             graph = f"{graph};{sticker_graph}"
             for path in stickers.files:
-                # -loop 1 because a PNG is one frame and the overlay has to
-                # have something to draw for the whole of its window.
-                inputs += ["-loop", "1", "-i", str(path)]
+                # NOT `-loop 1`. That was here on the belief that a
+                # one-frame PNG would vanish after a single frame and the
+                # overlay needs something to draw for its whole window --
+                # and it hangs the burn. `-loop 1` makes the image input
+                # *infinite*, ffmpeg never reaches the end of it, and the
+                # encode sits at 0 bytes forever: reproduced with one
+                # burst on a 20s clip, 90s with no output and no error,
+                # and the identical graph without it finished in seconds.
+                # The belief was wrong anyway -- `overlay` defaults to
+                # `eof_action=repeat`, so the last frame of a finished
+                # secondary input is held for as long as the main input
+                # runs. Checked on the burned frames: the sticker is drawn
+                # at the start of its window, still drawn (and risen) near
+                # the end of it, and gone after.
+                inputs += ["-i", str(path)]
             video_map = "[stuck]"
 
     audio_map = "0:a:0?"
