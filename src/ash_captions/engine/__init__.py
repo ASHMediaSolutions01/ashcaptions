@@ -49,6 +49,8 @@ from .reframe import (
     reel_size,
 )
 from .reframe_scan import ReframeScanError, scan_reframe
+from .stickers import Burst, StickerPlan, select_bursts
+from .stickers import build_plan as build_sticker_plan
 from .reframe_store import (
     apply_overrides,
     load_plan,
@@ -164,6 +166,10 @@ __all__ = [
     "crop_size",
     "reel_size",
     "scan_reframe",
+    "Burst",
+    "StickerPlan",
+    "select_bursts",
+    "build_sticker_plan",
     "apply_overrides",
     "load_plan",
     "plan_path_for",

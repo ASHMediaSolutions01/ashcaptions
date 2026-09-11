@@ -42,10 +42,8 @@ from ash_captions.styles.render import anchor_pixels
 from .catalogue import dialect_preset_id
 from .runner_video import (
     SCAN_PROGRESS_SHARE,
-    build_punch,
-    build_reframe,
-    caption_play_res,
-    wants_reframe,
+    build_punch, build_reframe, build_stickers,
+    caption_play_res, wants_reframe,
 )
 from .runner_speakers import card_speakers
 from .runner_transcript import _reusable_transcript, _save_transcript
@@ -478,6 +476,7 @@ def build_run_job(  # noqa: C901 - the pipeline assembly: a branch per optional 
             on_progress=on_burn_progress,
             optional={
                 "should_stop": should_stop, "matte_path": matte_path, "sfx": sfx_plan,
+                "stickers": build_stickers(settings, words, info, duration_seconds=duration),
                 "reframe_filter": reframe.crop_filter if reframe else None,
                 "output_size": reframe.output_size if reframe else None,
             },

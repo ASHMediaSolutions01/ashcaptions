@@ -230,3 +230,39 @@ def _reuse_saved_plan(output_path: Path | str | None, info: Any):
         )
         return None
     return plan
+
+
+def build_stickers(settings: Any, words: tuple, info: Any, *, duration_seconds: float):
+    """The emoji-burst plan for this burn, or None.
+
+    Degrades like punch-in rather than failing like the reel: a sticker
+    is a flourish on top of the deliverable, and a look asking for an
+    emoji this build does not ship should cost the editor a picture, not
+    a video.
+    """
+    trigger = getattr(settings, "emoji_trigger", "off")
+    names = tuple(getattr(settings, "emoji", ()) or ())
+    if trigger == "off" or not names:
+        return None
+    try:
+        from ash_captions import styles
+
+        bursts = engine.select_bursts(
+            words,
+            trigger=trigger,
+            emoji=names,
+            keywords=tuple(getattr(settings, "punch_keywords", ()) or ()),
+            min_spacing=float(getattr(settings, "emoji_min_spacing_seconds", 2.5)),
+            video_duration=duration_seconds or None,
+        )
+        width = getattr(info, "width", 0) or 1080
+        height = getattr(info, "height", 0) or 1920
+        plan = engine.build_sticker_plan(
+            bursts, styles.emoji_path, width=width, height=height
+        )
+        if plan is not None:
+            log.info("emoji bursts: %d at %dpx", len(plan.bursts), plan.size_px)
+        return plan
+    except Exception:  # noqa: BLE001
+        log.warning("emoji bursts unavailable; burning without them", exc_info=True)
+        return None

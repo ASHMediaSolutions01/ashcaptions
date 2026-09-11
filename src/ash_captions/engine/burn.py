@@ -153,6 +153,7 @@ def build_burn_command(
     matte_path: Path | str | None = None,
     fps: float = 0.0,
     sfx: SfxPlan | None = None,
+    stickers: object | None = None,
     duration_seconds: float | None = None,
     output_size: tuple[int, int] | None = None,
 ) -> list[str]:
@@ -209,6 +210,26 @@ def build_burn_command(
         # and a second audio track would be picked by "best", not "first".
         video_map = "0:v:0"
         complex_graph = False
+
+    # Emoji bursts are composited on top of the captions, because that is
+    # what a sticker is: over the lot, not underneath the words. They are
+    # the one caption treatment libass cannot draw, so they arrive as
+    # extra image inputs and their own overlay chain.
+    if stickers is not None:
+        if not complex_graph:
+            graph = f"[0:v]{graph}[vout]"
+            video_map = "[vout]"
+            complex_graph = True
+        sticker_graph = stickers.filtergraph(
+            base_input_index=len(inputs) // 2, in_label=video_map, out_label="stuck"
+        )
+        if sticker_graph:
+            graph = f"{graph};{sticker_graph}"
+            for path in stickers.files:
+                # -loop 1 because a PNG is one frame and the overlay has to
+                # have something to draw for the whole of its window.
+                inputs += ["-loop", "1", "-i", str(path)]
+            video_map = "[stuck]"
 
     audio_map = "0:a:0?"
     audio_options = audio_args(audio_codec)
@@ -318,6 +339,7 @@ def burn_captions(
     work_dir: Path | str | None = None,
     matte_path: Path | str | None = None,
     sfx: SfxPlan | None = None,
+    stickers: object | None = None,
 ) -> Path:
     """Burn ``ass_path``'s captions into ``video_path``, writing an MP4.
 
@@ -384,6 +406,7 @@ def burn_captions(
             matte_path=matte_path,
             fps=video_info.fps if video_info else 0.0,
             sfx=sfx,
+            stickers=stickers,
             duration_seconds=duration_seconds,
         )
         try:

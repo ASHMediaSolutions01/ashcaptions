@@ -21,6 +21,7 @@ from .fonts import (
     list_font_families,
     load_manifest,
 )
+from .emoji import assets_emoji_dir, emoji_path, is_emoji_bundled, list_emoji
 from .sounds import (
     SoundEntry,
     assets_sounds_dir,
@@ -79,6 +80,10 @@ __all__ = [
     "find_sound_entry",
     "load_sound_manifest",
     "assets_sounds_dir",
+    "assets_emoji_dir",
+    "emoji_path",
+    "list_emoji",
+    "is_emoji_bundled",
     "download_fonts",
     "build_preview_command",
     "DEFAULT_PREVIEW_DURATION_SECONDS",

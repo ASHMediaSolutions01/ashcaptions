@@ -6,7 +6,7 @@ inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2351 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2382 passing, 49 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -205,6 +205,37 @@ because what frame differencing mostly sees is the camera and the
 lighting. A real audio-visual active-speaker model would be needed, which
 is a much heavier proposition than this was. The reel still follows the
 largest person, and the Framing tab is still how that gets corrected.
+
+**Emoji bursts**, unreleased (v0.6 held list, item 2). The one caption
+treatment ASS cannot draw -- there are no colour glyphs -- so a burst is an
+image composited over the burned frame. Settings-driven like punch-in was
+at first (`emoji_trigger`, `emoji`, `emoji_min_spacing_seconds` in
+settings.json), sharing `punch_keywords` because "the words that matter to
+this client" is one list and an editor should not keep two in step.
+
+Measured before it was designed, on a real 1080x1920 reel:
+
+- **A chain of timed `overlay` filters is the right shape.** 1, 10, 50, 150
+  and 300 of them all build and run: 0.8s to 2.3s for twelve seconds of
+  1080x1920. Cost tracks how many are *on* at once, not how many exist,
+  because `overlay` with a false `enable` passes the frame through.
+- **The alpha survives**, checked on pixels rather than assumed.
+
+**Then burning it found a bug no amount of reading would have.** An ffmpeg
+filter output pad feeds exactly one input. A graph naming the same scaled
+emoji twice hands it to the first consumer and the second overlay draws
+**nothing at all** -- no error, no warning, exit code 0. Reproduced on its
+own afterwards to be sure it was real: two overlays, one reused pad, first
+drew 12,629 px and second drew 0. Each emoji is now `split` into one
+stream per time it fires, and a test asserts no scaled stream is consumed
+twice.
+
+The first burn also came out with the emoji about one caption letter tall,
+which reads as a glyph in the text rather than a sticker over it; the size
+is now 0.20 of the frame's short side instead of 0.12.
+
+Not built: a picker in the style editor. The names live in settings.json
+for now, which is where punch-in's keywords started too.
 
 `look_card_ass.js` crossed the 500-line ceiling, so the ports of
 `ass_format.py` were split into `look_card_style.js` -- a real seam:

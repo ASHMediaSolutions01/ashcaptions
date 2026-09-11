@@ -49,6 +49,9 @@ PKGTOOLS_DIR = Path(__file__).resolve().parent / "pkgtools"
 STYLES_DIR = REPO_ROOT / "styles"
 FONTS_DIR = REPO_ROOT / "assets" / "fonts"
 SOUNDS_DIR = REPO_ROOT / "assets" / "sounds"
+# Emoji bursts composite these over the burned frame; styles/emoji.py
+# resolves them under app_root(), so they must ship like the fonts.
+EMOJI_DIR = REPO_ROOT / "assets" / "emoji"
 
 APP_NAME = "AshCaptions"
 
@@ -73,6 +76,7 @@ STYLES_DEST = "styles"
 FONTS_DEST = "assets/fonts"
 # styles/sounds.py's assets_sounds_dir() == app_root() / "assets" / "sounds".
 SOUNDS_DEST = "assets/sounds"
+EMOJI_DEST = "assets/emoji"
 FONT_MANIFEST_FILENAME = "manifest.json"
 SOUND_MANIFEST_FILENAME = "manifest.json"
 
@@ -372,6 +376,7 @@ def build_pyinstaller_args(
         "--add-data", f"{styles_dir};{STYLES_DEST}",
         "--add-data", f"{fonts_dir};{FONTS_DEST}",
         "--add-data", f"{sounds_dir};{SOUNDS_DEST}",
+        "--add-data", f"{EMOJI_DIR};{EMOJI_DEST}",
     ]
     for notice in notice_files:
         args += ["--add-data", f"{notice};."]

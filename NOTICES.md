@@ -58,6 +58,27 @@ under the GPL-3.0 so "captions behind the speaker" works offline. It runs in
 its own onnxruntime session; ASH Captions calls it, it is not linked in. The
 project's licence text is at that repository.
 
+## WeSpeaker voxceleb-resnet34-LM (speaker labels) -- Apache-2.0
+
+`models/voxceleb_resnet34_LM.onnx` is WeSpeaker's VoxCeleb ResNet34-LM speaker
+embedding (github.com/wenet-e2e/wespeaker), redistributed unmodified from
+huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM so "name who is
+speaking" works offline. Like the matting model it runs in its own
+onnxruntime session; ASH Captions calls it, it is not linked in.
+
+## OpenMoji (emoji bursts) -- CC BY-SA 4.0
+
+`assets/emoji/*.png` are OpenMoji (openmoji.org), redistributed **unmodified**
+under CC BY-SA 4.0. They are composited over the burned frame, which is the
+one caption treatment ASS cannot draw.
+
+ShareAlike binds adaptations of the artwork, not the program that displays it,
+so it does not reach ASH Captions' own code -- but the emoji files themselves
+stay CC BY-SA, and anyone redistributing a modified emoji must do so under the
+same licence. Twemoji (CC-BY 4.0, a simpler licence) was the alternative and
+was rejected on a measurement: it ships PNGs at 72x72 only, so every sticker on
+a 1080-wide reel would be a 1.8x upscale. OpenMoji ships 618x618.
+
 ## JASSUB 1.8.8 (browser caption renderer) -- MIT, with bundled components
 
 `src/ash_captions/web/static/vendor/jassub/` vendors JASSUB, libass compiled to
