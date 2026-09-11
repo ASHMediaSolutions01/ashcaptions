@@ -101,18 +101,30 @@ research-oriented, and whether that reaches a model trained on it is an
 upstream question this project cannot settle. Worth knowing before the feature
 is used on work that leaves the building.
 
-## OpenMoji (emoji bursts) -- CC BY-SA 4.0
+## Noto Color Emoji (emoji bursts) -- SIL OFL 1.1
 
-`assets/emoji/*.png` are OpenMoji (openmoji.org), redistributed **unmodified**
-under CC BY-SA 4.0. They are composited over the burned frame, which is the
-one caption treatment ASS cannot draw.
+`assets/emoji/*.png` are **rendered from** Noto Color Emoji
+(`googlefonts/noto-emoji`, SIL Open Font License 1.1), pinned to a commit and
+checked by SHA-256 in `scripts/fetch_emoji.py`. The font itself is a build
+input: it is fetched into `build/fonts/` and is never bundled or
+redistributed.
 
-ShareAlike binds adaptations of the artwork, not the program that displays it,
-so it does not reach ASH Captions' own code -- but the emoji files themselves
-stay CC BY-SA, and anyone redistributing a modified emoji must do so under the
-same licence. Twemoji (CC-BY 4.0, a simpler licence) was the alternative and
-was rejected on a measurement: it ships PNGs at 72x72 only, so every sticker on
-a 1080-wide reel would be a 1.8x upscale. OpenMoji ships 618x618.
+Going through a font rather than downloading pictures is the whole point.
+Emoji are composited into the burned `.mp4`, which leaves the building, so
+artwork licensed on Sharing would travel with every client reel. The OFL
+settles that in one sentence:
+
+> The requirement for fonts to remain under this license does not apply to any
+> document created using the fonts or their derivatives.
+
+A rendered frame is such a document, so a reel carries no obligation at all.
+
+This replaced OpenMoji (CC BY-SA 4.0), picked on image quality when the
+licence was the axis that mattered: ShareAlike's attribution binds wherever
+the material is Shared, and a reel handed to a client and posted is Sharing.
+Twemoji (CC BY 4.0) would only have swapped ShareAlike for an equally
+impractical attribution-on-every-reel. The quality worry turned out to be
+backwards -- the measurement is in `scripts/fetch_emoji.py`.
 
 ## JASSUB 1.8.8 (browser caption renderer) -- MIT, with bundled components
 

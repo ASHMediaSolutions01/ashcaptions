@@ -899,14 +899,35 @@ was made on image quality -- OpenMoji ships 618x618 where Twemoji ships only
 72x72 -- when the licence difference matters far more, because ShareAlike can
 reach the deliverable and a 1.8x upscale cannot.
 
-**The clean fix is an OFL emoji font, not another PNG set.*** The SIL Open
-Font License says the requirement for fonts to stay under it "does not apply
-to any document created using the fonts" -- so a reel made with one carries
-nothing. `googlefonts/noto-emoji` is OFL-1.1, the bundle already ships 24 OFL
-fonts with the licence plumbing in place, and Pillow (already a dependency)
-renders colour emoji with `embedded_color=True`, so the PNGs can be rasterised
-at build time. Twemoji would swap ShareAlike for a still-impractical
-attribution-on-every-reel, so it is not the answer either.
+**The clean fix was an OFL emoji font, not another PNG set -- and it is
+done.*** The SIL Open Font License says the requirement for fonts to stay
+under it "does not apply to any document created using the fonts", so a reel
+made with one carries nothing. `scripts/fetch_emoji.py` now fetches
+`googlefonts/noto-emoji` (OFL-1.1) at a pinned commit, checks it by SHA-256,
+and renders the twelve emoji with Pillow's `embedded_color=True`. The font is
+a build input in `build/fonts/`; it is never bundled. Twemoji would only have
+swapped ShareAlike for a still-impractical attribution-on-every-reel.
+
+Three things were measured before accepting it, and one of them reversed the
+original reason for choosing OpenMoji:
+
+- Noto's colour glyphs are CBDT bitmaps with a **single** strike. Pillow opens
+  the font at ppem 109 and refuses every other size outright with "invalid
+  pixel size". A glyph lands at about 122px, so a 216px sticker on a 1080 reel
+  is a 1.77x upscale -- the same objection that ruled Twemoji out.
+- **The upscale is invisible, and the artwork is better.** Side by side at the
+  real 216px draw size, the mean alpha-edge gradient came out *higher* for
+  Noto on all six emoji compared. OpenMoji's outline style loses more to a
+  2.9x downscale than Noto's flat shapes lose to a 1.8x upscale. The quality
+  axis I picked OpenMoji on pointed the other way.
+- `Noto-COLRv1.ttf` is vector and would have removed the question entirely.
+  Pillow renders it **empty** at every size tried: its FreeType binding
+  handles CBDT and sbix colour bitmaps, not COLRv1 paint graphs.
+
+OpenMoji's art filled 0.57-0.89 of its canvas, so the rendered squares
+reproduce that margin (`CANVAS_FILL = 0.86`) rather than cropping tight --
+`stickers.SIZE_FRACTION` was tuned by eye against those files, and a tight
+crop would have made every sticker about a seventh larger for no reason.
 
 Also corrected this session: the speaker-embedding **weights are CC BY 4.0,
 not Apache-2.0** as NOTICES first claimed -- Apache-2.0 is the WeSpeaker
