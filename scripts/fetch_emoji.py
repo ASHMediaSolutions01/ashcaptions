@@ -69,7 +69,9 @@ def fetch_one(name: str, code: str, dest: Path, timeout: float = 60) -> Path:
         return path
     url = BASE_URL + code + ".png"
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        # noqa S310: the host is the constant above, the only variable part
+        # is a hex codepoint from EMOJI, and nothing user-supplied reaches it.
+        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310
             data = response.read()
     except (urllib.error.URLError, OSError) as exc:
         raise RuntimeError(f"could not fetch {name} ({url}): {exc}") from exc
