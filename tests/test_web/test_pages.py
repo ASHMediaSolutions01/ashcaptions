@@ -209,3 +209,31 @@ def test_the_guide_covers_what_v09_added(client):
         "Least gap",
     ):
         assert phrase in page, phrase
+
+
+def test_the_guides_srt_example_is_the_shape_the_writer_really_produces(client):
+    """The example is a claim about output, so it is checked against the
+    output. The first version of it put the name on a line of its own;
+    `render_srt` writes it as a prefix on the caption line, which a real
+    .srt from the bundle showed and the example did not.
+    """
+    from ash_captions.engine.rules import Card
+    from ash_captions.engine.transcribe import Word
+    from ash_captions.engine.writers import render_srt
+
+    def card(start, end, text):
+        return Card(tuple(Word(w, start, end) for w in text.split()), start, end)
+
+    real = render_srt(
+        [
+            card(6.1, 12.06, "So how did the two of you meet?"),
+            card(12.06, 16.03, "And how long ago was that?"),
+            card(16.03, 19.25, "We were both working nights."),
+        ],
+        ["Speaker 1", "Speaker 1", "Speaker 2"],
+    )
+    page = client.get("/guide").text
+    example = re.search(r"<pre>(1\n00:00:06.*?)</pre>", page, re.S)
+    assert example, "the guide has no .srt example to check"
+    shown = example.group(1).replace("&gt;", ">").replace("&amp;", "&").strip()
+    assert shown == real.strip(), "the guide's example is not what the writer produces"

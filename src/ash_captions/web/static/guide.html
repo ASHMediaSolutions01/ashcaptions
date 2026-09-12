@@ -488,15 +488,17 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <h2>Part 15 · Naming who is speaking</h2>
   <p class="lede">For podcasts and two-person interviews: tick <strong>Name who is speaking in the .srt</strong> under <strong>Advanced</strong> when you submit, and the subtitle file gets a name above the line whenever the voice changes.</p>
   <p>The <code>.srt</code> comes out like this:</p>
-  <pre>12
-00:01:04,120 --&gt; 00:01:07,400
-Speaker 1:
-So how did the two of you meet?
+  <pre>1
+00:00:06,100 --&gt; 00:00:12,060
+Speaker 1: So how did the two of you meet?
 
-13
-00:01:07,600 --&gt; 00:01:11,050
-Speaker 2:
-We were both working nights.</pre>
+2
+00:00:12,060 --&gt; 00:00:16,030
+And how long ago was that?
+
+3
+00:00:16,030 --&gt; 00:00:19,250
+Speaker 2: We were both working nights.</pre>
   <ul>
     <li><strong>The name appears only when it changes.</strong> Ten lines running from the same person are labelled once, at the top, and a change waits for the end of a sentence rather than landing in the middle of one.</li>
     <li><strong>"Speaker 1" and "Speaker 2" are meant literally.</strong> The tool hears two voices; it has no idea which one is the host. Open the <code>.srt</code>, find-and-replace the two names, and the whole file is done.</li>

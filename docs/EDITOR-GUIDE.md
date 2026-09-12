@@ -688,15 +688,17 @@ above the line whenever the voice changes.
 The `.srt` comes out like this:
 
 ```
-12
-00:01:04,120 --> 00:01:07,400
-Speaker 1:
-So how did the two of you meet?
+1
+00:00:06,100 --> 00:00:12,060
+Speaker 1: So how did the two of you meet?
 
-13
-00:01:07,600 --> 00:01:11,050
-Speaker 2:
-We were both working nights.
+2
+00:00:12,060 --> 00:00:16,030
+And how long ago was that?
+
+3
+00:00:16,030 --> 00:00:19,250
+Speaker 2: We were both working nights.
 ```
 
 - **The name appears only when it changes.** Ten lines running from the same
