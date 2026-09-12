@@ -1,12 +1,12 @@
 # ASH Captions — Status
 
-Last verified: **2026-09-11**, in a freshly built bundle rather than from
+Last verified: **2026-09-12**, in a freshly built bundle rather than from
 source. Everything under "verified" below was checked by running it, not
 inferred.
 
 - Repo: `github.com/ASHMediaSolutions01/ashcaptions` (**public** from
   2026-09-03; the code stays proprietary, see `LICENSE`)
-- Tests: **2382 passing, 49 skipped** (the skips are the real-ffmpeg and
+- Tests: **2429 passing, 50 skipped** (the skips are the real-ffmpeg and
   real-font suites, which run with `ASH_REAL_FFMPEG=1` and all pass)
 - Every push runs the suite and `ruff check` on Windows:
   `.github/workflows/ci.yml`. Green there is the floor; a release is still
@@ -27,7 +27,20 @@ in the Veed / Submagic category, not a video editor. Ghazi, 2026-09-10.
 The chrome stays neutral because a caption's colour is judged against
 footage, not because the tool wants to look like an edit suite.
 
-**v0.8.0 is published: the reel release.** Landscape footage becomes a
+**v0.9.0 is published: names and emoji.** A podcast or two-person
+interview can have the `.srt` say who is speaking, and a look can throw an
+emoji up beside the caption -- picked from a grid in the style editor, not
+from a settings file. The emoji artwork is now rendered from an OFL font, so
+a client's reel carries no licence obligation of its own.
+
+Two things were found by running the built thing rather than by testing it,
+and both had been sitting on master: the emoji burn **never finished**
+(`-loop 1` made the image input infinite, so ffmpeg sat at a 0-byte file
+forever, with no error), and the guide's sidebar had drifted a part out of
+step with its own headings when the 9:16 part was inserted, so every link
+after 13 pointed at the wrong one.
+
+**v0.8.0 before it: the reel release.** Landscape footage becomes a
 9:16 reel that follows whoever is on screen, and the editor can argue with
 who that is. Alongside it, the four features that had been sitting on
 master since v0.7.0: case and punctuation modes, draggable Studio columns
@@ -167,10 +180,11 @@ artifact matched the manifest's sha256, so an archive that does this is a
 compromised manifest rather than a corrupt download -- which is exactly
 when "the hash matched" is not a reason to trust it.
 
-**Speaker names in the .srt**, unreleased (v0.6 held list, the podcast
-item). Tick "Name who is speaking" and the transcript names the voice each
-time it changes, the way a podcast transcript is written. 5 seconds for a
-4:48 file; a 26 MB model downloads once.
+**Speaker names in the .srt** (v0.6 held list, the podcast item),
+shipped in v0.9.0. Tick "Name who is speaking" and the transcript names the
+voice each time it changes, the way a podcast transcript is written. 5
+seconds for a 4:48 file. The 26 MB model ships in the bundle, beside the
+matte model, so no editor waits for a download.
 
 Measured on the reference interview before it was built:
 
@@ -206,12 +220,13 @@ lighting. A real audio-visual active-speaker model would be needed, which
 is a much heavier proposition than this was. The reel still follows the
 largest person, and the Framing tab is still how that gets corrected.
 
-**Emoji bursts**, unreleased (v0.6 held list, item 2). The one caption
-treatment ASS cannot draw -- there are no colour glyphs -- so a burst is an
-image composited over the burned frame. Settings-driven like punch-in was
-at first (`emoji_trigger`, `emoji`, `emoji_min_spacing_seconds` in
-settings.json), sharing `punch_keywords` because "the words that matter to
-this client" is one list and an editor should not keep two in step.
+**Emoji bursts** (v0.6 held list, item 2), shipped in v0.9.0. The one
+caption treatment ASS cannot draw -- there are no colour glyphs -- so a burst
+is an image composited over the burned frame. It began settings-driven, the
+way punch-in did; it is a property of the **look** now, with its own tab in
+the style editor beside Sound. The keyword list stays shared with punch-in
+and the sounds, because "the words that matter to this client" is one list
+and nobody should keep three of them in step.
 
 Measured before it was designed, on a real 1080x1920 reel:
 
@@ -234,8 +249,15 @@ The first burn also came out with the emoji about one caption letter tall,
 which reads as a glyph in the text rather than a sticker over it; the size
 is now 0.20 of the frame's short side instead of 0.12.
 
-Not built: a picker in the style editor. The names live in settings.json
-for now, which is where punch-in's keywords started too.
+**The burn never finished, and every mocked test passed.** `-loop 1` on
+the emoji input makes that input *infinite*: ffmpeg never reaches the end of
+it and the encode sits at a 0-byte part file with no error and no progress.
+Found by enqueueing a real job through the running app and watching it stay
+at 1% for ten minutes on a twenty-second clip. The comment justifying the
+flag was wrong on its own terms -- `overlay` defaults to `eof_action=repeat`,
+which already holds the last frame of a finished input for as long as the
+main input runs. The real-ffmpeg suite now burns a clip with two bursts, and
+the timeout is the assertion: a regression there hangs rather than fails.
 
 `look_card_ass.js` crossed the 500-line ceiling, so the ports of
 `ass_format.py` were split into `look_card_style.js` -- a real seam:
@@ -812,14 +834,21 @@ Premiere, Resolve, and the regional tools Kalakar, Bayaan and Bolti):
 
 - ~~Turning a landscape interview into a 9:16 reel~~ **shipped in v0.8.0**,
   with one honest gap: it follows the largest person, not the one speaking.
-  Following the speaker needs diarisation -- see the podcast item below,
-  which turns out to be the same model and would close both at once.
-- Emoji and sticker bursts (a compositing pass; not possible in ASS).
+  That gap is now known to be **permanent by this route**. Diarisation
+  shipped in v0.9.0 and it does not close it: it says *when* a voice
+  speaks, never *where* that person is in the frame, and the cheap visual
+  link measured at +0.07 (see above). Closing it needs an audio-visual
+  active-speaker model, which is a much larger proposition than either of
+  these was.
+- ~~Emoji and sticker bursts~~ **shipped in v0.9.0** (a compositing pass;
+  not possible in ASS), with a picker in the style editor and the artwork
+  rendered from an OFL font so the reel carries nothing.
+- ~~Speaker names for podcasts~~ **shipped in v0.9.0**. Two voices, named
+  in the `.srt` only, with the 26 MB model in the bundle rather than
+  downloaded.
 - Arabic and Urdu styled captions (right-to-left ASS; Noto Naskh is
   bundled). The karaoke looks sweep the wrong way in Arabic today, which
-  the guide says.
-- Speaker names for podcasts, which needs a diarisation model and the
-  install weight that comes with it.
+  the guide says. **This is the next one.**
 - A GPU bundle variant, once there is an NVIDIA machine to test on. Until
   then `enable_gpu.ps1` refuses by design and the engine falls back to CPU.
 - Review-page video for watch-folder jobs (the input is deleted on success,

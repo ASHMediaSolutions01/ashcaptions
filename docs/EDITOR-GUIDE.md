@@ -515,7 +515,7 @@ the `.srt`, `.ass` and `.txt` in the output folder are rewritten with it.
    - **Fix every "haramienta"** changes all of them in this video, and says
      how many that is.
 3. **Always spell it this way** also adds it to the client's glossary
-   (Part 15), so the next job for that client gets it right while it is
+   (Part 16), so the next job for that client gets it right while it is
    still transcribing.
 
 - **Splitting and joining lines.** Put the cursor where the line should break
@@ -679,7 +679,49 @@ first.
 
 ---
 
-## Part 15 — Clients and glossaries
+## Part 15 — Naming who is speaking
+
+For podcasts and two-person interviews: tick **Name who is speaking in the
+.srt** under **Advanced** when you submit, and the subtitle file gets a name
+above the line whenever the voice changes.
+
+The `.srt` comes out like this:
+
+```
+12
+00:01:04,120 --> 00:01:07,400
+Speaker 1:
+So how did the two of you meet?
+
+13
+00:01:07,600 --> 00:01:11,050
+Speaker 2:
+We were both working nights.
+```
+
+- **The name appears only when it changes.** Ten lines running from the same
+  person are labelled once, at the top, and a change waits for the end of a
+  sentence rather than landing in the middle of one.
+- **"Speaker 1" and "Speaker 2" are meant literally.** The tool hears two
+  voices; it has no idea which one is the host. Open the `.srt`, find-and-
+  replace the two names, and the whole file is done.
+- **It looks for two voices.** A panel of five gets forced into two, which is
+  wrong — keep this for one-on-one.
+- **One voice, and nothing happens.** A piece to camera comes out with no
+  names at all, rather than with a speaker change invented halfway through.
+  That check is deliberate, so the box is safe to leave ticked on a mixed
+  batch.
+- **The names are in the `.srt` only** — not the burned video, not the plain
+  text, not the English translation. Captions on screen do not carry names,
+  and a client's video should not suddenly read "Speaker 2" across it.
+- **It costs about five seconds** on a five-minute file and needs no burn-in,
+  so it is free to tick on a transcript-only job.
+
+**It hears; it does not see.** This tells you *when* each person speaks, never
+*where* they are in the frame. Ticking it does not make the 9:16 crop follow
+whoever is talking — Part 14 says what the crop follows instead.
+
+## Part 16 — Clients and glossaries
 
 Every job can carry a **Client**. Type the client's name in the **Client** box
 on the control page (it remembers the last one, and suggests the ones it has
@@ -695,7 +737,7 @@ seen). Then:
 - **Watch folder**: a video dropped into `C:\AshCaptions\in\<Client>\` is a
   job for that client, with that client's glossary.
 
-## Part 16 — Punch-in (zooming the footage)
+## Part 17 — Punch-in (zooming the footage)
 
 A punch-in is the picture pushing in slightly on a word. It is **off by
 default**, because it changes how a client's video is framed. To turn it on,
@@ -723,7 +765,7 @@ on hour-long files and costs almost no extra render time.
 
 ---
 
-## Part 17 — Sound effects
+## Part 18 — Sound effects
 
 A look can fire a short sound on the word the caption lands on — a pop, a
 whoosh, a low impact. It is the same idea as the punch-in: the captions say
@@ -766,7 +808,39 @@ Sound is only mixed in when **Burn captions into the video** is ticked — an
 `.srt` cannot carry a whoosh. The video keeps its original length and its
 dialogue; the sounds are added underneath, nothing is replaced or ducked.
 
-## Part 18 — Problems and fixes
+## Part 19 — Emoji bursts
+
+A look can throw an emoji up beside the caption for a moment — the short-form
+punctuation mark. Twelve ship with the app; nothing is downloaded.
+
+Like sound, this belongs to the **look**. Open **Styles**, pick a look, and go
+to the **Emoji** tab.
+
+1. **Choose when it fires.** *Each sentence* is the loud one — on fast
+   dialogue it is a lot, and **Least gap** is what keeps it watchable.
+   *Keywords* fires only on the client's word list: the same list the punch-in
+   zoom and the sounds use, set on the Settings page.
+2. **Pick up to four.** They are thrown in the order you picked them and then
+   start again, so two emoji alternate. The number in the corner is that
+   order.
+3. **Least gap** is the shortest time between two of them. It starts at 2.5
+   seconds, wider than the sounds' gap on purpose: a noise every third of a
+   second is a rhythm, a picture every third of a second is a mess.
+
+They land above the caption band, alternating left and right so two close
+together never sit on top of each other, and each one drifts upward over the
+three-quarters of a second it is on screen.
+
+**Emoji belong to the look, so they follow the look everywhere** — the same
+warning the Sound tab carries. Putting emoji on a built-in look changes every
+job on this PC that uses it, including old ones if they are restyled or burned
+again. If it is for one client, **Save as…** a copy first and put the emoji on
+that.
+
+They are only drawn when **Burn captions into the video** is ticked: an emoji
+is a picture laid over the frame, and an `.srt` cannot carry a picture.
+
+## Part 20 — Problems and fixes
 
 | What you see | What to do |
 |---|---|
@@ -793,7 +867,7 @@ C:\AshCaptions\ash-captions.log
 
 ---
 
-## Part 19 — Uninstalling
+## Part 21 — Uninstalling
 
 Double-click `Uninstall-AshCaptions.bat`. It sits beside
 `Install-AshCaptions.bat`, wherever Ghazi gave you that; if you no longer
@@ -809,7 +883,7 @@ back up.
 
 ---
 
-## Part 20 — Worth knowing
+## Part 22 — Worth knowing
 
 - **Accuracy.** English, Spanish and Portuguese are excellent; most European
   languages very good. **Arabic**: the `.srt` and transcript are fine; for a

@@ -172,3 +172,40 @@ def test_guide_has_the_v05_sections(client):
         "C:\\AshCaptions",
     ):
         assert phrase in page, phrase
+
+
+def test_the_guide_sidebar_lists_every_part_in_order(client):
+    """The sidebar is a hand-written list beside hand-written headings,
+    and it drifted: inserting Part 14 (the 9:16 reel) renumbered the
+    headings and left the sidebar listing nineteen entries for twenty
+    parts, with every number after 13 pointing at the wrong one. An
+    editor following "Part 16" from the sidebar landed on Part 17.
+    """
+    page = client.get("/guide").text
+    sections = re.findall(r'<section id="([^"]+)">\s*\n\s*<h2>([^<]+)</h2>', page)
+    sidebar = re.findall(r'<li><a href="#([^"]+)">([^<]+)</a></li>', page)
+
+    assert [s[0] for s in sections] == [s[0] for s in sidebar], "sidebar and headings disagree"
+
+    for index, ((_, heading), (_, label)) in enumerate(zip(sections, sidebar, strict=True)):
+        if index == 0:
+            continue  # "What this tool does" is not a numbered part
+        assert heading.startswith(f"Part {index} \u00b7 "), heading
+        assert label.startswith(f"{index} \u00b7 "), label
+
+
+def test_the_guide_covers_what_v09_added(client):
+    """Two features shipped with nothing written about them would reach
+    six editors as a checkbox nobody knows to tick."""
+    page = client.get("/guide").text
+    for section_id in ("speakers", "emoji"):
+        assert f'<section id="{section_id}">' in page, section_id
+        assert f'href="#{section_id}"' in page, section_id
+    for phrase in (
+        "Name who is speaking in the .srt",
+        "Speaker 1",
+        "It hears; it does not see.",
+        "Emoji</strong> tab",
+        "Least gap",
+    ):
+        assert phrase in page, phrase
