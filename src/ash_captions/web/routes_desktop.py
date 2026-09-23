@@ -40,7 +40,7 @@ from .interfaces import (
 )
 from .routes_review import job_or_404, output_dir_of
 from .routes_studio import _burned_output
-from .thumbs import ensure_thumbnail
+from .thumbs import BURNED_THUMB_NAME, ensure_thumbnail
 
 CANNOT_REMOVE_DETAIL = "this build cannot remove jobs"
 PICKER_BUSY_DETAIL = "A file dialog is already open. Finish with it first."
@@ -87,7 +87,8 @@ def build_desktop_router(
     async def job_thumbnail(job_id: str, queue: JobQueue = Depends(get_queue)) -> FileResponse:
         job = job_or_404(queue, job_id)
         output_dir = output_dir_of(job)
-        thumb = await run_in_threadpool(_thumb_for, output_dir, job.input_path)
+        burn = bool(job.options and job.options.burn_in)
+        thumb = await run_in_threadpool(_thumb_for, output_dir, job.input_path, burn)
         if thumb is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} has no thumbnail.")
         return FileResponse(thumb, media_type="image/jpeg", headers={"Cache-Control": THUMB_CACHE_CONTROL})
@@ -126,10 +127,16 @@ def build_desktop_router(
     return router
 
 
-def _thumb_for(output_dir: Path, input_path: str | None) -> Path | None:
+def _thumb_for(output_dir: Path, input_path: str | None, burn: bool = False) -> Path | None:
     """Threadpool: the source footage first, the burned output as the
-    fallback when the source has been moved or cleaned up."""
-    return ensure_thumbnail(output_dir, input_path, _burned_output(output_dir))
+    fallback when the source has been moved or cleaned up. A burn job
+    shows its own burned frame (the captions on the footage) once that
+    file exists, kept apart from the source's thumb because the two jobs
+    share the output folder."""
+    burned = _burned_output(output_dir)
+    if burn and burned is not None:
+        return ensure_thumbnail(output_dir, burned, name=BURNED_THUMB_NAME)
+    return ensure_thumbnail(output_dir, input_path, burned)
 
 
 def _reveal_target(output_dir: Path) -> Path | None:

@@ -60,7 +60,7 @@
     const all = older.concat(beyond.filter((j) => !seen.has(j.id)));
     const shown = all.slice(0, earlierShown);
     AshQueue.renderInto(recentList, recent);
-    AshQueue.renderInto(earlierList, shown);
+    AshQueue.renderInto(earlierList, shown, { quiet: true });
     AshQueue.prune();
     emptyQueue.hidden = snapshot.length > 0;
     earlier.hidden = all.length === 0;

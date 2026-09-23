@@ -1,9 +1,12 @@
 /* The job card (frame, name, client, language, state, when, actions),
    kept up to date in place from each server snapshot -- so an inline
    "remove?" confirmation survives the next progress tick -- plus its
-   actions (Open in Studio, Retry, Export, Open folder, Copy path, Remove)
-   and the finished-job toast. Which list a card sits in is decided by
-   queue_stream.js, which calls AshQueue.renderInto(container, jobs). */
+   actions (Open in Studio, Retry, Export, and a More menu with Open
+   folder, Copy path and Remove) and the finished-job toast. The frame
+   leads: it takes the footage's own shape, and a burn shows its burned
+   frame. Which list a card sits in is decided by queue_stream.js, which
+   calls AshQueue.renderInto(container, jobs, { quiet }) -- quiet cards
+   (Earlier) keep the accent off their Open in Studio. */
 (function () {
   "use strict";
 
@@ -112,10 +115,9 @@
       root.addEventListener("animationend", () => root.classList.remove("is-new"), { once: true });
     }
 
+    const frame = el("div", "job-frame");
     const thumb = el("img", "job-thumb");
     thumb.alt = "";
-    thumb.width = 160;
-    thumb.height = 90;
     thumb.loading = "lazy";
     const missing = el("div", "job-thumb missing", "No preview");
     missing.hidden = true;
@@ -132,8 +134,8 @@
       thumb.hidden = true;
       missing.hidden = false;
     });
-    root.appendChild(thumb);
-    root.appendChild(missing);
+    frame.append(thumb, missing);
+    root.appendChild(frame);
 
     const body = el("div", "job-body");
     const top = el("div", "job-top");
@@ -173,13 +175,13 @@
     root.appendChild(body);
 
     const refs = { thumb, missing, name, badge, meta, track, fill, stage, elapsed, when, error, reason, details, technical, actions, confirm };
-    return { el: root, refs, status: null };
+    return { el: root, refs, status: null, quiet: false };
   }
 
-  function updateCard(card, job) {
+  function updateCard(card, job, quiet) {
     const { refs } = card;
     const pct = job.status === "done" ? 100 : Math.round((job.progress || 0) * 100);
-    card.el.className = `job ${job.status}${card.el.classList.contains("is-new") ? " is-new" : ""}`;
+    card.el.className = `job ${job.status}${card.el.classList.contains("is-new") ? " is-new" : ""}${quiet ? " quiet" : ""}`;
     refs.name.textContent = job.filename;
     refs.badge.className = `badge ${job.status}`;
     refs.badge.textContent = STATUS_LABEL[job.status] || job.status;
@@ -227,33 +229,39 @@
     // when it finishes, since the burned output can stand in for a
     // source that has gone.
     const thumbUrl = `/api/jobs/${encodeURIComponent(job.id)}/thumb`;
-    const retryOnDone = card.status !== null && card.status !== job.status && job.status === "done" && thumbFailed.has(job.id);
+    const becameDone = card.status !== null && card.status !== job.status && job.status === "done";
     if (card.status === null && !thumbFailed.has(job.id)) {
       refs.thumb.src = thumbUrl;
     } else if (card.status === null) {
       refs.thumb.hidden = true;
       refs.missing.hidden = false;
-    } else if (retryOnDone) {
+    } else if (becameDone && thumbFailed.has(job.id)) {
       thumbFailed.delete(job.id);
       refs.thumb.hidden = false;
       refs.missing.hidden = true;
       refs.thumb.src = `${thumbUrl}?v=${Date.now()}`;
+    } else if (becameDone && job.options && job.options.burn_in) {
+      // The burn has a frame of its own now: the captions on the footage.
+      refs.thumb.src = `${thumbUrl}?v=${Date.now()}`;
     }
 
-    if (card.status !== job.status) {
+    if (card.status !== job.status || card.quiet !== quiet) {
       refs.actions.innerHTML = "";
       refs.confirm.hidden = true;
-      for (const action of actionsFor(job, card)) refs.actions.appendChild(action);
+      for (const action of actionsFor(job, card, quiet)) refs.actions.appendChild(action);
       card.status = job.status;
+      card.quiet = quiet;
     }
   }
 
   // One primary action per row -- Open in Studio on a finished job, Retry
-  // on a failed one -- and the housekeeping as subtle buttons after it.
-  function actionsFor(job, card) {
+  // on a failed one -- then Export, then More for the housekeeping. On a
+  // quiet (Earlier) card the accent comes off, so the fill still means
+  // "the next thing" rather than "every card".
+  function actionsFor(job, card, quiet) {
     const out = [];
     if (job.status === "done") {
-      const studio = el("a", "btn small primary", "Open in Studio");
+      const studio = el("a", `btn small${quiet ? " subtle" : " primary"}`, "Open in Studio");
       studio.href = `/studio/${encodeURIComponent(job.id)}`;
       out.push(studio);
     }
@@ -270,15 +278,37 @@
       out.push(exportSlot);
       if (window.AshExport) AshExport.mount(job.id, exportSlot);
     }
-    if (job.status === "done" || job.status === "failed") {
-      if (job.output_dir) {
-        out.push(button("Open folder", "subtle", (e) => reveal(job, e.currentTarget)));
-        out.push(button("Copy path", "subtle", (e) => copyPath(job, e.currentTarget)));
-      }
-      out.push(button("Remove", "quiet", () => askRemove(job, card)));
-    }
+    if (job.status === "done" || job.status === "failed") out.push(moreMenu(job, card));
     return out;
   }
+
+  // Open folder, Copy path and Remove behind one button: the same three
+  // actions, one Tab stop, and the card's own line stays about the job.
+  function moreMenu(job, card) {
+    const details = document.createElement("details");
+    details.className = "card-more";
+    const summary = document.createElement("summary");
+    summary.className = "btn small subtle";
+    summary.textContent = "More";
+    summary.setAttribute("aria-label", `More actions for ${job.filename}`);
+    const menu = el("div", "card-menu");
+    if (job.output_dir) {
+      menu.appendChild(button("Open folder", "quiet", (e) => { details.open = false; reveal(job, e.currentTarget); }));
+      menu.appendChild(button("Copy path", "quiet", (e) => copyPath(job, e.currentTarget)));
+    }
+    menu.appendChild(button("Remove", "quiet", () => { details.open = false; askRemove(job, card); }));
+    details.append(summary, menu);
+    return details;
+  }
+  document.addEventListener("click", (e) => {
+    for (const open of document.querySelectorAll("details.card-more[open]")) {
+      if (!open.contains(e.target)) open.open = false;
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    for (const open of document.querySelectorAll("details.card-more[open]")) { open.open = false; open.querySelector("summary").focus(); }
+  });
 
   // ---- actions ----
 
@@ -352,13 +382,14 @@
   // once every list has been rendered for this snapshot.
   const placed = new Set();
 
-  function renderInto(container, jobs) {
+  function renderInto(container, jobs, opts) {
+    const quiet = !!(opts && opts.quiet);
     let cursor = container.firstElementChild;
     for (const job of jobs || []) {
       placed.add(job.id);
       let card = cards.get(job.id);
       if (!card) { card = buildCard(job); cards.set(job.id, card); }
-      updateCard(card, job);
+      updateCard(card, job, quiet);
       if (card.el !== cursor) container.insertBefore(card.el, cursor);
       else cursor = cursor.nextElementSibling;
     }

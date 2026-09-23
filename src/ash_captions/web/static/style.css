@@ -65,12 +65,14 @@
 .earlier-rule::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); align-self: center; }
 .earlier-foot { display: flex; justify-content: center; margin-top: 12px; }
 
-/* ---- Job cards: a strip of footage. The frame leads; everything the
-   editor reads sits beside it. ---- */
+/* ---- Job cards: a strip of footage. The frame leads, at the footage's
+   own shape: a reel stands tall on the mat, a landscape clip fills the
+   box, and a burn shows its burned frame. Everything the editor reads
+   sits beside it. ---- */
 .job-list { display: flex; flex-direction: column; gap: 10px; }
 .job {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 14px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -78,15 +80,18 @@
   background: var(--panel);
 }
 .job.running { border-color: var(--line-strong); }
-.job-thumb {
-  width: 160px;
-  height: 90px;
+.job-frame {
+  width: 200px;
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  align-self: start;
   border-radius: var(--radius-sm);
   background: var(--mat);
-  object-fit: cover;
-  display: block;
+  overflow: hidden;
 }
-.job-thumb.missing { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
+.job-thumb { display: block; width: auto; height: auto; max-width: 200px; max-height: 176px; }
+.job-thumb.missing { width: 200px; height: 112px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
 .job-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .job-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .job-name { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
@@ -125,6 +130,27 @@
   overflow: auto;
 }
 .job-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+/* More: the housekeeping behind one button, drawn like the Export menu. */
+.card-more { position: relative; display: inline-block; }
+.card-more > summary { list-style: none; cursor: pointer; }
+.card-more > summary::-webkit-details-marker { display: none; }
+.card-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 180px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius);
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.card-menu .btn { justify-content: flex-start; width: 100%; color: var(--ink); }
+.card-menu .btn:hover { color: var(--accent); }
 .job-confirm {
   display: flex;
   align-items: center;
@@ -253,7 +279,9 @@
   .drawer.expanded .drawer-form > .path-field { grid-column: 1 / -1; grid-row: auto; }
   .stream-head { flex-wrap: wrap; }
   .job { grid-template-columns: 1fr; }
-  .job-thumb { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .job-frame { width: 100%; min-height: 0; }
+  .job-thumb { max-width: 100%; max-height: 240px; }
+  .job-thumb.missing { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .job.is-new { animation: none; }

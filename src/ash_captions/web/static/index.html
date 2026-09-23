@@ -42,47 +42,9 @@
     </section>
   </div>
 
-  <!-- The stream: every job as a card led by a frame of its own footage,
-       newest on top. Live and recent first; everything older under
-       "Earlier", paged, and the search reaches all of it. -->
-  <section class="stream" aria-labelledby="stream-heading">
-    <div class="stream-head">
-      <h2 id="stream-heading" class="sr-only">Jobs</h2>
-      <label class="search" for="search-input">
-        <svg class="search-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-          <circle cx="6.75" cy="6.75" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
-          <path d="M10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-        </svg>
-        <span class="sr-only">Search jobs by file or client</span>
-        <input type="search" id="search-input" placeholder="Search by file or client" autocomplete="off" spellcheck="false" aria-keyshortcuts="/">
-        <kbd class="search-key" aria-hidden="true">/</kbd>
-      </label>
-      <div class="queue-health" id="queue-health" role="status">Worker: checking…</div>
-    </div>
-
-    <div class="stream-status hint" id="stream-status" role="status" hidden></div>
-
-    <div class="stream-empty" id="empty-queue" hidden>
-      <strong>Nothing captioned yet.</strong>
-      <p>Drop a video into the drawer, or click <b>Browse…</b>, then <b>Start captioning</b>. When it finishes the Studio opens, so you can try every look on the footage before burning one in.</p>
-      <a class="btn subtle" href="/guide">Read the guide</a>
-    </div>
-
-    <div id="job-list" class="job-list"></div>
-
-    <div class="earlier" id="earlier" hidden>
-      <div class="earlier-rule">
-        <h3 id="earlier-title">Earlier</h3>
-        <span class="hint" id="earlier-count"></span>
-      </div>
-      <div id="earlier-list" class="job-list"></div>
-      <div class="earlier-foot">
-        <button type="button" class="btn subtle" id="earlier-more" hidden>Show 20 more</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- The drawer: the intake, always open beside the stream. It asks for
+  <!-- The drawer: the intake, always open beside the stream, and first
+       in source order so a keyboard reaches Browse right after the nav
+       (the grid places it on the right on a wide window). It asks for
        the file, the language and the client; the look, the burn, the reel
        and behind-the-speaker are decided in the Studio, where the footage
        can be seen. -->
@@ -147,6 +109,46 @@
       </label>
     </form>
   </aside>
+
+  <!-- The stream: every job as a card led by a frame of its own footage,
+       newest on top. Live and recent first; everything older under
+       "Earlier", paged, and the search reaches all of it. -->
+  <section class="stream" aria-labelledby="stream-heading">
+    <div class="stream-head">
+      <h2 id="stream-heading" class="sr-only">Jobs</h2>
+      <label class="search" for="search-input">
+        <svg class="search-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+          <circle cx="6.75" cy="6.75" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span class="sr-only">Search jobs by file or client</span>
+        <input type="search" id="search-input" placeholder="Search by file or client" autocomplete="off" spellcheck="false" aria-keyshortcuts="/">
+        <kbd class="search-key" aria-hidden="true">/</kbd>
+      </label>
+      <div class="queue-health" id="queue-health" role="status">Worker: checking…</div>
+    </div>
+
+    <div class="stream-status hint" id="stream-status" role="status" hidden></div>
+
+    <div class="stream-empty" id="empty-queue" hidden>
+      <strong>Nothing captioned yet.</strong>
+      <p>Drop a video into the drawer, or click <b>Browse…</b>, then <b>Start captioning</b>. When it finishes the Studio opens, so you can try every look on the footage before burning one in.</p>
+      <a class="btn subtle" href="/guide">Read the guide</a>
+    </div>
+
+    <div id="job-list" class="job-list"></div>
+
+    <div class="earlier" id="earlier" hidden>
+      <div class="earlier-rule">
+        <h3 id="earlier-title">Earlier</h3>
+        <span class="hint" id="earlier-count"></span>
+      </div>
+      <div id="earlier-list" class="job-list"></div>
+      <div class="earlier-foot">
+        <button type="button" class="btn subtle" id="earlier-more" hidden>Show 20 more</button>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer class="app-foot">

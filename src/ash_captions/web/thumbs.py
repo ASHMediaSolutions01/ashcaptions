@@ -22,6 +22,7 @@ from pathlib import Path
 from ash_captions.config import find_binary
 
 THUMB_NAME = ".thumb.jpg"
+BURNED_THUMB_NAME = ".thumb-burned.jpg"  # a burn's own frame; it shares the source's folder
 THUMB_WIDTH = 320
 THUMB_POSITION = 0.10  # fraction of the duration
 THUMB_TIMEOUT_SECONDS = 60
@@ -32,16 +33,18 @@ _locks: dict[Path, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
 
-def thumbnail_path(output_dir: Path) -> Path:
-    return Path(output_dir) / THUMB_NAME
+def thumbnail_path(output_dir: Path, name: str = THUMB_NAME) -> Path:
+    return Path(output_dir) / name
 
 
-def ensure_thumbnail(output_dir: Path, *sources: Path | str | None) -> Path | None:
+def ensure_thumbnail(output_dir: Path, *sources: Path | str | None, name: str = THUMB_NAME) -> Path | None:
     """The job's thumb, generating it from the first existing source when
     it is not there yet. Returns None when no source exists or ffmpeg
-    could not produce a frame (a corrupt or audio-only file)."""
+    could not produce a frame (a corrupt or audio-only file). ``name``
+    picks the cached file, so a burn can keep a frame of its own beside
+    the source's in the same folder."""
     output_dir = Path(output_dir)
-    target = thumbnail_path(output_dir)
+    target = thumbnail_path(output_dir, name)
     if target.is_file():
         return target
     source = next((Path(s) for s in sources if s and Path(s).is_file()), None)

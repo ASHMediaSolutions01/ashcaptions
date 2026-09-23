@@ -73,14 +73,18 @@ def test_finished_queue_rows_show_one_primary_action_and_no_bar():
 
     queue_js = (STATIC_DIR / "queue.js").read_text(encoding="utf-8")
     actions = queue_js[queue_js.index("function actionsFor") : queue_js.index("// ---- actions ----")]
-    assert actions.count('"btn small primary"') == 1  # Open in Studio
+    # Open in Studio carries the accent on a recent card and not on an
+    # Earlier one (second critique), so the fill still means "next".
+    assert actions.count('quiet ? " subtle" : " primary"') == 1
     # Retry leads only when it can help (v0.9.1): a file that is not a
     # video fails identically every time, so there it is demoted.
     assert 'canHelp ? "primary" : "subtle"' in actions
     assert 'canHelp ? "Retry" : "Try again"' in actions
-    assert 'button("Open folder", "subtle"' in actions
-    assert 'button("Copy path", "subtle"' in actions
+    # The housekeeping sits behind one More button (three Tab stops a card).
+    assert 'button("Open folder", "quiet"' in actions
+    assert 'button("Copy path", "quiet"' in actions
     assert 'button("Remove", "quiet"' in actions
+    assert 'details.className = "card-more"' in actions
     assert 'refs.track.hidden = finished' in queue_js
     assert 'stageText = "Done"' not in queue_js  # the badge already says Done
 
