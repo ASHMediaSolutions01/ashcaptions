@@ -27,7 +27,22 @@ in the Veed / Submagic category, not a video editor. Ghazi, 2026-09-10.
 The chrome stays neutral because a caption's colour is judged against
 footage, not because the tool wants to look like an edit suite.
 
-**v0.9.0 is published: names and emoji.** A podcast or two-person
+**v0.10.0: the Queue reshaped, after the first design critique.** The
+critique of the web UI (2026-09-23, 23/40) said the Studio was the product
+and everything around it was generic tooling. Since then: a failed job
+says what happened in one sentence, with Retry leading only where it can
+help; the transcript panel is reachable by keyboard; and the Queue is a
+stream of frame-led cards with the intake in a drawer beside it. The
+drawer asks for the file, the language and the client. The look, the
+burn, the 9:16 reel and captions behind the speaker are decided in the
+Studio, on the footage. Browse takes several files, one Start sends the
+batch, and the search reaches every job ever run, by file name or client.
+The structure decision page closed unanswered, so the build took the
+dealt lead ("card stream + submit drawer"); the surface brief under
+`.impeccable/surfaces/` records that, and `DESIGN.md` now records the
+visual world the pages share.
+
+**v0.9.0 before it: names and emoji.** A podcast or two-person
 interview can have the `.srt` say who is speaking, and a look can throw an
 emoji up beside the caption -- picked from a grid in the style editor, not
 from a settings file. The emoji artwork is now rendered from an OFL font, so

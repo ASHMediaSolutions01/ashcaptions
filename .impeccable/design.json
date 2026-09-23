@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-23",
+  "title": "Design System: ASH Captions",
+  "source": {
+    "tokens": "src/ash_captions/web/static/theme.css",
+    "derivedFrom": "The shipped Queue (src/ash_captions/web/static/index.html + style.css) after its finish review; the Studio, Styles and Help stylesheets for the system-wide component record."
+  },
+  "extensions": {
+    "colorMeta": {
+      "bg": { "role": "neutral", "displayName": "Bench", "canonical": "oklch(22.2% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "panel": { "role": "neutral", "displayName": "Panel", "canonical": "oklch(24.8% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "raised": { "role": "neutral", "displayName": "Raised", "canonical": "oklch(28.5% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "raised-hover": { "role": "neutral", "displayName": "Raised, Hover", "canonical": "oklch(31.4% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "mat": { "role": "neutral", "displayName": "Mat", "canonical": "oklch(26.0% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "line": { "role": "neutral", "displayName": "Hairline", "canonical": "oklch(33.3% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "line-strong": { "role": "neutral", "displayName": "Strong Hairline", "canonical": "oklch(39.0% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "oklch(95.5% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "ink-soft": { "role": "neutral", "displayName": "Soft Ink", "canonical": "oklch(83.3% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "muted": { "role": "neutral", "displayName": "Muted", "canonical": "oklch(67.3% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "on-accent": { "role": "neutral", "displayName": "On Accent", "canonical": "oklch(100% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "accent": { "role": "primary", "displayName": "Ember", "canonical": "oklch(74.6% 0.128 42.1)", "tonalRamp": ["#1d0200", "#441300", "#712700", "#9b431c", "#c16540", "#e78863", "#feb599", "#ffe9e1"] },
+      "accent-fill": { "role": "primary", "displayName": "Ember Fill", "canonical": "oklch(57.1% 0.159 39.0)", "tonalRamp": ["#1e0100", "#461000", "#752200", "#a73500", "#ce5930", "#f67d55", "#feb59d", "#fee9e3"] },
+      "accent-fill-hover": { "role": "primary", "displayName": "Ember Fill, Pressed", "canonical": "oklch(54.7% 0.154 39.0)", "tonalRamp": ["#1e0100", "#461000", "#752200", "#a63706", "#cd5b34", "#f57f57", "#feb59d", "#fee9e3"] },
+      "accent-soft": { "role": "primary", "displayName": "Ember Wash", "canonical": "rgba(194, 78, 36, 0.18)", "tonalRamp": ["#1e0100", "#461000", "#752200", "#a73500", "#ce5930", "#f67d55", "#feb59d", "#fee9e3"] },
+      "ok": { "role": "state", "displayName": "Done Green", "canonical": "oklch(75.1% 0.143 157.6)", "tonalRamp": ["#001005", "#002e18", "#00502f", "#027446", "#089b60", "#43bf81", "#6de5a4", "#c4ffdb"] },
+      "ok-soft": { "role": "state", "displayName": "Done Green Wash", "canonical": "rgba(78, 201, 138, 0.14)", "tonalRamp": ["#001005", "#002e18", "#00502f", "#027446", "#089b60", "#43bf81", "#6de5a4", "#c4ffdb"] },
+      "run": { "role": "state", "displayName": "Running Blue", "canonical": "oklch(71.8% 0.132 255.8)", "tonalRamp": ["#000924", "#002350", "#004084", "#2661aa", "#4983d0", "#6ba7f6", "#a6ccfe", "#e4f0ff"] },
+      "run-soft": { "role": "state", "displayName": "Running Blue Wash", "canonical": "rgba(106, 166, 245, 0.14)", "tonalRamp": ["#000924", "#002350", "#004084", "#2661aa", "#4983d0", "#6ba7f6", "#a6ccfe", "#e4f0ff"] },
+      "warn": { "role": "state", "displayName": "Warning Amber", "canonical": "oklch(79.9% 0.131 81.4)", "tonalRamp": ["#130900", "#332200", "#573d01", "#7e5a01", "#a87900", "#ce9b32", "#f4c05c", "#ffeccb"] },
+      "warn-soft": { "role": "state", "displayName": "Warning Amber Wash", "canonical": "rgba(232, 180, 79, 0.14)", "tonalRamp": ["#130900", "#332200", "#573d01", "#7e5a01", "#a87900", "#ce9b32", "#f4c05c", "#ffeccb"] },
+      "bad": { "role": "state", "displayName": "Failed Red", "canonical": "oklch(74.4% 0.155 21.5)", "tonalRamp": ["#200001", "#4d000b", "#800019", "#a73038", "#cf5558", "#f77979", "#feb2b0", "#fee9e8"] },
+      "bad-soft": { "role": "state", "displayName": "Failed Red Wash", "canonical": "rgba(255, 128, 128, 0.14)", "tonalRamp": ["#200001", "#4d000b", "#800019", "#a73038", "#cf5558", "#f77979", "#feb2b0", "#fee9e8"] },
+      "pending": { "role": "state", "displayName": "Pending Grey", "canonical": "oklch(70.6% 0 90)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "pending-soft": { "role": "state", "displayName": "Pending Grey Wash", "canonical": "rgba(160, 160, 160, 0.14)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "The guide's page title; the only h1 in the tool." },
+      "title": { "displayName": "Title", "purpose": "Card and drawer headings, the empty state's lead line." },
+      "subtitle": { "displayName": "Subtitle", "purpose": "h3: the Earlier rule (15px, soft ink), a look group's name (12px, muted)." },
+      "body": { "displayName": "Body", "purpose": "Everything read. A job's name is body at 600; guide prose runs at 1.6 within 72ch." },
+      "label": { "displayName": "Label", "purpose": "Field labels in soft ink, the stage line on a card, button labels, disclosure summaries in ember." },
+      "meta": { "displayName": "Meta", "purpose": "The client, language and look line under a job's name; the 'when'; the worker line; hints at 13px." },
+      "badge": { "displayName": "Badge", "purpose": "State pills, status pills, the check chip. Never uppercase." },
+      "mono": { "displayName": "Mono", "purpose": "Glossary entries, paths, technical details on a failed card (12px), keyboard hints (11px)." }
+    },
+    "typographyNotes": {
+      "fontLoading": "No web font. Segoe UI Variable Text is the Windows system face; the stack falls through Segoe UI, system-ui, -apple-system, Roboto, Helvetica, Arial.",
+      "captionFonts": "24 OFL fonts under assets/fonts are caption fonts (look samples, the Styles sample, rendered captions). They never appear in the chrome.",
+      "numerals": "font-variant-numeric: tabular-nums on .time, .job-elapsed, .job-when, .tedit-time, .duration, .job-eta, .sound-gain-readout and number inputs."
+    },
+    "shadows": [
+      { "name": "float", "value": "0 12px 32px rgba(0, 0, 0, 0.45)", "purpose": "Toasts and the export menu: things that float over the page." },
+      { "name": "popup", "value": "0 10px 28px rgba(0, 0, 0, 0.45)", "purpose": "The transcript word-edit popup, a touch tighter because it sits close to what it edits." },
+      { "name": "focus-ring", "value": "0 0 0 3px rgba(240, 144, 106, 0.55)", "purpose": "The one focus ring, on :focus-visible everywhere; fields also turn their border ember." },
+      { "name": "current-ring", "value": "0 0 0 3px var(--accent-soft)", "purpose": "With a 2px ember border: the look currently on the footage." }
+    ],
+    "motion": [
+      { "name": "card-enter", "value": "420ms cubic-bezier(0.16, 1, 0.3, 1) both; from opacity 0 translateX(28px)", "purpose": "The Queue's one authored moment: a submitted job's card enters the top of the stream from the drawer's side. Applied by queue.js via the is-new class and removed on animationend." },
+      { "name": "card-enter-down", "value": "420ms cubic-bezier(0.16, 1, 0.3, 1) both; from opacity 0 translateY(-12px)", "purpose": "The same arrival under 1100px, where the drawer is a bar above the stream so the card drops in from above." },
+      { "name": "toast-in", "value": "180ms ease-out; from opacity 0 translateY(8px)", "purpose": "A toast rising into the stack." },
+      { "name": "chevron", "value": "transform 120ms", "purpose": "A disclosure's chevron turning open." },
+      { "name": "progress-stripes", "value": "1s linear infinite; background-position 0 to 23px", "purpose": "The moving stripe on a live progress fill. Stopped under reduced motion." },
+      { "name": "spin", "value": "0.8s linear infinite", "purpose": "The spinner." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001s; animation-iteration-count: 1; transition-duration: .001s; scroll-behavior: auto } } and .job.is-new { animation: none }", "purpose": "Everything above is off when the editor asks for it." }
+    ],
+    "breakpoints": [
+      { "name": "studio-wide", "value": "1700px", "purpose": "Studio: words column 640px, looks 300px, the check panel puts English beside the source." },
+      { "name": "studio-narrow", "value": "1200px", "purpose": "Studio: words 340px, looks 240px." },
+      { "name": "fold", "value": "1100px", "purpose": "Queue: the drawer folds to a bar above the stream. Styles: the preview drops under the editor." },
+      { "name": "studio-stack", "value": "980px", "purpose": "Studio: one scrolling column, splitters hidden." },
+      { "name": "styles-compact", "value": "900px", "purpose": "Styles: the typed gain field hides, slider fields go two per row." },
+      { "name": "guide-stack", "value": "860px", "purpose": "Help: contents column stacks above the text." },
+      { "name": "styles-stack", "value": "760px", "purpose": "Styles: one column." },
+      { "name": "phone", "value": "640px", "purpose": "Queue: the bar stacks in two columns, the job card becomes one column with a 16:9 frame." },
+      { "name": "nav-tight", "value": "600px", "purpose": "Nav drops the brand word and the status line." }
+    ],
+    "browserSurfaces": {
+      "color-scheme": "dark",
+      "scrollbar-color": "var(--line-strong) var(--bg)",
+      "::selection": "background var(--accent-fill), color #fff",
+      "::placeholder": "color var(--muted)",
+      "accent-color": "checkbox and radio: var(--accent-fill); range: var(--accent)"
+    },
+    "buildConstraints": [
+      "Tokens and shared components live in theme.css; each page's layout lives in its own stylesheet (style.css, studio.css, style_editor.css, guide.css) and a Studio track's pieces beside their script.",
+      "Every file stays under 500 lines. This is a build rule, not a design token.",
+      "Icons are authored inline SVG; there is no icon library or icon font.",
+      "The runtime has no image generation; the Queue was built code-led."
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled action per region: Start captioning, Open in Studio, Update now. Ember fill, white text, darker on hover; disabled keeps its shape and reads muted on raised.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Start captioning</button> <button class=\"ds-btn ds-btn-primary ds-btn-large\">Start captioning</button> <button class=\"ds-btn ds-btn-primary\" disabled>Start captioning</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 6px 14px; border: 1px solid var(--line-strong, #454545); border-radius: var(--radius-sm, 6px); background: var(--raised, #2a2a2a); color: var(--ink, #f0f0f0); font: 600 14px/1.2 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; white-space: nowrap; cursor: pointer; margin: 4px; } .ds-btn-primary { background: var(--accent-fill, #c24e24); border-color: transparent; color: #fff; } .ds-btn-primary:hover:not(:disabled) { background: var(--accent-fill-hover, #b8481f); } .ds-btn-primary:disabled { opacity: 1; background: var(--raised, #2a2a2a); border-color: var(--line-strong, #454545); color: var(--muted, #969696); cursor: not-allowed; } .ds-btn-large { min-height: 40px; padding: 8px 18px; font-size: 15px; } .ds-btn:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px rgba(240, 144, 106, 0.55); }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Raised grey with a strong hairline: Export, Open folder, Copy path, Browse. Hover lifts one grey step; done-flash turns green after a copy.",
+      "html": "<button class=\"ds-btn\">Open folder</button> <button class=\"ds-btn ds-btn-small\">Save glossary</button> <button class=\"ds-btn ds-btn-done\">Copied</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 6px 14px; border: 1px solid var(--line-strong, #454545); border-radius: var(--radius-sm, 6px); background: var(--raised, #2a2a2a); color: var(--ink, #f0f0f0); font: 600 14px/1.2 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; white-space: nowrap; cursor: pointer; margin: 4px; } .ds-btn:hover { background: #323232; } .ds-btn-small { min-height: 28px; padding: 3px 10px; font-size: 13px; font-weight: 500; } .ds-btn-done { border-color: var(--ok, #4ec98a); color: var(--ok, #4ec98a); } .ds-btn:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px rgba(240, 144, 106, 0.55); }"
+    },
+    {
+      "name": "Subtle and Quiet Buttons",
+      "kind": "button",
+      "refersTo": "button-subtle",
+      "description": "Subtle: outlined, soft ink, for secondary actions on a card and 'Show 20 more'. Quiet: no fill, ember text, for Clear and Check for updates. Danger: a default button in failed red, for Remove.",
+      "html": "<button class=\"ds-btn ds-btn-subtle\">Show 20 more</button> <button class=\"ds-btn ds-btn-quiet\">Clear</button> <button class=\"ds-btn ds-btn-danger\">Remove</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 6px 14px; border: 1px solid var(--line-strong, #454545); border-radius: var(--radius-sm, 6px); background: var(--raised, #2a2a2a); color: var(--ink, #f0f0f0); font: 600 14px/1.2 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; white-space: nowrap; cursor: pointer; margin: 4px; } .ds-btn-subtle { background: transparent; border-color: var(--line, #363636); color: var(--ink-soft, #c8c8c8); font-weight: 500; } .ds-btn-subtle:hover { background: var(--raised, #2a2a2a); border-color: var(--line-strong, #454545); color: var(--ink, #f0f0f0); } .ds-btn-quiet { background: transparent; border-color: transparent; color: var(--accent, #f0906a); } .ds-btn-quiet:hover { background: var(--accent-soft, rgba(194, 78, 36, 0.18)); } .ds-btn-danger { color: var(--bad, #ff8080); } .ds-btn-danger:hover { background: var(--bad-soft, rgba(255, 128, 128, 0.14)); border-color: var(--bad, #ff8080); } .ds-btn:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px rgba(240, 144, 106, 0.55); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "A field is a cut into the panel: bench background, strong hairline, 36px tall, label above in soft ink. Focus turns the border ember and adds the ring; the select draws its own muted chevron.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-label\" for=\"ds-client\">Client</label><input class=\"ds-input\" id=\"ds-client\" type=\"text\" placeholder=\"e.g. Acme\"><p class=\"ds-hint\">Shown on the job, and picks that client's glossary of names and brands.</p></div><div class=\"ds-field\"><label class=\"ds-label\" for=\"ds-lang\">Language spoken</label><select class=\"ds-input ds-select\" id=\"ds-lang\"><option>English</option><option>Spanish</option></select></div>",
+      "css": ".ds-field { display: block; max-width: 288px; margin: 6px 4px 14px; font-family: \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; } .ds-label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--ink-soft, #c8c8c8); } .ds-input { width: 100%; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line-strong, #454545); border-radius: var(--radius-sm, 6px); background: var(--bg, #1b1b1b); color: var(--ink, #f0f0f0); font: 14px/1.45 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; box-sizing: border-box; } .ds-input::placeholder { color: var(--muted, #969696); } .ds-input:focus { outline: none; } .ds-input:focus-visible { border-color: var(--accent, #f0906a); box-shadow: 0 0 0 3px rgba(240, 144, 106, 0.55); } .ds-select { appearance: none; padding-right: 30px; background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23969696' stroke-width='1.6'/></svg>\"); background-repeat: no-repeat; background-position: right 10px center; } .ds-hint { margin: 5px 0 0; font-size: 13px; color: var(--muted, #969696); }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "field-search",
+      "description": "The Queue's search: a field with an inline-SVG magnifier at the left and a '/' key hint in a kbd at the right that hides on focus. The icon and caret turn ember while the field has focus.",
+      "html": "<label class=\"ds-search\"><svg class=\"ds-search-icon\" viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" aria-hidden=\"true\"><circle cx=\"6.75\" cy=\"6.75\" r=\"4.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"/><path d=\"M10.3 10.3 14 14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/></svg><input class=\"ds-search-input\" type=\"search\" placeholder=\"Search by file or client\" aria-label=\"Search jobs by file or client\"><kbd class=\"ds-search-key\" aria-hidden=\"true\">/</kbd></label>",
+      "css": ".ds-search { position: relative; display: block; max-width: 520px; margin: 4px; color: var(--muted, #969696); font-family: \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; } .ds-search:focus-within { color: var(--accent, #f0906a); } .ds-search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); pointer-events: none; } .ds-search-input { width: 100%; min-height: 36px; padding: 7px 36px 7px 34px; border: 1px solid var(--line-strong, #454545); border-radius: var(--radius-sm, 6px); background: var(--bg, #1b1b1b); color: var(--ink, #f0f0f0); caret-color: var(--accent, #f0906a); font: 14px/1.45 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; box-sizing: border-box; } .ds-search-input::placeholder { color: var(--muted, #969696); } .ds-search-input::-webkit-search-cancel-button { appearance: none; } .ds-search-input:focus { outline: none; } .ds-search-input:focus-visible { border-color: var(--accent, #f0906a); box-shadow: 0 0 0 3px rgba(240, 144, 106, 0.55); } .ds-search-key { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font: 11px/1 Consolas, \"Cascadia Mono\", monospace; padding: 3px 6px; color: var(--muted, #969696); background: var(--raised, #2a2a2a); border: 1px solid var(--line-strong, #454545); border-radius: 4px; } .ds-search:focus-within .ds-search-key { display: none; }"
+    },
+    {
+      "name": "Top Nav",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "The 52px panel bar every page shares: the ember brand mark with a white bar, four links (muted at rest, ink on raised when current), a spacer, a muted status line.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main\"><a class=\"ds-brand\" href=\"#\"><i aria-hidden=\"true\"></i><span>ASH Captions</span></a><a class=\"ds-nav-link\" href=\"#\" aria-current=\"page\">Queue</a><a class=\"ds-nav-link\" href=\"#\">Studio</a><a class=\"ds-nav-link\" href=\"#\">Styles</a><a class=\"ds-nav-link\" href=\"#\">Help</a><span class=\"ds-nav-spacer\"></span><span class=\"ds-nav-status\">Worker: running</span></nav>",
+      "css": ".ds-nav { height: 52px; display: flex; align-items: center; gap: 4px; padding: 0 20px; background: var(--panel, #212121); border-bottom: 1px solid var(--line, #363636); font-family: \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; font-size: 14px; } .ds-brand { display: inline-flex; align-items: center; gap: 9px; margin-right: 18px; color: var(--ink, #f0f0f0); font-weight: 600; font-size: 15px; text-decoration: none; white-space: nowrap; } .ds-brand i { width: 22px; height: 22px; border-radius: 5px; background: var(--accent-fill, #c24e24); display: inline-block; position: relative; } .ds-brand i::after { content: \"\"; position: absolute; left: 5px; right: 5px; bottom: 5px; height: 3px; border-radius: 2px; background: #fff; } .ds-nav-link { padding: 6px 12px; border-radius: var(--radius-sm, 6px); color: var(--muted, #969696); font-weight: 500; text-decoration: none; white-space: nowrap; } .ds-nav-link:hover, .ds-nav-link[aria-current='page'] { color: var(--ink, #f0f0f0); background: var(--raised, #2a2a2a); } .ds-nav-link:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px rgba(240, 144, 106, 0.55); } .ds-nav-spacer { flex: 1; } .ds-nav-status { font-size: 12.5px; color: var(--muted, #969696); white-space: nowrap; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Colour plus a word, never colour alone: a pill with a 7px dot in the state colour on the state's 14% wash. Pending, running, done, failed.",
+      "html": "<span class=\"ds-badge\">Pending</span> <span class=\"ds-badge ds-badge-running\">Running</span> <span class=\"ds-badge ds-badge-done\">Done</span> <span class=\"ds-badge ds-badge-failed\">Failed</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; margin: 4px; border-radius: 999px; font: 600 12px/1.45 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; white-space: nowrap; background: var(--pending-soft, rgba(160, 160, 160, 0.14)); color: var(--pending, #a0a0a0); } .ds-badge::before { content: \"\"; width: 7px; height: 7px; border-radius: 50%; background: currentColor; } .ds-badge-running { color: var(--run, #6aa6f5); background: var(--run-soft, rgba(106, 166, 245, 0.14)); } .ds-badge-done { color: var(--ok, #4ec98a); background: var(--ok-soft, rgba(78, 201, 138, 0.14)); } .ds-badge-failed { color: var(--bad, #ff8080); background: var(--bad-soft, rgba(255, 128, 128, 0.14)); }"
+    },
+    {
+      "name": "Job Card",
+      "kind": "card",
+      "refersTo": "job-card",
+      "description": "The unit of the Queue: a 160x90 frame of the job's own footage on the mat, then name and badge, the meta line, the stage line with elapsed and 'when' in tabular figures, a progress track while running, and the actions. The is-new class plays the one authored motion.",
+      "html": "<article class=\"ds-job ds-job-running ds-job-new\"><div class=\"ds-job-thumb\" aria-hidden=\"true\">No preview</div><div class=\"ds-job-body\"><div class=\"ds-job-top\"><span class=\"ds-job-name\">interview take 3.mp4</span><span class=\"ds-badge ds-badge-running\">Running</span></div><div class=\"ds-job-meta\"><span class=\"ds-job-client\">Acme</span> · English (US)</div><div class=\"ds-job-stage\"><span class=\"ds-job-stage-text\">Transcribing</span><span class=\"ds-job-elapsed\">1 min 12 s</span><span class=\"ds-job-when\">just now</span></div><div class=\"ds-progress\"><div class=\"ds-progress-fill\" style=\"width: 42%\"></div></div><div class=\"ds-job-actions\"><button class=\"ds-btn ds-btn-subtle\">Open folder</button><button class=\"ds-btn ds-btn-danger\">Remove</button></div></div></article>",
+      "css": ".ds-job { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 14px; padding: 12px; margin: 4px; max-width: 720px; border: 1px solid var(--line, #363636); border-radius: var(--radius, 10px); background: var(--panel, #212121); color: var(--ink, #f0f0f0); font-family: \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; font-size: 14px; line-height: 1.45; } .ds-job-running { border-color: var(--line-strong, #454545); } .ds-job-new { animation: ds-card-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both; } @keyframes ds-card-enter { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } } @media (prefers-reduced-motion: reduce) { .ds-job-new { animation: none; } } .ds-job-thumb { width: 160px; height: 90px; border-radius: var(--radius-sm, 6px); background: var(--mat, #242424); display: flex; align-items: center; justify-content: center; color: var(--muted, #969696); font-size: 11px; } .ds-job-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; } .ds-job-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; } .ds-job-name { font-weight: 600; overflow-wrap: anywhere; } .ds-job-meta { font-size: 12.5px; color: var(--muted, #969696); } .ds-job-client { color: var(--ink-soft, #c8c8c8); font-weight: 600; } .ds-job-stage { display: flex; align-items: baseline; gap: 10px; font-size: 13px; font-weight: 600; color: var(--run, #6aa6f5); } .ds-job-elapsed { color: var(--muted, #969696); font-weight: 500; font-variant-numeric: tabular-nums; } .ds-job-when { margin-left: auto; color: var(--muted, #969696); font-weight: 500; font-variant-numeric: tabular-nums; } .ds-progress { height: 6px; border-radius: 999px; background: var(--raised, #2a2a2a); overflow: hidden; } .ds-progress-fill { height: 100%; min-width: 18px; border-radius: 999px; background: var(--run, #6aa6f5); background-image: repeating-linear-gradient(-45deg, rgba(255,255,255,0) 0 8px, rgba(255,255,255,.3) 8px 16px); background-size: 23px 23px; animation: ds-stripes 1s linear infinite; } @keyframes ds-stripes { from { background-position: 0 0; } to { background-position: 23px 0; } } @media (prefers-reduced-motion: reduce) { .ds-progress-fill { animation: none; } } .ds-job-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; } .ds-badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; } .ds-badge::before { content: \"\"; width: 7px; height: 7px; border-radius: 50%; background: currentColor; } .ds-badge-running { color: var(--run, #6aa6f5); background: var(--run-soft, rgba(106, 166, 245, 0.14)); } .ds-btn { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 14px; border: 1px solid var(--line-strong, #454545); border-radius: var(--radius-sm, 6px); background: var(--raised, #2a2a2a); color: var(--ink, #f0f0f0); font: 600 14px/1.2 inherit; font-family: inherit; cursor: pointer; } .ds-btn-subtle { background: transparent; border-color: var(--line, #363636); color: var(--ink-soft, #c8c8c8); font-weight: 500; } .ds-btn-subtle:hover { background: var(--raised, #2a2a2a); border-color: var(--line-strong, #454545); color: var(--ink, #f0f0f0); } .ds-btn-danger { color: var(--bad, #ff8080); } .ds-btn-danger:hover { background: var(--bad-soft, rgba(255, 128, 128, 0.14)); border-color: var(--bad, #ff8080); } .ds-btn:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px rgba(240, 144, 106, 0.55); } @media (max-width: 640px) { .ds-job { grid-template-columns: 1fr; } .ds-job-thumb { width: 100%; height: auto; aspect-ratio: 16 / 9; } }"
+    },
+    {
+      "name": "Notice",
+      "kind": "custom",
+      "refersTo": "notice-error",
+      "description": "A 1px border in the state colour on the state wash, 500 weight. Error in red, warning in amber, info in ember. The lost-contact banner is a warning.",
+      "html": "<div class=\"ds-notice ds-notice-error\" role=\"alert\">This file couldn't be read as a video. Re-export it, then submit it again.</div><div class=\"ds-notice ds-notice-warning\" role=\"status\">Lost contact with the app. Is it still running? Check for its icon by the clock, or the terminal window.</div><div class=\"ds-notice ds-notice-info\">An update is available.</div>",
+      "css": ".ds-notice { padding: 10px 14px; margin: 6px 4px; max-width: 640px; border-radius: var(--radius-sm, 6px); border: 1px solid; font: 500 14px/1.45 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; } .ds-notice-error { color: var(--bad, #ff8080); border-color: var(--bad, #ff8080); background: var(--bad-soft, rgba(255, 128, 128, 0.14)); } .ds-notice-warning { color: var(--warn, #e8b44f); border-color: var(--warn, #e8b44f); background: var(--warn-soft, rgba(232, 180, 79, 0.14)); } .ds-notice-info { color: var(--accent, #f0906a); border-color: var(--accent-fill, #c24e24); background: var(--accent-soft, rgba(194, 78, 36, 0.18)); }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "The one thing that floats on every page: raised, strong hairline, the float shadow, rising 8px over 180ms. Done tints the border green, failed tints it red.",
+      "html": "<div class=\"ds-toast ds-toast-ok\"><span class=\"ds-toast-text\">Path copied.</span><button class=\"ds-toast-close\" aria-label=\"Dismiss\">×</button></div><div class=\"ds-toast ds-toast-bad\"><span class=\"ds-toast-text\">Could not open the folder.</span><div class=\"ds-toast-actions\"><button class=\"ds-btn ds-btn-small\">Copy path</button></div><button class=\"ds-toast-close\" aria-label=\"Dismiss\">×</button></div>",
+      "css": ".ds-toast { display: flex; align-items: center; gap: 12px; width: min(420px, calc(100% - 8px)); margin: 4px; padding: 12px 14px; border-radius: var(--radius, 10px); background: var(--raised, #2a2a2a); border: 1px solid var(--line-strong, #454545); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); color: var(--ink, #f0f0f0); font: 14px/1.45 \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; animation: ds-toast-in .18s ease-out; box-sizing: border-box; } @keyframes ds-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } } @media (prefers-reduced-motion: reduce) { .ds-toast { animation: none; } } .ds-toast-ok { border-color: rgba(62, 207, 142, 0.5); } .ds-toast-bad { border-color: rgba(255, 122, 122, 0.5); } .ds-toast-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; } .ds-toast-actions { display: flex; gap: 6px; flex: none; } .ds-toast-close { flex: none; width: 26px; height: 26px; border: none; border-radius: 50%; background: transparent; color: var(--muted, #969696); font-size: 16px; cursor: pointer; } .ds-toast-close:hover { background: var(--panel, #212121); color: var(--ink, #f0f0f0); } .ds-btn { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 10px; border: 1px solid var(--line-strong, #454545); border-radius: var(--radius-sm, 6px); background: var(--raised, #2a2a2a); color: var(--ink, #f0f0f0); font: 500 13px/1.2 inherit; font-family: inherit; cursor: pointer; } .ds-btn:hover { background: #323232; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Neutral Mat",
+    "overview": "The interface is the mat a framer cuts around a picture: a flat, hueless grey that exists so the thing inside it can be judged. ASH Captions is a captioning station on six editors' Windows PCs, and every screen in it holds footage, a caption drawn on footage, or a card led by a frame of footage. A caption's colour is read against the shot it sits on, so the chrome must not tint or compete with the video. Every grey has equal red, green and blue; the only hue in the chrome is one ember accent taken from the client's own ASH BRAND look, and the five state colours that say running, done, failed, pending and warning. Nothing in the chrome has a hue for its own sake.\n\nThe world is dense and quiet, the density of a desk tool that sits 12 pixels from a frame and is used all day next to Premiere. Type is Segoe UI Variable Text at 14 pixels, the face Windows itself uses, with no web font loaded; the 24 bundled caption fonts are the subject of the tool, never its chrome. Surfaces are flat panels separated by hairlines and by three tonal steps of grey. Depth appears only under things that float over the page. Motion is one authored moment per page, exponential ease-out, and interaction feedback; all of it is off under reduced motion. The tool reads as one dark thing: the Queue, the Studio, Styles and Help share the same nav, buttons, fields, badges, cards and focus ring from a single stylesheet.\n\nThe Queue is where the world was carbonised: a stream of frame-led job cards, newest on top, with the intake drawer open beside it. With the words removed the page still reads as a strip of clips with a drawer of controls at its side. That is the test every new surface is held to: take the words away and it should still read as footage, a mat, and a few controls.",
+    "keyCharacteristics": [
+      "Neutral chrome: every grey is R = G = B, from the #1b1b1b page to the #f0f0f0 ink.",
+      "One ember accent from the brand's own look: lifted for text (#f0906a), darkened for fills (#c24e24) so white on it clears 4.5:1.",
+      "Footage leads: a 160x90 frame opens every job card, and the video sits on a lighter neutral mat (#242424) rather than on black.",
+      "System type, no web font: Segoe UI Variable Text at 14px/1.45, tabular figures on anything that counts.",
+      "Flat surfaces, hairline borders, tonal layering; shadows only on toasts, menus and popups.",
+      "One authored motion per page (the Queue's card-enter, 420ms exponential ease-out) plus interaction feedback; none under reduced motion.",
+      "Colour never carries state alone: a dot and a word, a sentence, a stage.",
+      "Browser surfaces are themed: dark scrollbar, selection in the accent, placeholder at muted, `color-scheme: dark`."
+    ],
+    "rules": [
+      { "name": "The R = G = B Rule", "body": "Every grey in the chrome has equal red, green and blue. A caption's colour is judged against footage, and a blue-lifted grey is a tint on the surround of the one thing the editor is looking at. Hue belongs to the footage and to state.", "section": "colors" },
+      { "name": "The One Ember Rule", "body": "There is one accent and it is the client's own, the ASH BRAND look's #C8542A, lifted for text and darkened for fills. Hover goes darker, never lighter, so white on the fill never drops below 4.5:1. No second accent, no gradient, no tinted panel.", "section": "colors" },
+      { "name": "The Colour Plus a Word Rule", "body": "State is never colour alone. A badge carries a dot and a word, a failed card carries a sentence in the editor's words, a progress bar carries a stage, an unsure word carries an underline and a count.", "section": "colors" },
+      { "name": "The Windows Face Rule", "body": "The chrome is set in Segoe UI Variable Text and nothing is downloaded to draw it. The caption fonts are content, not chrome: a caption face in a heading or a button would make the tool look like one of its own looks.", "section": "typography" },
+      { "name": "The Steady Digits Rule", "body": "Anything that counts (timecodes, durations, elapsed time, dB, percentages, the \"when\" on a card) is set in tabular figures so a number does not change width as it ticks.", "section": "typography" },
+      { "name": "The Frame Leads Rule", "body": "A job is led by a 160x90 frame of its own footage on a neutral mat, with everything the editor reads beside it. A card with no frame shows the mat and the words \"No preview\", never a placeholder graphic.", "section": "layout" },
+      { "name": "The Stage Floor Rule", "body": "The video is the thing being judged, so nothing that appears may shrink it: the stage has a minimum height and new panels grow a scrolling column instead.", "section": "layout" },
+      { "name": "The Flat Desk Rule", "body": "Surfaces are flat and separated by hairlines and tonal steps. A shadow is a statement that something is not part of the page; it appears under toasts, menus and popups and nowhere else.", "section": "elevation" },
+      { "name": "The Two Radii Rule", "body": "10px for a container, 6px for a control, 999px for a pill. A new component picks one of the three; it does not bring its own.", "section": "shapes" },
+      { "name": "The One Authored Moment Rule", "body": "Each page has at most one authored motion (the Queue's card-enter). Everything else is interaction feedback under 200ms: a toast rising, a chevron turning, a progress stripe. All of it stops under `prefers-reduced-motion`.", "section": "components" },
+      { "name": "The Inline Icon Rule", "body": "Icons are authored inline SVG at 12 to 16px, stroked in `currentColor`: the search magnifier, the select chevron, the transport glyphs. No icon library, no icon font.", "section": "components" }
+    ],
+    "dos": [
+      "Do take every colour from the tokens on `:root` in theme.css; a page stylesheet places components, it does not recolour them.",
+      "Do keep every grey neutral (R = G = B) and check a new one against the footage it will surround.",
+      "Do use the ember fill (#c24e24) for one primary action per region and the ember text tint (#f0906a) for links, quiet buttons and selection.",
+      "Do darken on hover (#b8481f), never lighten, so white on ember stays above 4.5:1.",
+      "Do pair every state colour with a word, a dot and a word, or a sentence.",
+      "Do lead a job with a 160x90 frame of its own footage on the mat (#242424).",
+      "Do set the chrome in Segoe UI Variable Text at 14px/1.45 with weights 400, 500 and 600, and tabular figures on anything that counts.",
+      "Do keep surfaces flat: hairlines and tonal steps for edges, the float shadow only under toasts, menus and popups.",
+      "Do use 10px for containers, 6px for controls, 999px for pills.",
+      "Do author at most one motion per page, 420ms `cubic-bezier(0.16, 1, 0.3, 1)` for an arrival, and turn it off under reduced motion.",
+      "Do draw icons as inline SVG in `currentColor`.",
+      "Do theme the browser's own surfaces: `scrollbar-color`, `::selection` in the ember fill, placeholders in muted, `color-scheme: dark`.",
+      "Do keep tokens and shared components in theme.css and each page's layout in its own stylesheet, every file under 500 lines (a build rule, not a token)."
+    ],
+    "donts": [
+      "Don't add a hue to any grey; the greys this system replaced carried a blue lift and the whole point of the palette is that they no longer do.",
+      "Don't introduce a second accent, a gradient, or a tinted panel; a page that needs \"something to look at\" has footage for that.",
+      "Don't put a caption font in the chrome; the 24 bundled fonts appear only in look samples, the Styles sample and rendered captions.",
+      "Don't load a web font or an icon library.",
+      "Don't let colour carry state alone, and don't uppercase a badge; the word is the word.",
+      "Don't shadow a card, a panel or a button; a shadow means \"floating over the page\" and nothing else.",
+      "Don't shrink the Studio stage to make room for a panel; grow the scrolling column instead.",
+      "Don't fade a disabled primary button to a ghost; keep its shape and set muted text on raised.",
+      "Don't add motion beyond the page's one authored moment and sub-200ms feedback, and don't ship any of it without the reduced-motion switch.",
+      "Don't reach for #0c0d11: the two blue-lifted blacks that remain (the Styles sample backing and the guide's command block) predate the neutral palette; use the mat or the bench.",
+      "Don't put a settings form above a status list; the Queue's intake asks for the file, the language and the client, and every decision that needs the footage is made in the Studio."
+    ]
+  }
+}
