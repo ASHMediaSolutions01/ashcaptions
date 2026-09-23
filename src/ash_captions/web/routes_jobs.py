@@ -157,8 +157,13 @@ def build_jobs_router(
             return queue.retry(job_id)
         except JobNotFoundError:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
-        except JobNotRetryableError:
-            raise HTTPException(status_code=409, detail=f"Job {job_id!r} is not in a retryable state.")
+        except JobNotRetryableError as exc:
+            # The adapter raises this with the job id for a plain state
+            # refusal, and with the store's own sentence when the same file
+            # is already queued -- which is the one an editor can act on.
+            why = str(exc)
+            detail = why if why and why != job_id else f"Job {job_id!r} is not in a retryable state."
+            raise HTTPException(status_code=409, detail=detail)
 
     return router
 

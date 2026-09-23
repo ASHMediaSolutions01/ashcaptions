@@ -47,13 +47,23 @@
     els.status.className = `status-pill${kind ? ` ${kind}` : ""}`;
   }
 
-  function stageMessage(title, body, withQueueLink) {
+  function stageMessage(title, body, withQueueLink, technical) {
     els.wait.hidden = true;
     els.message.innerHTML = "";
     const strong = document.createElement("strong");
     strong.textContent = title;
     els.message.appendChild(strong);
     els.message.appendChild(document.createTextNode(body));
+    if (technical) {
+      const details = document.createElement("details");
+      details.className = "disclosure stage-technical";
+      const summary = document.createElement("summary");
+      summary.textContent = "Technical details";
+      const pre = document.createElement("pre");
+      pre.textContent = technical;
+      details.append(summary, pre);
+      els.message.appendChild(details);
+    }
     if (withQueueLink) {
       els.message.appendChild(document.createElement("br"));
       const a = document.createElement("a");
@@ -362,12 +372,23 @@
     setStatus(running ? "Captioning…" : "Waiting", "busy");
   }
 
-  function waitUntilDone() {
-    if (job.status === "failed") {
-      stageMessage("This job failed", job.error || "Something went wrong while captioning it.", true);
-      setStatus("Failed", "bad");
-      return;
+  // A failed job has no captions: the looks, the tabs, Burn and Export
+  // would all act on nothing, so they go, and what is left is the reason
+  // and the way back to the queue.
+  function failedState() {
+    const reason = job.reason || job.error || "Something went wrong while captioning it.";
+    stageMessage("This job failed", reason, true, job.reason ? job.error : "");
+    setStatus("Failed", "bad");
+    for (const id of ["looks", "pane-tabs", "export"]) {
+      const node = $(id);
+      if (node) node.hidden = true;
     }
+    els.burnBtn.hidden = true;
+    els.reframeBtn.hidden = true;
+  }
+
+  function waitUntilDone() {
+    if (job.status === "failed") return failedState();
     renderWaiting();
     const timer = setInterval(async () => {
       let latest;

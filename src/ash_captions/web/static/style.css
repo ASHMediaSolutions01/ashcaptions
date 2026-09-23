@@ -145,8 +145,23 @@
   background: var(--bad-soft);
   color: var(--bad);
   font-size: 13px;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.job-reason { font-weight: 500; line-height: 1.4; }
+/* The engine's own text is data, folded away: read by Ghazi, not by the
+   editor, and never the first thing on a failed card. */
+.job-error-details { margin-top: 6px; }
+.job-error-details > summary { font-size: 12px; color: var(--muted); }
+.job-technical {
+  margin: 6px 0 0;
+  padding: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--muted);
+  font: 12px/1.45 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
 }
 .job-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
 .job-confirm { margin: 2px 0 0; }

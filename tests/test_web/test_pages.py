@@ -66,7 +66,10 @@ def test_finished_queue_rows_show_one_primary_action_and_no_bar():
     queue_js = (STATIC_DIR / "queue.js").read_text(encoding="utf-8")
     actions = queue_js[queue_js.index("function actionsFor") : queue_js.index("// ---- actions ----")]
     assert actions.count('"btn small primary"') == 1  # Open in Studio
-    assert 'button("Retry", "primary"' in actions
+    # Retry leads only when it can help (v0.9.1): a file that is not a
+    # video fails identically every time, so there it is demoted.
+    assert 'canHelp ? "primary" : "subtle"' in actions
+    assert 'canHelp ? "Retry" : "Try again"' in actions
     assert 'button("Open folder", "subtle"' in actions
     assert 'button("Copy path", "subtle"' in actions
     assert 'button("Remove", "quiet"' in actions

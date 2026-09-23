@@ -131,15 +131,26 @@
     const stage = el("span", "job-stage");
     const elapsed = el("span", "job-elapsed");
     statusLine.append(stage, elapsed);
+    // A failure is one plain sentence first; the engine's text stays
+    // available behind a disclosure, because it is what Ghazi needs and
+    // not what the editor does.
     const error = el("div", "job-error");
     error.hidden = true;
+    const reason = el("div", "job-reason");
+    const details = document.createElement("details");
+    details.className = "disclosure job-error-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Technical details";
+    const technical = el("pre", "job-technical");
+    details.append(summary, technical);
+    error.append(reason, details);
     const actions = el("div", "job-actions");
     const confirm = el("div", "job-confirm");
     confirm.hidden = true;
     body.append(top, meta, track, statusLine, error, actions, confirm);
     root.appendChild(body);
 
-    const refs = { thumb, missing, name, badge, meta, track, fill, stage, elapsed, error, actions, confirm };
+    const refs = { thumb, missing, name, badge, meta, track, fill, stage, elapsed, error, reason, details, technical, actions, confirm };
     return { el: root, refs, status: null };
   }
 
@@ -174,7 +185,14 @@
     else { delete refs.elapsed.dataset.since; delete refs.elapsed.dataset.label; }
 
     refs.error.hidden = job.status !== "failed";
-    if (job.status === "failed") refs.error.textContent = job.error || "Something went wrong.";
+    if (job.status === "failed") {
+      refs.reason.textContent = job.reason || job.error || "Something went wrong.";
+      const technical = job.error || "";
+      refs.technical.textContent = technical;
+      // Nothing to disclose when the reason already is the whole text.
+      refs.details.hidden = !technical || technical === refs.reason.textContent;
+      if (!refs.details.hidden) refs.details.open = false;
+    }
 
     // The thumb is asked for once; a job that had none gets one more try
     // when it finishes, since the burned output can stand in for a
@@ -210,7 +228,14 @@
       studio.href = `/studio/${encodeURIComponent(job.id)}`;
       out.push(studio);
     }
-    if (job.status === "failed") out.push(button("Retry", "primary", (e) => retry(job, e.currentTarget)));
+    if (job.status === "failed") {
+      // Retry leads only when it can change something. A file that is not
+      // a video fails the same way every time, and a primary Retry there
+      // is how an editor ends up retrying three times and escalating.
+      const canHelp = job.retryable !== false;
+      const label = canHelp ? "Retry" : "Try again";
+      out.push(button(label, canHelp ? "primary" : "subtle", (e) => retry(job, e.currentTarget)));
+    }
     if (job.status === "done") {
       const exportSlot = el("span", "job-export");
       out.push(exportSlot);

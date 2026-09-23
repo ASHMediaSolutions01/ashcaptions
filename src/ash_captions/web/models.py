@@ -12,7 +12,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
+
+from .failures import explain_failure
 
 # Extensions accepted at the API boundary. This is a coarse, fast check --
 # the real "is this actually a readable video" check happens in the engine
@@ -119,6 +121,24 @@ class Job(BaseModel):
     stage_started_at: datetime | None = None
     input_path: str | None = None
     output_dir: str | None = None
+
+    # Derived, not stored: one plain sentence for the editor and whether
+    # Retry can change anything. Computed here so the real adapter, the
+    # test fake and the SSE snapshot all carry them without each knowing
+    # the rules (``failures.py`` has them and the reason they exist).
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def reason(self) -> str | None:
+        if self.status != JobStatus.FAILED:
+            return None
+        return explain_failure(self.error).reason
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def retryable(self) -> bool | None:
+        if self.status != JobStatus.FAILED:
+            return None
+        return explain_failure(self.error).retryable
 
 
 class JobList(BaseModel):
