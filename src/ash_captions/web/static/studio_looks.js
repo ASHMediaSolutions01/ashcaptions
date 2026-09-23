@@ -127,6 +127,8 @@
       el.className = "look";
       el.dataset.name = style.name;
       el.setAttribute("role", "option");
+      // Named by the look, not by the sample text drawn inside it.
+      el.setAttribute("aria-label", style.name);
       el.tabIndex = -1;
       el.disabled = !enabled;
       el.title = enabled ? `Preview "${style.name}"` : "Looks can't be previewed on the burned output";
@@ -174,8 +176,14 @@
         if (group.length === 0) continue;
         const section = document.createElement("section");
         section.className = "look-group";
+        // A listbox may hold groups of options and nothing else; the
+        // visible heading is decoration to the accessibility tree, and
+        // the group carries the name instead.
+        section.setAttribute("role", "group");
+        section.setAttribute("aria-label", `${POSITION_LABEL[position]}, ${group.length} looks`);
         const h3 = document.createElement("h3");
         h3.textContent = `${POSITION_LABEL[position]} · ${group.length}`;
+        h3.setAttribute("aria-hidden", "true");
         section.appendChild(h3);
         for (const style of group) section.appendChild(card(style));
         list.appendChild(section);

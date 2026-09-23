@@ -41,7 +41,10 @@ def test_pages_carry_the_form_and_accessibility_hooks():
     assert 'id="browse-btn"' in index  # the native picker (POST /api/pick-file)
     assert 'id="options" disabled' in index  # options shown always, off until a file is chosen
     assert 'id="dropzone" tabindex="0" role="button"' in index
-    assert 'id="job-list" aria-live="polite"' in index
+    # Not a live region since the 2026-09-23 critique: its progress text
+    # changed every second and was read out in full. The finished-job toast
+    # is the status region.
+    assert 'id="job-list"></div>' in index and 'id="job-list" aria-live' not in index
     assert 'id="clear-finished-btn"' in index
     assert 'id="start-here"' in index
     assert "alert(" not in (STATIC_DIR / "queue.js").read_text(encoding="utf-8")

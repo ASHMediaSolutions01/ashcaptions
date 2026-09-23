@@ -24,11 +24,12 @@
   if (!panes || !bar || !words || !check) return;
 
   const TABS = [
-    { pane: "words", label: "Words", el: words },
-    { pane: "check", label: "Check", el: check },
+    { pane: "words", label: "Words", el: words, reason: "There is no transcript to edit yet." },
+    { pane: "check", label: "Check", el: check, reason: "Nothing to check yet: the check needs a transcript." },
     // Only a reel has framing to argue with, so this tab is absent --
     // not merely disabled -- until one has been burned.
-    { pane: "framing", label: "Framing", el: framing },
+    { pane: "framing", label: "Framing", el: framing,
+      reason: "Only a landscape video cropped to a 9:16 reel has framing to correct." },
   ].filter((tab) => tab.el);
   const buttons = new Map();
 
@@ -62,11 +63,17 @@
       const button = buttons.get(tab.pane);
       const ok = available(tab);
       button.disabled = !ok;
+      // A disabled tab with no reason is a locked door; the title is the sign.
+      button.title = ok ? "" : tab.reason || "";
       button.hidden = !ok && tab.pane === "check" && !check.childElementCount;
       if (!ok && selected === tab.pane) selected = null;
     }
     const dot = buttons.get("check").querySelector(".pane-dot");
-    dot.hidden = unsureCount() === 0;
+    const unsure = unsureCount();
+    dot.hidden = unsure === 0;
+    buttons.get("check").setAttribute(
+      "aria-label", unsure ? `Check, ${unsure} uncertain word${unsure === 1 ? "" : "s"}` : "Check"
+    );
     // Fall back to whichever pane is actually there, so the panel is never
     // blank because the pane it was showing went away.
     if (!selected) {

@@ -308,9 +308,16 @@
   function renderHealth() {
     const worker = health.worker_alive === true ? "running" : health.worker_alive === false ? "stopped" : "unknown";
     const parts = [`Worker: ${worker}`];
-    if (health.lastPollAt) parts.push(`checked ${AshQueue.formatDuration(Date.now() - health.lastPollAt)} ago`);
+    if (health.lastPollAt) {
+      // Coarse on purpose: this is a live region, and a number that ticks
+      // every second is a screen reader that never stops talking.
+      const age = Math.max(0, Date.now() - health.lastPollAt);
+      const coarse = age < 60000 ? Math.floor(age / 10000) * 10000 : age;
+      parts.push(`checked ${AshQueue.formatDuration(coarse)} ago`);
+    }
     parts.push(health.live ? "live" : "not connected");
-    queueHealth.textContent = parts.join(" · ");
+    const text = parts.join(" · ");
+    if (queueHealth.textContent !== text) queueHealth.textContent = text;
     queueHealth.classList.toggle("bad", health.worker_alive === false || !health.live);
   }
   setInterval(renderHealth, 1000);

@@ -19,108 +19,16 @@
 (function () {
   "use strict";
 
-  const MIN_WORD_SECONDS = 0.06;
-  const SECONDS_PER_PIXEL = 1 / 200; // a second is a deliberate drag, not a twitch
-  const DEFAULT_MAX_WORDS = 4;
-  const UNSURE = 0.5, BAD = 0.3; // the caption check's confidence thresholds
-
-  // ---- pure helpers (no DOM) ----
-
-  function round3(v) { return Math.round(v * 1000) / 1000; }
-  function srtTime(text) {
-    const m = /(\d+):(\d+):(\d+)[,.](\d+)/.exec(text);
-    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000 : 0;
-  }
-  function parseSrt(text) {
-    const cues = [];
-    for (const block of text.replace(/\r/g, "").split(/\n\n+/)) {
-      const lines = block.split("\n").filter((l) => l.trim());
-      const idx = lines.findIndex((l) => l.includes("-->"));
-      if (idx < 0) continue;
-      const [start, end] = lines[idx].split("-->");
-      cues.push({ start: srtTime(start), end: srtTime(end) });
-    }
-    return cues;
-  }
-
-  // The line a word belongs to: the last cue that starts at or before it.
-  function lineIndexFor(start, cues) {
-    let idx = 0;
-    for (let i = 0; i < cues.length && cues[i].start <= start + 1e-6; i += 1) idx = i;
-    return idx;
-  }
-
-  // Lines as arrays of word *indexes*, so every span knows which word it is.
-  function assignToLines(words, cues) {
-    if (!cues.length) return words.length ? [words.map((_w, i) => i)] : [];
-    const lines = cues.map(() => []);
-    words.forEach((w, i) => lines[lineIndexFor(w.s, cues)].push(i));
-    return lines.filter((line) => line.length > 0);
-  }
-
-  // "haramienta," -> ["", "haramienta", ","]. Written out rather than with
-  // \W, which in JavaScript is ASCII-only and would cut "qué" in half; the
-  // server's rule is Unicode-aware and the two must agree, or the count in
-  // the popup lies about what the button is going to change.
-  const CORE_RE = /^([^\p{L}\p{N}_]*)([\s\S]*?)([^\p{L}\p{N}_]*)$/u;
-
-  function splitWordText(text) {
-    const m = CORE_RE.exec(text || "");
-    return m ? [m[1], m[2], m[3]] : ["", text || "", ""];
-  }
-
-  function applyCase(sample, text) {
-    if (!sample || !text) return text;
-    const upper = sample === sample.toUpperCase() && sample !== sample.toLowerCase();
-    if (upper && sample.length > 1) return text.toUpperCase();
-    if (sample[0] === sample[0].toUpperCase() && sample[0] !== sample[0].toLowerCase()) {
-      return text[0].toUpperCase() + text.slice(1);
-    }
-    return text[0].toLowerCase() + text.slice(1);
-  }
-
-  // Every word that is the same word as this one: same core, ignoring case
-  // and the punctuation around it -- the rule the server applies, so the
-  // count in the popup is the number of words the button will change.
-  function occurrences(words, index) {
-    const core = splitWordText(words[index] ? words[index].w : "")[1];
-    if (!core) return [index];
-    const key = core.toLowerCase();
-    const out = [];
-    words.forEach((w, i) => { if (splitWordText(w.w)[1].toLowerCase() === key) out.push(i); });
-    return out;
-  }
-
-  // The server's clamp, in the browser, so a drag shows where it will land.
-  function clampRetime(words, index, change) {
-    const w = words[index];
-    let start = change.start == null ? w.s : change.start;
-    let end = change.end == null ? w.e : change.end;
-    const floor = index > 0 ? words[index - 1].e : 0;
-    const ceiling = index + 1 < words.length ? words[index + 1].s : Infinity;
-    start = Math.max(start, floor);
-    end = Math.min(end, ceiling);
-    if (end - start < MIN_WORD_SECONDS) {
-      if (change.start != null && change.end == null) start = Math.max(floor, end - MIN_WORD_SECONDS);
-      else end = Math.min(ceiling, start + MIN_WORD_SECONDS);
-    }
-    return { start: round3(start), end: round3(end) };
-  }
-
-  function classify(p) {
-    return typeof p !== "number" ? "" : p < BAD ? "bad" : p < UNSURE ? "unsure" : "";
-  }
-
-  function tooLongWarning(line, maxWords, lookName) {
-    if (!maxWords || line.length <= maxWords) return "";
-    return `${line.length} words on this line — ${lookName || "this look"} shows ${maxWords}.`;
-  }
-  function formatSeconds(t) {
-    const whole = Math.floor(t);
-    const ss = String(whole % 60).padStart(2, "0");
-    const cs = String(Math.floor((t - whole) * 100)).padStart(2, "0");
-    return `${Math.floor(whole / 60)}:${ss}.${cs}`;
-  }
+  // The rules live in studio_edit_rules.js (this file is at the line
+  // ceiling); under node they are required, in the page they are global.
+  const R = typeof window !== "undefined" && window.AshStudioEditRules
+    ? window.AshStudioEditRules
+    : require("./studio_edit_rules.js");
+  const {
+    MIN_WORD_SECONDS, DEFAULT_MAX_WORDS, UNSURE, BAD, SECONDS_PER_PIXEL, parseSrt, lineIndexFor,
+    assignToLines, splitWordText, applyCase, occurrences, clampRetime, classify, tooLongWarning,
+    formatSeconds, lineSummary, nudgeRetime,
+  } = R;
 
   // ---- the panel ----
 
@@ -145,7 +53,7 @@
 
   const PANEL_HTML = [
     '<section class="tedit" hidden><div class="tedit-head"><h2>Words</h2>',
-    '<span class="tedit-hint">Click a word to fix it. Drag its edges to change when it lands.</span>',
+    '<span class="tedit-hint">Click a word to fix it. Drag its edges to change when it lands — or Tab to a word, press [ or ] for an edge, then ← →.</span>',
     '<span class="tedit-spacer"></span><span class="tedit-state"></span></div>',
     '<div class="tedit-list" aria-label="Transcript, editable"></div></section>',
   ].join("");
@@ -246,8 +154,43 @@
       span.querySelectorAll(".tw-grip").forEach((grip) => {
         const edge = grip.classList.contains("tw-left") ? "start" : "end";
         grip.addEventListener("pointerdown", (e) => startDrag(e, i, edge, grip));
+        // A grip is a slider to the keyboard: reached with [ or ] from its
+        // word, nudged with the arrows (Shift for a bigger step).
+        const at = edge === "start" ? word.s : word.e;
+        grip.setAttribute("role", "slider");
+        grip.tabIndex = -1;
+        grip.setAttribute("aria-label", `${edge === "start" ? "Start" : "End"} of “${word.w}”`);
+        grip.setAttribute("aria-valuenow", String(at));
+        grip.setAttribute("aria-valuetext", formatSeconds(at));
+        grip.addEventListener("keydown", (e) => gripKey(e, i, edge));
       });
       return span;
+    }
+
+    // One Tab stop for the whole transcript: the current word takes the
+    // focus, the arrows move it. Hundreds of words were hundreds of stops.
+    function rove(index) {
+      for (const span of state.spans) {
+        if (span) span.querySelector(".tw-text").tabIndex = -1;
+      }
+      const span = state.spans[index];
+      if (span) span.querySelector(".tw-text").tabIndex = 0;
+    }
+
+    function gripKey(e, index, edge) {
+      const step = e.shiftKey ? 0.25 : 0.05;
+      const delta = e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0;
+      if (e.key === "Escape") { e.preventDefault(); state.spans[index].querySelector(".tw-text").focus(); return; }
+      if (!delta || state.busy) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const next = nudgeRetime(state.words, index, edge, delta);
+      const w = state.words[index];
+      if (next.start === w.s && next.end === w.e) return; // clamped against a neighbour: nothing to save
+      Promise.resolve(patch([{ op: "retime", index, start: next.start, end: next.end }])).then(() => {
+        const grip = state.spans[index] && state.spans[index].querySelector(edge === "start" ? ".tw-left" : ".tw-right");
+        if (grip) grip.focus();
+      });
     }
 
     function render() {
@@ -265,15 +208,20 @@
           words.appendChild(state.spans[i]);
         });
         row.appendChild(words);
+        // A line the look will split is marked, not lectured: the summary
+        // at the top says how many, the mark says which.
         const warning = tooLongWarning(line, state.maxWords, state.lookName);
-        if (warning) {
-          const warn = document.createElement("p");
-          warn.className = "tedit-warn";
-          warn.textContent = warning;
-          row.appendChild(warn);
-        }
+        if (warning) { row.classList.add("is-split"); row.title = warning; }
         list.appendChild(row);
       }
+      const summary = lineSummary(state.lines, state.maxWords, state.lookName);
+      if (summary) {
+        const note = document.createElement("p");
+        note.className = "tedit-summary";
+        note.textContent = summary;
+        list.prepend(note);
+      }
+      rove(state.selected >= 0 ? state.selected : (state.lines[0] || [])[0]);
       section.hidden = state.words.length === 0;
       if (state.selected >= 0 && state.spans[state.selected]) placePopup(state.selected);
       else closePopup(true); // a re-draw dismisses nothing: keep the toolbar
@@ -451,6 +399,24 @@
       if (e.key === "Enter") { e.preventDefault(); commitText(false); }
       else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePopup(); }
     });
+    list.addEventListener("keydown", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest(".tw-text") : null;
+      if (!btn) return;
+      const index = Number(btn.parentElement.dataset.i);
+      if (e.key === "[" || e.key === "]") {
+        e.preventDefault();
+        state.spans[index].querySelector(e.key === "[" ? ".tw-left" : ".tw-right").focus();
+        return;
+      }
+      const order = state.lines.flat();
+      const at = order.indexOf(index);
+      const to = e.key === "ArrowRight" ? order[at + 1] : e.key === "ArrowLeft" ? order[at - 1]
+        : e.key === "Home" ? order[0] : e.key === "End" ? order[order.length - 1] : undefined;
+      if (to == null) return;
+      e.preventDefault();
+      rove(to);
+      state.spans[to].querySelector(".tw-text").focus();
+    });
     document.addEventListener("pointerdown", (e) => {
       if (pop.hidden || pop.contains(e.target) || (e.target.closest && e.target.closest(".tw"))) return;
       closePopup(Boolean(e.target.closest && e.target.closest("#word-toolbar"))); // keep the toolbar
@@ -490,7 +456,8 @@
 
   const exported = {
     MIN_WORD_SECONDS, UNSURE, BAD, parseSrt, lineIndexFor, assignToLines, splitWordText,
-    applyCase, occurrences, clampRetime, classify, tooLongWarning, formatSeconds, mount,
+    applyCase, occurrences, clampRetime, classify, tooLongWarning, formatSeconds, lineSummary,
+    nudgeRetime, mount,
     onWordEdited, subscribe: onWordEdited.subscribe,
     reload: () => (panel ? panel.reload() : Promise.resolve()),
   };

@@ -486,7 +486,7 @@
   document.addEventListener("keydown", (e) => {
     const target = e.target || document.body;
     const tag = target.tagName || "";
-    if (["INPUT", "SELECT", "TEXTAREA", "A"].includes(tag) || target.classList.contains("ctl")) return;
+    if (["INPUT", "SELECT", "TEXTAREA", "A", "BUTTON", "SUMMARY"].includes(tag) || target.classList.contains("ctl")) return; // a focused control takes Space itself
     if (e.code === "Space" && player) { e.preventDefault(); player.toggle(); return; }
     if (!looks || !live) return;
     // Arrow keys and Enter walk the looks from anywhere on the page.

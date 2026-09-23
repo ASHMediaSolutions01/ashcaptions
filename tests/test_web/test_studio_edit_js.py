@@ -110,6 +110,32 @@ class TestLines:
         assert run_js(f"e.assignToLines({json.dumps(WORDS)}, [])") == [[0, 1, 2, 3, 4, 5]]
         assert run_js("e.assignToLines([], [])") == []
 
+    def test_one_summary_for_the_panel_names_the_look_and_counts_the_lines(self):
+        lines = [[0, 1, 2], [3, 4], [5]]
+        text = run_js(f'e.lineSummary({json.dumps(lines)}, 2, "HYPE")')
+        assert text.startswith("HYPE shows 2 words at a time")
+        assert "1 of 3 lines" in text
+        assert run_js(f'e.lineSummary({json.dumps(lines)}, 4, "HYPE")') == ""
+        assert run_js(f'e.lineSummary({json.dumps(lines)}, 0, "HYPE")') == ""
+        assert "1 word at a time" in run_js('e.lineSummary([[0,1]], 1, "ONE")')
+
+    def test_a_keyboard_nudge_is_clamped_exactly_like_a_drag(self):
+        # Nudging the end of word 0 past the start of word 1 stops at it.
+        out = run_js(f"e.nudgeRetime({json.dumps(WORDS)}, 0, 'end', 5)")
+        assert out == {"start": 0.0, "end": 0.40}
+        out = run_js(f"e.nudgeRetime({json.dumps(WORDS)}, 1, 'start', -0.05)")
+        assert out["start"] == 0.40  # cannot cross word 0's end
+
+    def test_the_rules_load_on_their_own_under_node(self):
+        code = (
+            f"const r = require({json.dumps(str(STATIC_DIR / 'studio_edit_rules.js'))});"
+            "process.stdout.write(JSON.stringify(Object.keys(r).sort()));"
+        )
+        done = subprocess.run([NODE, "-e", code], capture_output=True, text=True, encoding="utf-8", check=True)
+        keys = json.loads(done.stdout)
+        for name in ("assignToLines", "clampRetime", "lineSummary", "nudgeRetime", "tooLongWarning"):
+            assert name in keys
+
     def test_a_line_longer_than_the_look_says_so_and_names_it(self):
         assert "5 words" in run_js('e.tooLongWarning([1,2,3,4,5], 4, "CLEAN")')
         assert "CLEAN" in run_js('e.tooLongWarning([1,2,3,4,5], 4, "CLEAN")')
@@ -138,6 +164,9 @@ def test_the_studio_page_loads_the_panel_and_gives_it_somewhere_to_mount():
     html = (STATIC_DIR / "studio.html").read_text(encoding="utf-8")
     assert '<div id="transcript-edit"></div>' in html
     assert '<script src="/static/studio_edit.js?v=__VERSION__"></script>' in html
+    # The rules are a separate file and must be on the page before the panel.
+    rules_at = html.index("studio_edit_rules.js")
+    assert rules_at < html.index('/static/studio_edit.js?v=')
     # The stylesheet rides with the script, so the page keeps a two-line diff.
     assert "studio_edit.css" not in html
     assert "/static/studio_edit.css" in SCRIPT.read_text(encoding="utf-8")
