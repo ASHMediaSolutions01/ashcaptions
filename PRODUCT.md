@@ -1,8 +1,14 @@
 # ASH Captions — what it is
 
+<!-- impeccable:product-schema 1 -->
+
 **One line:** a captioning station that runs on each editor's own Windows PC.
 Give it a video, get back accurate, styled, correctly-timed captions in 54
 languages, with nothing uploaded anywhere.
+
+## Platform
+
+web
 
 ## The problem
 
@@ -11,6 +17,14 @@ typing them by hand, 20 to 40 minutes of editor time per video, or paying a
 per-seat subscription and uploading client footage to somebody else's cloud.
 At our volume caption time is one of the biggest silent costs in a project,
 and the upload is the part a client NDA makes awkward.
+
+## Users
+
+Six video editors at Ash Media Solutions, each on their own Windows PC, in
+the middle of an edit with a client deadline. Ghazi owns the tool, builds
+and publishes it, and is the one an editor calls when something is wrong.
+Nobody on the desk is a developer; the browser page and the tray icon are
+the whole interface.
 
 ## What an editor does
 
@@ -27,7 +41,7 @@ and the upload is the part a client NDA makes awkward.
 
 | File | What it is for |
 |---|---|
-| `.srt` | Plain captions. Drags straight into Premiere or DaVinci Resolve. |
+| `.srt` | Plain captions. Drags straight into Premiere or DaVinci Resolve. With **Name who is speaking** ticked, a two-voice interview carries `Speaker 1:` / `Speaker 2:` where the voice changes. |
 | `.ass` | The styled, word-by-word look, ready to burn or import. |
 | `.txt` | The transcript as text, for descriptions and client review. |
 | `.en.srt` | The English translation, when asked for. |
@@ -49,10 +63,21 @@ and the upload is the part a client NDA makes awkward.
   transcript, type the right one, and the caption files are rewritten in a
   quarter of a second. Fix every occurrence at once, or teach the client's
   glossary so the next job gets it right while it is still transcribing.
-- **Make one word stand out.** Its own colour, size, weight or slant,
-  without touching the look or any other video.
+- **Make one word stand out.** Its own colour, size, weight or slant, or its
+  own animation, without touching the look or any other video.
+- **Case and punctuation as choices on the look**: as written, ALL CAPS, or
+  lower; keep punctuation, drop the stops, or drop it all.
+- **Box and shadow as real controls** on the look: colour, opacity, size;
+  colour, opacity, angle, distance.
 - **Captions behind the speaker.** A person mask is rendered from the frame
   so words pass behind the speaker's head and shoulders. Aimed at reels.
+- **Landscape into a 9:16 reel.** A 1920x1080 interview becomes a 1080x1920
+  reel that follows whoever is on screen, decided once per shot and held;
+  a Framing tab in the Studio lets the editor say which person when two are
+  in frame.
+- **Sound effects and emoji bursts** on the caption word, both properties
+  of the look: up to four of each, cycled, firing on sentence starts or on
+  the client's keyword list. Five sounds and twelve emoji ship with the app.
 - **Punch-in**, an optional slow zoom on sentence starts or keywords.
 - **Clients and glossaries.** A client on every job, with its own list of
   names and brands that force-correct in the transcript.
@@ -84,6 +109,8 @@ right-to-left text, so use a plain look or the `.srt` for those.
 | Transcription | 10.4 minutes of audio in 110 seconds, about 5.7x realtime |
 | Burn-in, 1080x1920 | About 3.4x realtime |
 | Captions behind the speaker | Roughly realtime on top of the burn |
+| Landscape to 9:16 reel scan | About 3.6 s for a 4:48 interview |
+| Naming who is speaking | About 5 s for a 4:48 interview |
 | A 20 second reel, start to finished MP4 | About 15 seconds |
 
 - **Input:** anything ffmpeg reads, at any resolution. 4K costs nothing extra
@@ -96,6 +123,10 @@ right-to-left text, so use a plain look or the `.srt` for those.
 - **Disk:** outputs are kept for 30 days and then cleaned up. A file dropped
   into the watch folder is deleted after it succeeds; the editor's original
   is never touched.
+- **The reel cannot follow the *speaker*.** Measured, not assumed:
+  diarisation says when a voice talks, never where that person is in the
+  frame, and the cheap visual link (mouth motion) correlated with speech at
+  +0.07. The crop follows the largest person; the Framing tab corrects it.
 
 ## What it costs
 
@@ -103,6 +134,26 @@ Nothing per month. It is built on open-source components (faster-whisper,
 ffmpeg, libass, open fonts); the ASH Captions code itself is proprietary,
 see `LICENSE`. The comparable tools run 3 to 25 US dollars per seat per
 month, which for six editors is a subscription we do not pay.
+
+## Brand Commitments
+
+- The name is **ASH Captions**; the owner's own look is the shipped
+  `ASH BRAND` preset.
+- **Neutral chrome, on purpose.** A caption's colour is judged against the
+  footage it sits on, so the interface must not tint or compete with the
+  video. Do not drift toward edit-suite conventions -- this is a captions
+  generator in the Veed / Submagic category, not a video editor. (Ghazi,
+  2026-09-10.)
+- The 24 bundled fonts are OFL; the emoji are rendered from an OFL font so
+  a client's delivered reel carries no licence obligation of its own.
+
+## Evidence on Hand
+
+- `docs/STATUS.md`: every measurement above, with how it was taken.
+- `docs/EDITOR-GUIDE.md` and the in-app guide at `/guide`: the editor-facing
+  truth, 22 parts, with screenshots regenerated by `scripts/guide_screenshots.py`.
+- No testimonials, case studies or usage numbers exist; the tool is
+  internal and none should be invented.
 
 ## What it is not
 
@@ -112,11 +163,26 @@ month, which for six editors is a subscription we do not pay.
 - Not a video editor. Only captions: no timeline, no effects, no auto B-roll.
 - Not a replacement for a skim before delivery, especially for names.
 
+## Product Principles
+
+- **Verify by running the real thing.** A feature is real when the built
+  bundle has been launched and driven, not when its tests pass.
+- **Measure before designing.** The reel, the shadow default, the emoji
+  artwork and the speaker-following idea were all decided by a number.
+- **Flourishes degrade; deliverables fail loudly.** A missing sound, emoji
+  or punch-in costs the editor that flourish. A missing reel, matte or
+  caption file fails the job with a plain reason.
+- **Say what the tool cannot do**, in the guide and in the interface,
+  rather than letting an editor find out from a client.
+
 ## Where it is going
 
-Shipped: everything above, as v0.6.0. Next, in the order an editor hits the
-gap: sound effects landing on the caption word; a wider animation vocabulary
-(zoom, blur, blink, bounce); turning a landscape interview into a 9:16 reel
-with the crop following the speaker; emoji bursts; right-to-left looks for
-Arabic and Urdu. `docs/STATUS.md` holds the current state and the full
-roadmap.
+Shipped as v0.9.0 (2026-09-12): everything above. Next, in the order an
+editor hits the gap: right-to-left looks for Arabic and Urdu; a GPU bundle
+once there is an NVIDIA machine to test on. Deliberately not chasing auto
+B-roll or "virality scores". `docs/STATUS.md` holds the current state and
+the full roadmap.
+
+*Updated 2026-09-23 from the repository's own record (STATUS.md, the guide,
+the shipped code) rather than a fresh interview; the users section and the
+brand commitments restate what the owner has said in session.*
