@@ -8,6 +8,7 @@ p1_count: 3
 target_identity: "file:C:\\Users\\mbila\\Desktop\\ASH Captions\\src\\ash_captions\\web\\static"
 timestamp: 2026-09-23T11-56-33Z
 slug: src-ash-captions-web-static
+closed: true
 ---
 Method: dual-agent (A: critique-a · B: critique-b)
 

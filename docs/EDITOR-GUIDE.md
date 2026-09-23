@@ -201,15 +201,23 @@ page from the tray icon, or type http://127.0.0.1:8756 in your browser.
 
 ![The control page](images/control-idle.png)
 
-1. Click **Browse…** and pick the video (or paste a path into the box; the
-   quotes Windows adds with "Copy as path" are fine).
-2. Pick your options. They light up as soon as a file is chosen.
-3. Click **Start captioning**.
+1. Click **Browse…** in the drawer and pick the video. You can pick several
+   at once, and click Browse again to add more; each one is listed under the
+   drop zone. Pasting a path into the path box and pressing Enter works too
+   (the quotes Windows adds with "Copy as path" are fine).
+2. Pick the language, and the client if there is one.
+3. Click **Start captioning**. With several videos chosen the button says
+   how many, and they all start with the same language and client, one
+   after another.
 
-**Why paste a path instead of uploading?** Your video is already on this
-computer. Pasting the path means the tool reads it where it sits, and your
-original is never moved, changed or deleted. The "upload a copy" option is for
-small files only (2 GB limit).
+That is all the drawer asks. The look, whether to burn the captions in, the
+9:16 reel and captions behind the speaker are chosen in the Studio, once the
+captions can be seen on the footage (Part 4).
+
+**Why not upload?** Your video is already on this computer. Browse reads it
+where it sits, and your original is never moved, changed or deleted. Dropping
+a file onto the drawer copies it first, so it is slower; keep that for small
+files (2 GB limit).
 
 ### Pick your options
 
@@ -217,9 +225,18 @@ small files only (2 GB limit).
 |---|---|
 | **Language** | The language *spoken* in the video. English, Spanish, Portuguese and 51 others |
 | **Dialect** | Affects spelling, e.g. English (US) gives "color", English (UK) gives "colour". For a US client, pick US |
-| **Caption style** | The look. `POP` for short-form, `CLEAN` for client-safe, `ASH BRAND` for our own content |
-| **Burn captions into the video** | Tick this for a ready-to-post file. Leave it off if you're taking the `.srt` into Premiere |
-| **Also translate to English** | Tick for a non-English video where the client wants English subtitles |
+| **Client** | Optional. Shown on the job, and picks that client's glossary of names and brands (Part 7) |
+| **Name who is speaking** | For podcasts and interviews: the `.srt` gets a name above the line whenever the voice changes (Part 15) |
+
+The look is picked in the Studio (Part 5), where every one can be tried on
+the real footage. Burning, the 9:16 reel and captions behind the speaker are
+decided there too, and a non-English video is translated from the Studio's
+Check tab (Part 8).
+
+The newest and the still-running jobs sit at the top of the Queue. Everything
+older folds under **Earlier**, twenty at a time, and the search box above the
+stream finds any job by its file name or client (`/` jumps to it, `Esc`
+clears it).
 
 ### Watch it work
 
@@ -488,8 +505,9 @@ A dot on the **Check** tab means the model was unsure of something in there.
   when it was guessing. The chip above the panel says how many there are;
   click it to jump to the next one, and the video seeks there so you can
   listen.
-- **Show English.** When the job was translated ("Also translate to English"
-  was ticked), switch it on to see the English line under each source line.
+- **Show English.** Once the job has been translated, switch it on to see
+  the English line under each source line. This is how a client gets English
+  subtitles: the `.en.srt` lands in the output folder.
 - **Translate to check.** When the job was not translated, this button takes
   the toggle's place. It runs only the translation, from the transcript the
   job already has, so it takes seconds, and it writes the `.en.srt` into the
@@ -616,7 +634,8 @@ of the words. The tool works out where the person is in every frame on its own
 (a small matting model that runs on the CPU), then burns the captions and lays
 the person back on top.
 
-- It only applies when **Burn captions into the video** is ticked.
+- It is part of the burn: press **Behind speaker** in the Studio's top bar
+  before **Burn this look**. It only shows while the original video is there.
 - It costs about the video's own length in extra time: a 60-second reel takes
   about a minute longer. It works on long files too, but an hour-long file
   adds roughly an hour, so use it for short-form.
@@ -637,8 +656,8 @@ there, because that is what the footage actually does: measured on a real
 interview, a seated subject moves about 30 pixels in a 1920-wide frame over
 twelve seconds. A crop that chased that would wander for no reason.
 
-- It only applies when **Burn captions into the video** is ticked. The `.srt`
-  has no shape, so nothing else changes.
+- It is part of the burn: press **9:16 reel** in the Studio's top bar before
+  **Burn this look**. The `.srt` has no shape, so nothing else changes.
 - The captions are drawn **after** the crop, at the reel's size. They are not
   shrunk or stretched by it.
 - A video that is already vertical is left alone.
@@ -681,8 +700,8 @@ first.
 
 ## Part 15 — Naming who is speaking
 
-For podcasts and two-person interviews: tick **Name who is speaking in the
-.srt** under **Advanced** when you submit, and the subtitle file gets a name
+For podcasts and two-person interviews: tick **Name who is speaking** in
+the drawer when you submit, and the subtitle file gets a name
 above the line whenever the voice changes.
 
 The `.srt` comes out like this:
@@ -762,7 +781,7 @@ ask Ghazi to set it in `C:\AshCaptions\settings.json`:
 | `punch_min_spacing_seconds` | Never punch more often than this. Without it, fast dialogue zooms constantly |
 
 For keyword mode: `"punch_mode": "keyword", "punch_keywords": ["free", "guarantee", "today"]`.
-Punch-in only applies when **Burn captions into the video** is ticked. It works
+Punch-in only applies to a burn (**Burn this look** in the Studio). It works
 on hour-long files and costs almost no extra render time.
 
 ---
@@ -806,7 +825,7 @@ old jobs if they are restyled or burned again — the same warning the Styles
 page shows. If only one client wants sound, **Save as…** a copy and put the
 sound on that.
 
-Sound is only mixed in when **Burn captions into the video** is ticked — an
+Sound is only mixed in when the captions are burned (**Burn this look** in the Studio) — an
 `.srt` cannot carry a whoosh. The video keeps its original length and its
 dialogue; the sounds are added underneath, nothing is replaced or ducked.
 
@@ -839,7 +858,7 @@ job on this PC that uses it, including old ones if they are restyled or burned
 again. If it is for one client, **Save as…** a copy first and put the emoji on
 that.
 
-They are only drawn when **Burn captions into the video** is ticked: an emoji
+They are only drawn when the captions are burned (**Burn this look** in the Studio): an emoji
 is a picture laid over the frame, and an `.srt` cannot carry a picture.
 
 ## Part 20 — Problems and fixes
@@ -851,7 +870,7 @@ is a picture laid over the frame, and an `.srt` cannot carry a picture.
 | **"ASH Captions is already running"** | It's already open. Look for the icon near the clock, or another terminal window |
 | The queue says **Worker: stopped** | The part that runs jobs has died. Close the terminal, start the app again, send Ghazi the log |
 | A job says **FAILED** | Read the reason under it. Usually the file was moved or renamed, or the drive is full. Fix the cause, click **Retry** |
-| Captions are in the wrong language | **Language** is the language *spoken* in the video. For translation, tick "Also translate to English" |
+| Captions are in the wrong language | **Language** is the language *spoken* in the video. For translation, open the job in the Studio and press **Translate to check** on the Check tab |
 | Names or brands spelled wrong | Expected. Open **Glossary** under the Client box, add `wrong => Right`, Save, and run the job again |
 | Captions are a plain font, not the style's | The fonts didn't all download. Re-run step 5b |
 | "A preview is already rendering" | Only one preview at a time. Wait, then try again |

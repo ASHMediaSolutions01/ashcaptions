@@ -52,8 +52,9 @@ class FakeFilePicker:
     None for "cancelled"); `busy` makes it behave like a dialog that is
     already open."""
 
-    def __init__(self, result: str | None = None, *, busy: bool = False) -> None:
+    def __init__(self, result: str | None = None, *, busy: bool = False, results: list[str] | None = None) -> None:
         self.result = result
+        self.results = results
         self.busy = busy
         self.calls = 0
 
@@ -62,6 +63,14 @@ class FakeFilePicker:
         if self.busy:
             raise PickerBusyError("already open")
         return self.result
+
+    def pick_videos(self) -> list[str]:
+        self.calls += 1
+        if self.busy:
+            raise PickerBusyError("already open")
+        if self.results is not None:
+            return list(self.results)
+        return [self.result] if self.result else []
 
 
 class FakeRevealer:

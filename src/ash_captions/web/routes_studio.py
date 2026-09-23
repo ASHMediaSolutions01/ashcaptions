@@ -57,6 +57,20 @@ CANNOT_RESTYLE_DETAIL = "this build cannot restyle"
 CANNOT_BURN_DETAIL = "this build cannot burn from Studio"
 
 
+def _burn_extras(body: PresetRequest) -> dict[str, object]:
+    """The per-burn choices the Studio sends, as submit_burn keywords.
+    Only what was asked for travels, so an older queue whose submit_burn
+    predates a keyword is never handed it."""
+    extra: dict[str, object] = {}
+    if body.reframe:
+        extra["reframe"] = True
+        if body.reframe_overrides:
+            extra["reframe_overrides"] = body.reframe_overrides
+    if body.behind_speaker is not None:
+        extra["behind_speaker"] = body.behind_speaker
+    return extra
+
+
 def build_studio_router(
     get_queue: Callable[[Request], JobQueue],
     get_style_provider: Callable[[Request], StyleProvider],
@@ -79,11 +93,7 @@ def build_studio_router(
         # Only sent when asked for: `_call_optional` forwards keywords
         # unchanged, so a queue implementation that predates reframing
         # keeps working for every ordinary burn.
-        extra = {}
-        if body.reframe:
-            extra["reframe"] = True
-            if body.reframe_overrides:
-                extra["reframe_overrides"] = body.reframe_overrides
+        extra = _burn_extras(body)
         return await _call_optional(
             queue, "submit_burn", job_id, body.preset, missing=CANNOT_BURN_DETAIL, **extra
         )

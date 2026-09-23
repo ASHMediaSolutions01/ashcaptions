@@ -1,12 +1,14 @@
-/* Control page layout (index.html). Tokens and components come from
-   theme.css; this file only places them: submit on the left, queue on the
-   right, stacked on a narrow window. */
+/* Control page layout (index.html): the stream of job cards on the left,
+   the intake drawer beside it on the right, the drawer folding to a bar
+   above the stream on a narrow window. Tokens and shared components come
+   from theme.css; this file only places them and draws what is the
+   Queue's own: the card, the drawer, the search, the Earlier rule. */
 
 .control {
   display: grid;
-  grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
-  grid-template-areas: "notices notices" "submit queue";
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-areas: "notices notices" "stream drawer";
+  gap: 24px;
   max-width: 1440px;
   margin: 0 auto;
   padding: 20px 20px 48px;
@@ -14,15 +16,15 @@
 }
 .notices { grid-area: notices; display: flex; flex-direction: column; gap: 10px; }
 .notices:empty { display: none; }
-.submit-col { grid-area: submit; }
-.queue-col { grid-area: queue; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-@media (max-width: 980px) {
-  .control { grid-template-columns: 1fr; grid-template-areas: "notices" "submit" "queue"; padding: 14px 14px 40px; }
-}
+.stream { grid-area: stream; min-width: 0; }
+/* Sticky, but never taller than the window: with the glossary open and a
+   few files chosen the drawer scrolls inside itself, so Start is always
+   reachable without scrolling the whole stream past. 68 = nav + gap. */
+.drawer { grid-area: drawer; position: sticky; top: 16px; max-height: calc(100vh - 68px); overflow-y: auto; }
 
-/* Update banner (spec 11.4) */
-/* The resting state of the updater: one quiet line that is always there,
-   so "up to date" and "cannot check" stop looking like "nothing happened". */
+/* Update banner (spec 11.4) and the resting line of the updater: one quiet
+   line that is always there, so "up to date" and "cannot check" stop
+   looking like "nothing happened". */
 .app-foot { display: flex; align-items: center; justify-content: center; gap: 10px;
   padding: 10px 16px 16px; color: var(--muted); font-size: 12px; }
 .app-foot .btn.small.quiet { font-size: 12px; }
@@ -32,113 +34,72 @@
 .update-banner-text .hint { color: var(--warn); }
 .update-banner-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 
-/* ---- Submit card ---- */
-.submit-card { display: flex; flex-direction: column; gap: 16px; }
-.submit-card .card-head { margin-bottom: 0; }
-.options { margin: 0; padding: 0; border: none; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-.options:disabled .check { opacity: 0.55; }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.checks { display: flex; flex-direction: column; gap: 8px; }
-.client-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* ---- The stream head: search, then the worker line ---- */
+.stream-head { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.search { position: relative; flex: 1 1 auto; min-width: 0; max-width: 520px; display: block; color: var(--muted); }
+.search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.search input[type="search"] { padding-left: 34px; padding-right: 36px; caret-color: var(--accent); }
+.search input[type="search"]::-webkit-search-cancel-button { appearance: none; }
+.search-key {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; line-height: 1; padding: 3px 6px; color: var(--muted);
 }
-.client-card .disclosure[open] { display: flex; flex-direction: column; gap: 8px; }
-#glossary-text { font-family: var(--mono); font-size: 13px; }
-.glossary-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-#glossary-status.ok { color: var(--ok); }
-#glossary-status.err { color: var(--bad); }
-.advanced-set .disclosure[open] .advanced-body { margin-top: 10px; display: flex; flex-direction: column; gap: 12px; }
-.advanced-body .check .hint { display: block; }
-#dropzone {
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-}
-#dropzone b { color: var(--accent); font-weight: 600; }
-#dropzone.drag-over, #dropzone:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
-#file-input { display: none; }
-.form-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.selected-source { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.setting { margin-top: -4px; }
-
-/* ---- Queue ---- */
-.queue-card { min-width: 0; }
-.queue-card .card-head { align-items: center; }
-.queue-health { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.search:focus-within .search-key { display: none; }
+.search:focus-within { color: var(--accent); }
+.queue-health { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .queue-health::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
 .queue-health.bad { color: var(--bad); }
 .queue-health.bad::before { background: var(--bad); }
-.queue-tools { display: flex; gap: 8px; }
-.queue-confirm, .job-confirm {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--raised);
-  font-size: 13px;
-}
-.queue-confirm span, .job-confirm span { flex: 1 1 auto; }
-.empty-queue { color: var(--muted); padding: 18px 0 10px; }
-.start-here p { margin: 8px 0 12px; color: var(--ink-soft); max-width: 62ch; }
-.start-here-actions { display: flex; gap: 8px; }
+.stream-status { margin: -4px 0 12px; }
 
-/* Job cards: a filmstrip row -- thumb on the left, everything else beside it. */
+/* The first visit: what the page is for, where the old "Start here" card
+   and the empty line used to say it twice. */
+.stream-empty { padding: 28px 22px; border: 1px dashed var(--line-strong); border-radius: var(--radius); color: var(--ink-soft); }
+.stream-empty strong { display: block; font-size: 16px; color: var(--ink); margin-bottom: 6px; }
+.stream-empty p { max-width: 58ch; margin-bottom: 14px; line-height: 1.5; }
+
+/* ---- Earlier: a rule with the count, then the same cards ---- */
+.earlier { margin-top: 26px; }
+.earlier-rule { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.earlier-rule h3 { font-size: 15px; color: var(--ink-soft); }
+.earlier-rule::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); align-self: center; }
+.earlier-foot { display: flex; justify-content: center; margin-top: 12px; }
+
+/* ---- Job cards: a strip of footage. The frame leads; everything the
+   editor reads sits beside it. ---- */
+.job-list { display: flex; flex-direction: column; gap: 10px; }
 .job {
   display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
+  grid-template-columns: 160px minmax(0, 1fr);
   gap: 14px;
   padding: 12px;
-  margin-bottom: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--panel);
 }
-.job:last-child { margin-bottom: 0; }
+.job.running { border-color: var(--line-strong); }
 .job-thumb {
-  width: 128px;
-  height: 72px;
+  width: 160px;
+  height: 90px;
   border-radius: var(--radius-sm);
-  background: var(--raised);
+  background: var(--mat);
   object-fit: cover;
   display: block;
 }
-.job-thumb.missing {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  font-size: 11px;
-}
+.job-thumb.missing { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
 .job-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .job-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .job-name { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
 .job-meta { font-size: 12.5px; color: var(--muted); }
 .job-meta .client { color: var(--ink-soft); font-weight: 600; }
-.job-status-line { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 600; min-height: 18px; }
-/* A finished row has no stage text. Left as an empty flex item it would
-   push the time to the far right of an otherwise empty line, leaving a band
-   of dead space in every done row; dropping it keeps the time in the text
-   column under the name and the settings. */
+.job-status-line { display: flex; align-items: baseline; gap: 10px; font-size: 13px; font-weight: 600; min-height: 18px; }
 .job-status-line .job-stage:empty { display: none; }
 .job.done .job-stage { color: var(--ok); }
 .job.failed .job-stage { color: var(--bad); }
 .job.pending .job-stage { color: var(--pending); }
 .job.running .job-stage { color: var(--run); }
-.job-elapsed { color: var(--muted); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.job-elapsed { color: var(--muted); font-weight: 500; white-space: nowrap; }
+.job-when { margin-left: auto; color: var(--muted); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .job-error {
   padding: 8px 10px;
   border-radius: var(--radius-sm);
@@ -158,15 +119,142 @@
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.25);
   color: var(--muted);
-  font: 12px/1.45 ui-monospace, Consolas, monospace;
+  font: 12px/1.45 var(--mono);
   white-space: pre-wrap;
   max-height: 160px;
   overflow: auto;
 }
 .job-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
-.job-confirm { margin: 2px 0 0; }
-@media (max-width: 560px) {
+.job-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin: 2px 0 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  font-size: 13px;
+}
+.job-confirm span { flex: 1 1 auto; }
+
+/* The one authored motion: a job just handed over enters the top of the
+   stream from the drawer's side and settles. Nothing else on the page
+   moves on its own. */
+.job.is-new { animation: card-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes card-enter {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---- The drawer: the intake, open beside the stream ---- */
+.drawer-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.drawer-form h2 { font-size: 16px; }
+.drawer-form > * { grid-column: 1 / -1; min-width: 0; }
+.drawer-form > .field-language { grid-column: 1; }
+.drawer-form > .field-dialect { grid-column: 2; }
+.drawer-more { display: none; }
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  text-align: center;
+  cursor: pointer;
+}
+.drop-text { font-size: 14px; color: var(--ink-soft); }
+.drawer.drag-over .dropzone { border-color: var(--accent); background: var(--accent-soft); }
+.drawer.drag-over .drop-text { color: var(--accent); }
+#file-input { display: none; }
+#source-hint { margin-top: -6px; }
+.path-field { margin-top: -4px; }
+.path-field input { font-size: 13px; min-height: 32px; }
+
+/* The chosen videos, in the order they will start. */
+.chosen { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.chosen li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  font-size: 13px;
+}
+.chosen-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chosen-kind { color: var(--muted); font-size: 12px; }
+.chosen-remove { flex: none; }
+
+.drawer .disclosure[open] { display: flex; flex-direction: column; gap: 8px; }
+#glossary-text { font-family: var(--mono); font-size: 13px; }
+.glossary-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#glossary-status.ok { color: var(--ok); }
+#glossary-status.err { color: var(--bad); }
+.drawer .check .hint { display: block; }
+.form-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.form-actions .btn.large { flex: 1 1 auto; }
+.drawer-note { line-height: 1.45; }
+.setting { margin-top: -4px; }
+
+/* ---- Folds ---- */
+/* Under 1100px the drawer is a bar above the stream: drop / Browse,
+   language, client, Start in one row, so the stream, which is the page,
+   leads at 960x700. More opens the dialect, glossary, speaker names and
+   the settings; chosen files always show. */
+@media (max-width: 1100px) {
+  .control { grid-template-columns: 1fr; grid-template-areas: "notices" "drawer" "stream"; gap: 18px; padding: 14px 14px 40px; }
+  .drawer { position: static; max-height: none; overflow: visible; }
+  .drawer-form {
+    grid-template-columns: minmax(200px, 1.3fr) minmax(130px, 1fr) minmax(130px, 1fr) auto;
+    gap: 10px 12px;
+    padding: 12px 14px;
+    align-items: end;
+  }
+  .drawer-form h2 { display: none; }
+  .drawer-form > .dropzone { grid-column: 1; grid-row: 1; flex-direction: row; justify-content: center; gap: 12px; padding: 8px 12px; align-self: stretch; }
+  .drawer-form > .field-language { grid-column: 2; grid-row: 1; }
+  .drawer-form > .field-client { grid-column: 3; grid-row: 1; }
+  .drawer-form > .form-actions { grid-column: 4; grid-row: 1; flex-wrap: nowrap; }
+  .form-actions .btn.large { flex: none; }
+  .field-client .hint { display: none; }
+  .drawer-more { display: inline-flex; }
+  .drawer-extra { display: none; }
+  .drawer.expanded .drawer-extra { display: block; grid-column: 1 / -1; }
+  .drawer.expanded .field-client .hint { display: block; }
+  .drawer.expanded .drawer-form > .field-dialect { grid-column: 2; grid-row: 2; }
+  .drawer.expanded .drawer-form > .path-field { grid-column: 1; grid-row: 2; }
+  .search { max-width: none; }
+  /* The drawer is above the stream here, so a new card drops in from above. */
+  .job.is-new { animation-name: card-enter-down; }
+}
+@keyframes card-enter-down {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 640px) {
+  .drawer-form { grid-template-columns: 1fr 1fr; }
+  .drawer-form > .dropzone { grid-column: 1 / -1; }
+  .drawer-form > .field-language { grid-column: 1; grid-row: 2; }
+  .drawer-form > .field-client { grid-column: 2; grid-row: 2; }
+  .drawer-form > .form-actions { grid-column: 1 / -1; grid-row: 3; }
+  .form-actions .btn.large { flex: 1 1 auto; }
+  .drawer.expanded .drawer-form > .field-dialect { grid-column: 1 / -1; grid-row: auto; }
+  .drawer.expanded .drawer-form > .path-field { grid-column: 1 / -1; grid-row: auto; }
+  .stream-head { flex-wrap: wrap; }
   .job { grid-template-columns: 1fr; }
   .job-thumb { width: 100%; height: auto; aspect-ratio: 16 / 9; }
-  .field-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job.is-new { animation: none; }
 }

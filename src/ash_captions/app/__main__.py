@@ -349,6 +349,8 @@ def build_application(settings: Settings, *, lock: IO[str] | None = None):
         extras["preview_renderer"] = preview_renderer
     if updates_supported is not None and "updates_supported" in accepted_kwargs(create_app, ("updates_supported",)):
         extras["updates_supported"] = updates_supported
+    if "default_preset" in accepted_kwargs(create_app, ("default_preset",)):
+        extras["default_preset"] = settings.default_preset
     app = create_app(
         adapter, catalogue, update_applier=update_applier, incoming_dir=settings.upload_dir, **extras
     )

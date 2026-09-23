@@ -62,7 +62,10 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+/* The surfaces the browser draws itself still carry the chrome: a dark
+   scrollbar and a selection in the one accent, never the platform's blue. */
+html { -webkit-text-size-adjust: 100%; scrollbar-color: var(--line-strong) var(--bg); }
+::selection { background: var(--accent-fill); color: #fff; }
 body {
   margin: 0;
   background: var(--bg);
@@ -215,14 +218,14 @@ input[type="text"], input[type="number"], input[type="search"], select, textarea
   color: var(--ink);
   font: inherit;
 }
-input::placeholder, textarea::placeholder { color: #767676; }
+input::placeholder, textarea::placeholder { color: var(--muted); } /* 5.8:1 on the page */
 input:hover, select:hover, textarea:hover { border-color: var(--line-strong); }
 input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--accent); }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.5; cursor: not-allowed; }
 select {
   appearance: none;
   padding-right: 30px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%239ba3b4' stroke-width='1.6'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23969696' stroke-width='1.6'/></svg>");
   background-repeat: no-repeat;
   background-position: right 10px center;
 }

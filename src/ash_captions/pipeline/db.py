@@ -351,20 +351,48 @@ class JobStore:
             ).fetchone()
             return _row_to_job(row) if row is not None else None
 
-    def list_jobs(self, status: JobStatus | None = None, *, limit: int | None = None) -> list[Job]:
-        """List jobs, newest first. Optionally filtered by status and capped
-        at ``limit`` rows (the control page never needs the whole history)."""
+    def list_jobs(
+        self,
+        status: JobStatus | None = None,
+        *,
+        limit: int | None = None,
+        query: str | None = None,
+        offset: int = 0,
+    ) -> list[Job]:
+        """List jobs, newest first. Optionally filtered by status, matched
+        by ``query`` against the input path (the file name and the client
+        folder it sat in; case-insensitive), and paged with ``limit`` and
+        ``offset`` -- the control page shows the recent few and lets an
+        editor search the rest, rather than loading the whole history."""
         sql = "SELECT * FROM jobs"
+        where: list[str] = []
         params: list[object] = []
         if status is not None:
-            sql += " WHERE status = ?"
+            where.append("status = ?")
             params.append(status.value)
+        if query:
+            # LIKE is case-insensitive for ASCII in SQLite; the wildcards in
+            # the editor's own text are escaped so "100%" finds "100%".
+            needle = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            # The client typed in the drawer lives in options_json, not the
+            # path, and the search field promises both.
+            where.append(
+                "(input_path LIKE ? ESCAPE '\\' OR json_extract(options_json, '$.client') LIKE ? ESCAPE '\\')"
+            )
+            params.extend([f"%{needle}%", f"%{needle}%"])
+        if where:
+            sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC"
+        if offset < 0:
+            raise ValueError("offset must not be negative")
         if limit is not None:
             if limit < 0:
                 raise ValueError("limit must not be negative")
-            sql += " LIMIT ?"
-            params.append(limit)
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        elif offset:
+            sql += " LIMIT -1 OFFSET ?"
+            params.append(offset)
         with self._tx() as conn:
             return [_row_to_job(row) for row in conn.execute(sql, params).fetchall()]
 

@@ -279,8 +279,9 @@ class TestPage:
         assert 'id="open-studio-check" checked' in index
         assert f"/static/studio_hook.js?v={app.state.version}" in index
         app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-        for call in ("AshStudio.noteSubmitted(", "AshStudio.onJobs("):
-            assert call in app_js, call
+        submit_js = (STATIC_DIR / "submit.js").read_text(encoding="utf-8")
+        assert "AshStudio.noteSubmitted(job, { batch })" in submit_js
+        assert "AshStudio.onJobs(" in app_js
         # Finished cards link to Studio, and a finished job this tab started
         # is announced (toast + notification) before Studio opens.
         queue_js = (STATIC_DIR / "queue.js").read_text(encoding="utf-8")

@@ -81,6 +81,7 @@ def create_app(
     incoming_dir: Path | None = None,
     sse_poll_interval: float = DEFAULT_SSE_POLL_INTERVAL,
     updates_supported: Callable[[], bool] | None = None,
+    default_preset: str | None = None,
 ) -> FastAPI:
     """Build the FastAPI app.
 
@@ -127,6 +128,9 @@ def create_app(
     app.state.file_picker = file_picker or _default_file_picker()
     app.state.revealer = revealer or _default_revealer()
     app.state.incoming_dir = incoming_dir or default_incoming_dir()
+    # The look a job gets when the page sends none (Settings.default_preset
+    # in production); None falls back to the first style in the library.
+    app.state.default_preset = default_preset
     app.state.sse_poll_interval = sse_poll_interval
     app.state.version = app_version()
 

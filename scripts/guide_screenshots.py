@@ -13,7 +13,7 @@ docs/images/ (the markdown guide's copies). ``--only NAME`` captures one
 figure; ``--base`` and ``--job`` override the app URL and the Studio job.
 
 What is real and what is staged: the queue figures render the live job
-list through ``AshQueue.render`` with statuses rewritten (one running row,
+list through ``AshStream.onSnapshot`` with statuses rewritten (one running row,
 one failed row) so the guide shows every state without waiting for a job;
 ids and filenames stay real so the thumbnails load. The Studio figures are
 real, ``moving-caption.png`` and ``check-captions.png`` included: both use
@@ -139,8 +139,7 @@ def get_text(session: Session, url: str) -> str:
 def open_control_page(session: Session) -> None:
     page = session.page
     page.goto(f"{session.base}/", wait_until="networkidle")
-    page.wait_for_function("document.querySelectorAll('#preset-select option').length > 0")
-    page.evaluate("document.getElementById('start-here').hidden = true")
+    page.wait_for_function("document.querySelectorAll('#language-select option').length > 0")
     page.evaluate("document.fonts.ready")
 
 
@@ -150,7 +149,7 @@ def render_staged_queue(session: Session, scene: str) -> None:
     # Freeze the queue on the staged rows: the page's own refreshes and the
     # event stream would otherwise put the real statuses back mid-shot.
     session.page.evaluate(
-        "(jobs) => { const real = AshQueue.render; AshQueue.render = () => {}; real(jobs); }", staged
+        "(jobs) => { const real = AshStream.onSnapshot; AshStream.onSnapshot = () => {}; real(jobs); }", staged
     )
     session.page.wait_for_function(
         "Array.from(document.querySelectorAll('img.job-thumb')).every((i) => i.complete)", timeout=15000
@@ -308,13 +307,13 @@ def fig_control_idle(s: Session) -> None:
 def fig_queue_running(s: Session) -> None:
     open_control_page(s)
     render_staged_queue(s, "running")
-    shoot(s, "queue-running.png", selector=".queue-card")
+    shoot(s, "queue-running.png", selector=".stream")
 
 
 def fig_queue_done(s: Session) -> None:
     open_control_page(s)
     render_staged_queue(s, "done")
-    shoot(s, "queue-done.png", selector=".queue-card")
+    shoot(s, "queue-done.png", selector=".stream")
 
 
 def fig_lost_contact(s: Session) -> None:

@@ -1,16 +1,11 @@
-/* The queue: job cards (thumb, name, client, stage, clock, actions) kept
-   up to date in place from each server snapshot -- so an inline "remove?"
-   confirmation survives the next progress tick -- plus the housekeeping
-   actions (Remove from list, Clear finished, Open folder, Copy path) and
-   the finished-job toast. Loaded before app.js, which feeds it snapshots
-   through AshQueue.render(jobs). */
+/* The job card (frame, name, client, language, state, when, actions),
+   kept up to date in place from each server snapshot -- so an inline
+   "remove?" confirmation survives the next progress tick -- plus its
+   actions (Open in Studio, Retry, Export, Open folder, Copy path, Remove)
+   and the finished-job toast. Which list a card sits in is decided by
+   queue_stream.js, which calls AshQueue.renderInto(container, jobs). */
 (function () {
   "use strict";
-
-  const jobList = document.getElementById("job-list");
-  const emptyQueue = document.getElementById("empty-queue");
-  const clearBtn = document.getElementById("clear-finished-btn");
-  const clearConfirm = document.getElementById("clear-confirm");
 
   const STATUS_LABEL = { pending: "Waiting", running: "Working", done: "Done", failed: "Failed" };
   const STAGE_LABEL = {
@@ -24,10 +19,10 @@
     reframe: "Framing the reel",
     burn: "Burning captions in",
   };
+  const NEW_CARD_MS = 15000; // a job this young enters with the one authored motion
 
   const cards = new Map(); // job id -> { el, refs, status }
   const thumbFailed = new Set(); // ids whose thumb 404'd; don't ask again this visit
-  let latest = [];
 
   // ---- formatting ----
 
@@ -53,6 +48,19 @@
     return Number.isNaN(t) ? null : t;
   }
 
+  // "12 min ago" for today, the weekday and time for the past week, the
+  // date after that: enough to tell this morning's reel from last month's.
+  function formatWhen(t) {
+    const age = Date.now() - t;
+    if (age < 60000) return "just now";
+    if (age < 3600000) return `${Math.floor(age / 60000)} min ago`;
+    const d = new Date(t);
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (age < 86400000 && d.getDate() === new Date().getDate()) return `today ${time}`;
+    if (age < 7 * 86400000) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+    return d.toLocaleDateString([], { day: "numeric", month: "short" });
+  }
+
   function elapsedFor(job) {
     const started = parseTime(job.started_at) || parseTime(job.created_at);
     const created = parseTime(job.created_at);
@@ -66,9 +74,15 @@
     return ["", null];
   }
 
+  // What this job was asked for. A transcribe job names its language and
+  // the speaker-names choice; a burn from the Studio names the look and
+  // the shape it was burned in, because that is the file it produced.
   function metaFor(job) {
     const o = job.options || {};
-    const bits = [o.dialect || o.language, o.preset, o.burn_in ? "burn-in" : null, o.translate_to_english ? "+ English" : null, o.behind_speaker ? "behind speaker" : null, o.reframe ? "9:16 reel" : null, o.speaker_labels ? "speaker names" : null];
+    const code = o.dialect || o.language;
+    const bits = [window.AshSubmit ? AshSubmit.labelFor(code) : code];
+    if (o.burn_in) bits.push(`${o.preset} burned in`, o.reframe ? "9:16 reel" : null, o.behind_speaker ? "behind speaker" : null);
+    bits.push(o.translate_to_english ? "+ English" : null, o.speaker_labels ? "speaker names" : null);
     return bits.filter(Boolean).join(" · ");
   }
 
@@ -91,11 +105,17 @@
   function buildCard(job) {
     const root = el("article", "job");
     root.dataset.id = job.id;
+    root.setAttribute("aria-label", job.filename || "Job");
+    const created = parseTime(job.created_at);
+    if (created && Date.now() - created < NEW_CARD_MS) {
+      root.classList.add("is-new");
+      root.addEventListener("animationend", () => root.classList.remove("is-new"), { once: true });
+    }
 
     const thumb = el("img", "job-thumb");
     thumb.alt = "";
-    thumb.width = 128;
-    thumb.height = 72;
+    thumb.width = 160;
+    thumb.height = 90;
     thumb.loading = "lazy";
     const missing = el("div", "job-thumb missing", "No preview");
     missing.hidden = true;
@@ -123,6 +143,7 @@
     const meta = el("div", "job-meta");
     const track = el("div", "progress-track");
     track.setAttribute("role", "progressbar");
+    track.setAttribute("aria-label", "Progress");
     track.setAttribute("aria-valuemin", "0");
     track.setAttribute("aria-valuemax", "100");
     const fill = el("div", "progress-fill");
@@ -130,7 +151,8 @@
     const statusLine = el("div", "job-status-line");
     const stage = el("span", "job-stage");
     const elapsed = el("span", "job-elapsed");
-    statusLine.append(stage, elapsed);
+    const when = el("time", "job-when");
+    statusLine.append(stage, elapsed, when);
     // A failure is one plain sentence first; the engine's text stays
     // available behind a disclosure, because it is what Ghazi needs and
     // not what the editor does.
@@ -150,14 +172,14 @@
     body.append(top, meta, track, statusLine, error, actions, confirm);
     root.appendChild(body);
 
-    const refs = { thumb, missing, name, badge, meta, track, fill, stage, elapsed, error, reason, details, technical, actions, confirm };
+    const refs = { thumb, missing, name, badge, meta, track, fill, stage, elapsed, when, error, reason, details, technical, actions, confirm };
     return { el: root, refs, status: null };
   }
 
   function updateCard(card, job) {
     const { refs } = card;
     const pct = job.status === "done" ? 100 : Math.round((job.progress || 0) * 100);
-    card.el.className = `job ${job.status}`;
+    card.el.className = `job ${job.status}${card.el.classList.contains("is-new") ? " is-new" : ""}`;
     refs.name.textContent = job.filename;
     refs.badge.className = `badge ${job.status}`;
     refs.badge.textContent = STATUS_LABEL[job.status] || job.status;
@@ -183,6 +205,13 @@
     refs.elapsed.textContent = label;
     if (since) { refs.elapsed.dataset.since = String(since); refs.elapsed.dataset.label = label; }
     else { delete refs.elapsed.dataset.since; delete refs.elapsed.dataset.label; }
+    const at = finished ? parseTime(job.updated_at) : null;
+    refs.when.hidden = !at;
+    if (at) {
+      refs.when.dateTime = new Date(at).toISOString();
+      refs.when.textContent = formatWhen(at);
+      refs.when.title = new Date(at).toLocaleString();
+    }
 
     refs.error.hidden = job.status !== "failed";
     if (job.status === "failed") {
@@ -297,70 +326,62 @@
     const box = card.refs.confirm;
     box.innerHTML = "";
     box.appendChild(el("span", "", "Remove this job from the list? The files in its folder stay."));
-    box.appendChild(button("Remove", "danger", () => removeJobs([job.id], box)));
+    box.appendChild(button("Remove", "danger", () => removeJob(job.id, box)));
     box.appendChild(button("Keep", "", () => { box.hidden = true; }));
     box.hidden = false;
     box.querySelector("button").focus();
   }
 
-  async function removeJobs(ids, confirmBox) {
+  async function removeJob(id, confirmBox) {
     for (const b of confirmBox.querySelectorAll("button")) b.disabled = true;
-    const failures = [];
-    for (const id of ids) {
-      try {
-        const res = await AshApi.request(`/api/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (!res.ok && res.status !== 404) throw new Error(await AshApi.errorDetail(res, "Couldn't remove the job"));
-      } catch (err) {
-        failures.push(err.message);
-      }
+    try {
+      const res = await AshApi.request(`/api/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 404) throw new Error(await AshApi.errorDetail(res, "Couldn't remove the job"));
+    } catch (err) {
+      AshToast.show(err.message, { kind: "bad" });
     }
     confirmBox.hidden = true;
-    if (failures.length) AshToast.show(failures[0], { kind: "bad" });
     if (window.AshApp) AshApp.refreshJobs();
   }
 
-  function askClearFinished() {
-    const finished = latest.filter((j) => j.status === "done" || j.status === "failed");
-    if (finished.length === 0) return;
-    clearConfirm.innerHTML = "";
-    clearConfirm.appendChild(el("span", "", `Remove ${finished.length} finished job${finished.length === 1 ? "" : "s"} from the list? Their files stay.`));
-    clearConfirm.appendChild(button("Clear finished", "danger", () => removeJobs(finished.map((j) => j.id), clearConfirm)));
-    clearConfirm.appendChild(button("Keep", "", () => { clearConfirm.hidden = true; }));
-    clearConfirm.hidden = false;
-    clearConfirm.querySelector("button").focus();
-  }
-  clearBtn.addEventListener("click", askClearFinished);
-
   // ---- rendering ----
 
-  function render(jobs) {
-    latest = jobs || [];
-    emptyQueue.hidden = latest.length > 0;
-    clearBtn.hidden = !latest.some((j) => j.status === "done" || j.status === "failed");
-    if (clearBtn.hidden) clearConfirm.hidden = true;
-    const seen = new Set();
-    let cursor = jobList.firstElementChild;
-    for (const job of latest) {
-      seen.add(job.id);
+  // Puts exactly `jobs`, in order, into `container`, reusing the card an
+  // id already has (a card may move from the recent list to Earlier as it
+  // ages; it is the same element). Cards no longer in any list are dropped
+  // once every list has been rendered for this snapshot.
+  const placed = new Set();
+
+  function renderInto(container, jobs) {
+    let cursor = container.firstElementChild;
+    for (const job of jobs || []) {
+      placed.add(job.id);
       let card = cards.get(job.id);
       if (!card) { card = buildCard(job); cards.set(job.id, card); }
       updateCard(card, job);
-      if (card.el !== cursor) jobList.insertBefore(card.el, cursor);
+      if (card.el !== cursor) container.insertBefore(card.el, cursor);
       else cursor = cursor.nextElementSibling;
     }
-    for (const [id, card] of cards) {
-      if (!seen.has(id)) { card.el.remove(); cards.delete(id); }
-    }
-    tickClocks();
+    // Whatever is left past the cursor in this container belongs elsewhere now.
+    while (cursor) { const next = cursor.nextElementSibling; cursor.remove(); cursor = next; }
+    tickClocks(container);
   }
 
-  function tickClocks() {
+  // Called by queue_stream.js once both lists are placed for a snapshot.
+  function prune() {
+    for (const [id, card] of cards) {
+      if (!placed.has(id)) { card.el.remove(); cards.delete(id); }
+    }
+    placed.clear();
+  }
+
+  function tickClocks(root) {
     const now = Date.now();
-    for (const node of jobList.querySelectorAll(".job-elapsed[data-since]")) {
+    for (const node of (root || document).querySelectorAll(".job-elapsed[data-since]")) {
       node.textContent = `${node.dataset.label} ${formatDuration(now - Number(node.dataset.since))}`;
     }
   }
-  setInterval(tickClocks, 1000);
+  setInterval(() => tickClocks(document), 1000);
 
   // ---- a job this tab started has finished (called by studio_hook.js) ----
 
@@ -377,10 +398,11 @@
       });
       AshNotify.notify("Captions ready", `${job.filename} is done. Click to pick a look.`, () => location.assign(studioUrl));
     } else {
-      AshToast.show(`${job.filename} failed: ${job.error || "something went wrong"}`, { kind: "bad", ms: 0 });
-      AshNotify.notify("Captioning failed", `${job.filename}: ${job.error || "something went wrong"}`);
+      const why = job.reason || job.error || "something went wrong";
+      AshToast.show(`${job.filename} failed: ${why}`, { kind: "bad", ms: 0 });
+      AshNotify.notify("Captioning failed", `${job.filename}: ${why}`);
     }
   }
 
-  window.AshQueue = { render, jobFinished, formatDuration };
+  window.AshQueue = { renderInto, prune, jobFinished, formatDuration, formatWhen, metaFor };
 })();

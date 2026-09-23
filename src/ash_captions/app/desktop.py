@@ -28,6 +28,7 @@ logger = logging.getLogger("ash_captions.app.desktop")
 
 DIALOG_TIMEOUT_SECONDS = 600  # ten minutes: a real person browsing a slow share
 DIALOG_TITLE = "Choose a video to caption"
+DIALOG_TITLE_MANY = "Choose videos to caption"
 
 _VIDEO_GLOB = ";".join(f"*{ext}" for ext in ALLOWED_VIDEO_EXTENSIONS)
 _DIALOG_FILTER = f"Video files ({_VIDEO_GLOB})|{_VIDEO_GLOB}|All files (*.*)|*.*"
@@ -47,18 +48,29 @@ $owner.Size = New-Object System.Drawing.Size(1, 1)
 $dialog = New-Object System.Windows.Forms.OpenFileDialog
 $dialog.Title = '{title}'
 $dialog.Filter = '{filter}'
-$dialog.Multiselect = $false
+$dialog.Multiselect = {multiselect}
 $dialog.CheckFileExists = $true
 $dialog.RestoreDirectory = $true
 $owner.Add_Shown({{ $owner.Activate() }})
 $result = $dialog.ShowDialog($owner)
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {{ [Console]::Out.Write($dialog.FileName) }}
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {{
+  if ($dialog.Multiselect) {{ [Console]::Out.Write(($dialog.FileNames -join "`n")) }}
+  else {{ [Console]::Out.Write($dialog.FileName) }}
+}}
 """
 
 
-def dialog_command(*, title: str = DIALOG_TITLE) -> list[str]:
-    """The exact process line the picker runs (exposed for tests)."""
-    script = _DIALOG_SCRIPT.format(title=title.replace("'", "''"), filter=_DIALOG_FILTER)
+def dialog_command(*, title: str | None = None, multiple: bool = False) -> list[str]:
+    """The exact process line the picker runs (exposed for tests). With
+    ``multiple`` the dialog allows several files and prints one path per
+    line."""
+    if title is None:
+        title = DIALOG_TITLE_MANY if multiple else DIALOG_TITLE
+    script = _DIALOG_SCRIPT.format(
+        title=title.replace("'", "''"),
+        filter=_DIALOG_FILTER,
+        multiselect="$true" if multiple else "$false",
+    )
     return [
         "powershell",
         "-NoProfile",
@@ -82,19 +94,29 @@ class WindowsFilePicker:
         self._lock = threading.Lock()
 
     def pick_video(self) -> str | None:
+        chosen = self._open(dialog_command())
+        return chosen or None
+
+    def pick_videos(self) -> list[str]:
+        """Several files from one dialog; empty when cancelled."""
+        printed = self._open(dialog_command(multiple=True))
+        return [line.strip() for line in printed.splitlines() if line.strip()]
+
+    def _open(self, command: list[str]) -> str:
+        """Runs the dialog and returns what PowerShell printed (stripped;
+        empty on cancel, timeout, or a missing PowerShell)."""
         if not self._lock.acquire(blocking=False):
             raise PickerBusyError("A file dialog is already open.")
         try:
             try:
-                completed = self._run(dialog_command(), self._timeout)
+                completed = self._run(command, self._timeout)
             except subprocess.TimeoutExpired:
                 logger.info("File dialog timed out after %s s; treating as cancelled.", self._timeout)
-                return None
+                return ""
             except OSError as exc:
                 logger.warning("Could not open the file dialog: %s", exc)
-                return None
-            chosen = (completed.stdout or "").strip()
-            return chosen or None
+                return ""
+            return (completed.stdout or "").strip()
         finally:
             self._lock.release()
 

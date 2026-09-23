@@ -14,7 +14,6 @@
     styleName: $("style-name"),
     status: $("status-pill"),
     burnBtn: $("burn-btn"),
-    reframeBtn: $("reframe-btn"),
     revealBtn: $("reveal-btn"),
     copyBtn: $("copy-btn"),
     stage: $("stage"),
@@ -204,17 +203,10 @@
     }
   }
 
-  // 9:16 reel. Offered only for landscape footage -- a vertical source has
-  // nothing to crop -- and read at burn time rather than stored, because the
-  // same interview is cut for a reel and for YouTube from one transcript.
-  function reframeOn() {
-    return !!els.reframeBtn && els.reframeBtn.getAttribute("aria-pressed") === "true";
-  }
-
-  function offerReframe() {
-    const v = els.video;
-    if (!els.reframeBtn || !v || !v.videoWidth || !v.videoHeight) return;
-    els.reframeBtn.hidden = v.videoWidth <= v.videoHeight;
+  // The reel and behind-speaker choices live in studio_burn_flags.js and
+  // are read here, at burn time, rather than stored on the job.
+  function burnFlags() {
+    return window.AshBurnFlags ? AshBurnFlags.flags() : {};
   }
 
   async function burn() {
@@ -225,7 +217,7 @@
       const res = await AshApi.request(api("/burn"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preset: job.options.preset, reframe: reframeOn() }),
+        body: JSON.stringify({ preset: job.options.preset, ...burnFlags() }),
       });
       if (!res.ok) throw new Error(await AshApi.errorDetail(res, "Couldn't queue the burn"));
       burnJobId = (await res.json()).id;
@@ -384,7 +376,7 @@
       if (node) node.hidden = true;
     }
     els.burnBtn.hidden = true;
-    els.reframeBtn.hidden = true;
+    if (window.AshBurnFlags) AshBurnFlags.hide();
   }
 
   function waitUntilDone() {
@@ -466,6 +458,7 @@
     }
     (window.AshStudio && AshStudio.onReady || []).forEach((fn) => fn({ player, live, api, assUrl, getJob: () => job, setJob: (next) => { job = next; renderTitle(); } }));
     looks.setStyles(styles, live, job.options.preset);
+    if (window.AshBurnFlags) AshBurnFlags.mount({ job, live, video: els.video });
     if (window.AshStudioCheck) AshStudioCheck.mount({ jobId, job, player, live }); else loadTranscript();
     // Only shows itself once this job has been burned as a reel.
     if (window.AshStudioFraming) AshStudioFraming.mount({ jobId, job, player });
@@ -474,13 +467,6 @@
   }
 
   els.burnBtn.addEventListener("click", burn);
-  if (els.reframeBtn) {
-    els.reframeBtn.addEventListener("click", () => {
-      els.reframeBtn.setAttribute("aria-pressed", reframeOn() ? "false" : "true");
-    });
-    els.video.addEventListener("loadedmetadata", offerReframe);
-    offerReframe();
-  }
   els.revealBtn.addEventListener("click", revealFolder);
   els.copyBtn.addEventListener("click", copyPath);
   document.addEventListener("keydown", (e) => {

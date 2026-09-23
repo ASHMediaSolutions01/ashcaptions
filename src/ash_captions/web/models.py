@@ -86,7 +86,9 @@ class JobPathRequest(BaseModel):
     path: str
     language: str = Field(..., min_length=1)
     dialect: str | None = None
-    preset: str
+    # None = the app's default look; the real one is picked in the Studio
+    # once the captions can be seen on the footage.
+    preset: str | None = None
     burn_in: bool = False
     translate_to_english: bool = False
     behind_speaker: bool = False
@@ -352,6 +354,10 @@ class PresetRequest(BaseModel):
 
     preset: str = Field(..., min_length=1)
     reframe: bool = False
+    # Burn only: draw the captions behind the person. None keeps what the
+    # original job asked for, so an old page that never sends it changes
+    # nothing.
+    behind_speaker: bool | None = None
     # Window index -> which person in that window to follow. Keys arrive
     # as JSON object keys, so they are text; the queue converts them.
     reframe_overrides: dict[str, int] = Field(default_factory=dict)

@@ -141,6 +141,10 @@ class FilePicker(Protocol):
         out. Blocking; the route runs it in the threadpool."""
         ...
 
+    def pick_videos(self) -> list[str]:
+        """Several chosen paths from one dialog; empty when cancelled."""
+        ...
+
 
 @runtime_checkable
 class PathRevealer(Protocol):

@@ -36,17 +36,22 @@ def test_pages_carry_the_form_and_accessibility_hooks():
     from ash_captions.web.app import STATIC_DIR
 
     index = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    assert '<form class="card submit-card" id="submit-form"' in index
+    # The drawer (2026-09-23 reshape): file, language, client; the look,
+    # the burn, the reel and behind-the-speaker are decided in the Studio.
+    assert '<form class="drawer-form" id="submit-form"' in index
     assert 'id="start-btn"' in index and 'type="submit"' in index
-    assert 'id="browse-btn"' in index  # the native picker (POST /api/pick-file)
-    assert 'id="options" disabled' in index  # options shown always, off until a file is chosen
-    assert 'id="dropzone" tabindex="0" role="button"' in index
+    assert 'id="browse-btn"' in index  # the native picker (POST /api/pick-files)
+    assert 'id="file-input" multiple' in index  # a batch is one drop
+    for gone in ("preset-select", "burn-in-check", "translate-check", "behind-check", "reframe-check"):
+        assert f'id="{gone}"' not in index, gone
+    assert 'id="speakers-check"' in index  # speaker names stay at submit
+    assert 'for="search-input"' in index and 'type="search" id="search-input"' in index
     # Not a live region since the 2026-09-23 critique: its progress text
     # changed every second and was read out in full. The finished-job toast
     # is the status region.
-    assert 'id="job-list"></div>' in index and 'id="job-list" aria-live' not in index
-    assert 'id="clear-finished-btn"' in index
-    assert 'id="start-here"' in index
+    assert 'id="job-list" class="job-list"></div>' in index and 'id="job-list" aria-live' not in index
+    assert 'id="earlier-list"' in index and 'id="earlier-more"' in index
+    assert 'id="empty-queue"' in index
     assert "alert(" not in (STATIC_DIR / "queue.js").read_text(encoding="utf-8")
     assert "window.prompt" not in (STATIC_DIR / "style_editor.js").read_text(encoding="utf-8")
 
@@ -208,7 +213,7 @@ def test_the_guide_covers_what_v09_added(client):
         assert f'<section id="{section_id}">' in page, section_id
         assert f'href="#{section_id}"' in page, section_id
     for phrase in (
-        "Name who is speaking in the .srt",
+        "Name who is speaking",
         "Speaker 1",
         "It hears; it does not see.",
         "Emoji</strong> tab",

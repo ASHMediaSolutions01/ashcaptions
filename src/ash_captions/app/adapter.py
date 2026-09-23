@@ -118,9 +118,15 @@ class QueueAdapter:
 
     # -- JobQueue protocol -----------------------------------------------
 
-    def list_jobs(self) -> list[WebJob]:
-        # pipeline.JobStore.list_jobs() already orders newest-first.
-        return [_to_web_job(job) for job in self._store.list_jobs(limit=self._list_limit)]
+    def list_jobs(
+        self, *, limit: int | None = None, query: str | None = None, offset: int = 0
+    ) -> list[WebJob]:
+        # pipeline.JobStore.list_jobs() already orders newest-first. The
+        # page's live snapshot uses the recent cap; the archive asks for
+        # a page at a time with a search term.
+        cap = self._list_limit if limit is None else min(limit, self._list_limit)
+        rows = self._store.list_jobs(limit=cap, query=query or None, offset=offset)
+        return [_to_web_job(job) for job in rows]
 
     def get_job(self, job_id: str) -> WebJob | None:
         numeric_id = _parse_job_id(job_id)
@@ -243,6 +249,7 @@ class QueueAdapter:
     def submit_burn(
         self, job_id: str, preset: str, *, reframe: bool = False,
         reframe_overrides: dict[str, int] | None = None,
+        behind_speaker: bool | None = None,
     ) -> WebJob:
         """Enqueue a burn-only job for the same input, in ``preset``, into the
         same output folder. Reuses the saved transcript; fails at run time
@@ -265,6 +272,9 @@ class QueueAdapter:
             mode="burn_only",
             reframe=bool(reframe),
             reframe_overrides=dict(reframe_overrides or {}),
+            # Decided per burn in the Studio, like the reel; None keeps
+            # whatever the original job asked for.
+            behind_speaker=job.options.behind_speaker if behind_speaker is None else bool(behind_speaker),
         )
         new_id = self._store.insert_job(job.input_path, job.output_dir, options)
         created = self._store.get_job(new_id)

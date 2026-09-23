@@ -5,6 +5,9 @@ job cards' thumbnails, and the "Remove from list" / "Open folder" actions.
   editor's desktop and answers ``{"path": ...}`` (null when cancelled).
   409 while a dialog is already open. Blocks for as long as the person
   browses, so it runs in the threadpool like every other slow call.
+* ``POST /api/pick-files`` -- the same dialog allowing several files;
+  answers ``{"paths": [...]}`` (empty when cancelled). A picker without
+  ``pick_videos`` answers with the single choice.
 * ``GET /api/jobs/{id}/thumb`` -- a 320-px JPEG of the footage, generated
   once into the job's output folder (``thumbs.py``) and served with a
   day's caching. Falls back to the burned output when the source is gone;
@@ -48,6 +51,10 @@ class PickedFile(BaseModel):
     path: str | None
 
 
+class PickedFiles(BaseModel):
+    paths: list[str]
+
+
 def build_desktop_router(
     get_queue: Callable[[Request], JobQueue],
     get_file_picker: Callable[[Request], FilePicker],
@@ -62,6 +69,19 @@ def build_desktop_router(
         except PickerBusyError:
             raise HTTPException(status_code=409, detail=PICKER_BUSY_DETAIL)
         return PickedFile(path=chosen or None)
+
+    @router.post("/api/pick-files", response_model=PickedFiles)
+    async def pick_files(picker: FilePicker = Depends(get_file_picker)) -> PickedFiles:
+        many = getattr(picker, "pick_videos", None)
+        try:
+            if callable(many):
+                chosen = await run_in_threadpool(many)
+            else:
+                one = await run_in_threadpool(picker.pick_video)
+                chosen = [one] if one else []
+        except PickerBusyError:
+            raise HTTPException(status_code=409, detail=PICKER_BUSY_DETAIL)
+        return PickedFiles(paths=[p for p in chosen if p])
 
     @router.get("/api/jobs/{job_id}/thumb")
     async def job_thumbnail(job_id: str, queue: JobQueue = Depends(get_queue)) -> FileResponse:

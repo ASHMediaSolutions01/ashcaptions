@@ -8,6 +8,10 @@
 
   const SETTING_KEY = "ash.openStudioWhenDone";
   const submittedHere = new Set();
+  // Jobs that went out as part of a batch: their finishing is announced,
+  // never followed -- jumping to the Studio for the first of five would
+  // pull the editor off the page while the other four are still running.
+  const inBatch = new Set();
   const setting = document.getElementById("open-studio-check");
 
   function readSetting() {
@@ -41,9 +45,12 @@
     cardEl.appendChild(link);
   }
 
-  // Called by app.js with the job a submit just created.
-  function noteSubmitted(job) {
-    if (job && job.id) submittedHere.add(job.id);
+  // Called by submit.js with each job a submit just created; `batch`
+  // says it was one of several.
+  function noteSubmitted(job, opts) {
+    if (!job || !job.id) return;
+    submittedHere.add(job.id);
+    if (opts && opts.batch) inBatch.add(job.id);
   }
 
   // Called by app.js on every queue snapshot. Only jobs this tab started
@@ -56,7 +63,8 @@
       if (job.status !== "done" && job.status !== "failed") continue;
       submittedHere.delete(job.id);
       if (window.AshQueue) AshQueue.jobFinished(job);
-      if (job.status === "done" && setting && setting.checked) {
+      const batched = inBatch.delete(job.id);
+      if (job.status === "done" && !batched && setting && setting.checked) {
         window.location.assign(studioUrl(job.id));
         return;
       }

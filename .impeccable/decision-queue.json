@@ -1,0 +1,72 @@
+{
+  "title": "Shape the Queue",
+  "question": "The roll leads with the card stream and its submit drawer. Lock one structure, steer, or re-roll. The visual world stays as it is: neutral chrome, one accent, judged against footage.",
+  "options": [
+    {
+      "id": "stream-drawer",
+      "label": "Card stream + submit drawer",
+      "kicker": "THE ROLL",
+      "lineage": "the desk's job list as one column, with the intake beside it",
+      "thesis": "One column of jobs, newest on top; submitting is a drawer that stays open beside it, never a form above it.",
+      "palette": ["#1b1b1b", "#212121", "#2a2a2a", "#c24e24"],
+      "materials": ["a footage frame on every card", "a persistent drawer"],
+      "viewport": "A full-height stream of job cards (frame, name, client, state, when) fills the page; a 320px drawer on the right holds the drop zone, language, client and Start, and stays open. Below a quiet 'Earlier' divider the stream continues as the archive, with a search field pinned at the top of the stream.",
+      "risk": "On a laptop the drawer competes with the stream for width; below 1100px it must fold to a bar or the cards starve.",
+      "comp": ".impeccable/mocks/decision/stream-drawer.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "search", "x": 0, "y": 0, "w": 8, "h": 1 },
+          { "label": "live and recent jobs, one card each", "x": 0, "y": 1, "w": 8, "h": 5 },
+          { "label": "earlier (archive, same cards)", "x": 0, "y": 6, "w": 8, "h": 4 },
+          { "label": "drop zone / Browse, language, client, Start", "x": 8, "y": 0, "w": 4, "h": 10, "accent": true }
+        ]
+      }
+    },
+    {
+      "id": "drop-desk",
+      "label": "Drop-first desk",
+      "lineage": "the whole page as the place you drop footage",
+      "thesis": "The page is the drop target; the queue rises beneath it and the archive folds under it.",
+      "palette": ["#1b1b1b", "#212121", "#2a2a2a", "#c24e24"],
+      "materials": ["a full-width drop band", "frame-led cards in two columns"],
+      "viewport": "A wide, shallow drop band across the top (drop files here / Browse) carrying a slim strip of language, client and Start; below it the recent jobs as frame-led cards in two columns; at the bottom 'Earlier' with its search field.",
+      "risk": "A permanently visible drop band spends the first quarter of the viewport on an action that happens a few times a day.",
+      "comp": ".impeccable/mocks/decision/drop-desk.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "drop files here / Browse", "x": 0, "y": 0, "w": 12, "h": 2, "accent": true },
+          { "label": "language · client · Start", "x": 0, "y": 2, "w": 12, "h": 1 },
+          { "label": "recent jobs, two columns of frame-led cards", "x": 0, "y": 3, "w": 12, "h": 5 },
+          { "label": "earlier + search", "x": 0, "y": 8, "w": 12, "h": 2 }
+        ]
+      }
+    },
+    {
+      "id": "ledger",
+      "label": "Ledger",
+      "lineage": "the desk's log as a table you scan, sort and search",
+      "thesis": "Every job is a row; the desk is a table, and submit is a sticky bar above it.",
+      "palette": ["#1b1b1b", "#212121", "#2a2a2a", "#c24e24"],
+      "materials": ["dense rows with a small frame", "a sticky submit bar"],
+      "viewport": "A sticky top bar: drop / Browse, language, client, Start (batch by nature). Below, one table: frame, file, client, language, state with progress, when, actions; live rows first, then everything, paged, with search in the table head.",
+      "risk": "Rows flatten hierarchy: a failed job must still be the loudest thing on the page, and a table on a phone is a scroll.",
+      "comp": ".impeccable/mocks/decision/ledger.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "drop / Browse · language · client · Start", "x": 0, "y": 0, "w": 12, "h": 1, "accent": true },
+          { "label": "table head + search", "x": 0, "y": 1, "w": 12, "h": 1 },
+          { "label": "rows: frame · file · client · language · state · when · actions", "x": 0, "y": 2, "w": 12, "h": 8 }
+        ]
+      }
+    }
+  ],
+  "reroll": true,
+  "steer": true,
+  "buildPath": { "value": "code", "toggle": false }
+}

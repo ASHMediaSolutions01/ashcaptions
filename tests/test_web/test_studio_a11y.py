@@ -94,6 +94,6 @@ class TestTheQueueStopsChattering:
         """The finished-job toast is already role=status; a list whose
         progress text changed every second was read out in full."""
         html = _static("index.html")
-        assert '<div id="job-list"></div>' in html
+        assert '<div id="job-list" class="job-list"></div>' in html
         assert 'aria-live' not in html.split('id="job-list"')[1][:80]
         assert 'setAttribute("role", "status")' in _static("toast.js")

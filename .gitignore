@@ -43,3 +43,7 @@ assets/fonts/*.ttf
 .agents/
 .mcp.json
 CLAUDE.md
+
+# impeccable transient state: decision-page servers and review screenshots
+.impeccable/questions/
+.impeccable/review/

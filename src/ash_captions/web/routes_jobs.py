@@ -44,15 +44,30 @@ UPLOAD_TOO_LARGE_DETAIL = (
 JOB_LIST_LIMIT = 100
 
 
-def list_jobs_for_web(queue: JobQueue, limit: int = JOB_LIST_LIMIT) -> list[Job]:
-    """`queue.list_jobs()` capped to the newest `limit`. Passes `limit=`
-    down when the implementation accepts it (so the database does the
-    capping) and truncates the result otherwise."""
+def list_jobs_for_web(
+    queue: JobQueue, limit: int = JOB_LIST_LIMIT, *, query: str | None = None, offset: int = 0
+) -> list[Job]:
+    """`queue.list_jobs()` capped to the newest `limit`, optionally searched
+    and paged. Each keyword is passed down only when the implementation
+    accepts it (so the database does the work) and applied here otherwise,
+    so an older queue keeps answering."""
     try:
-        accepts_limit = "limit" in inspect.signature(queue.list_jobs).parameters
+        params = inspect.signature(queue.list_jobs).parameters
     except (TypeError, ValueError):
-        accepts_limit = False
-    jobs = queue.list_jobs(limit=limit) if accepts_limit else queue.list_jobs()
+        params = {}
+    kwargs = {}
+    if "limit" in params:
+        kwargs["limit"] = limit
+    if query and "query" in params:
+        kwargs["query"] = query
+    if offset and "offset" in params:
+        kwargs["offset"] = offset
+    jobs = queue.list_jobs(**kwargs)
+    if query and "query" not in params:
+        needle = query.lower()
+        jobs = [j for j in jobs if needle in _searchable(j)]
+    if offset and "offset" not in params:
+        jobs = jobs[offset:]
     return list(jobs)[:limit]
 
 
@@ -70,12 +85,22 @@ def build_jobs_router(
         return catalogue.list_languages()
 
     @router.get("/api/jobs", response_model=list[Job])
-    async def list_jobs(queue: JobQueue = Depends(get_queue)) -> list[Job]:
-        return list_jobs_for_web(queue)
+    async def list_jobs(
+        q: str | None = None,
+        offset: int = 0,
+        limit: int = JOB_LIST_LIMIT,
+        queue: JobQueue = Depends(get_queue),
+    ) -> list[Job]:
+        """The newest jobs; with `q` a search over the file name (and the
+        client folder it came from), with `offset` the next page of it."""
+        if offset < 0 or limit < 1 or limit > JOB_LIST_LIMIT:
+            raise HTTPException(status_code=400, detail=f"offset must be 0 or more and limit 1-{JOB_LIST_LIMIT}.")
+        return list_jobs_for_web(queue, limit, query=(q or "").strip()[:200] or None, offset=offset)
 
     @router.post("/api/jobs/by-path", response_model=Job, status_code=201)
     async def submit_job_by_path(
         body: JobPathRequest,
+        request: Request,
         queue: JobQueue = Depends(get_queue),
         catalogue: LanguageCatalogueProvider = Depends(get_catalogue),
         style_provider: StyleProvider = Depends(get_style_provider),
@@ -95,6 +120,7 @@ def build_jobs_router(
             behind_speaker=body.behind_speaker,
             reframe=body.reframe,
             speaker_labels=body.speaker_labels,
+            default_preset=_default_preset(request),
         )
         path = await run_in_threadpool(validate_local_path, body.path)
         return queue.submit(path, options)
@@ -105,7 +131,7 @@ def build_jobs_router(
         file: UploadFile,
         language: str = Form(...),
         dialect: str | None = Form(None),
-        preset: str = Form(...),
+        preset: str | None = Form(None),
         burn_in: bool = Form(False),
         translate_to_english: bool = Form(False),
         client: str | None = Form(None),
@@ -125,7 +151,7 @@ def build_jobs_router(
         options = validate_options(
             catalogue, style_provider, language, dialect, preset, burn_in, translate_to_english,
             client=client, behind_speaker=behind_speaker, reframe=reframe,
-            speaker_labels=speaker_labels,
+            speaker_labels=speaker_labels, default_preset=_default_preset(request),
         )
         _validate_upload(file)
 
@@ -168,18 +194,28 @@ def build_jobs_router(
     return router
 
 
+def _searchable(job: Job) -> str:
+    client = job.options.client if job.options and job.options.client else ""
+    return f"{job.input_path or job.filename or ''} {client}".lower()
+
+
+def _default_preset(request: Request) -> str | None:
+    return getattr(request.app.state, "default_preset", None)
+
+
 def validate_options(
     catalogue: LanguageCatalogueProvider,
     style_provider: StyleProvider,
     language: str,
     dialect: str | None,
-    preset: str,
+    preset: str | None,
     burn_in: bool,
     translate_to_english: bool,
     client: str | None = None,
     behind_speaker: bool = False,
     reframe: bool = False,
     speaker_labels: bool = False,
+    default_preset: str | None = None,
 ) -> JobOptions:
     languages = {lang.code: lang for lang in catalogue.list_languages()}
     lang_entry = languages.get(language)
@@ -201,7 +237,17 @@ def validate_options(
     # typed in lowercase (e.g. by an older client, or /api/jobs/by-path
     # called directly) still resolves, without mangling the exact case of
     # a mixed-case user style name coming from the dropdown.
-    valid_presets = {style.name for style in style_provider.list_styles()}
+    styles = list(style_provider.list_styles())
+    valid_presets = {style.name for style in styles}
+    if not preset:
+        # No look chosen: the app's default, else the first in the library.
+        # The editor picks the real one in the Studio.
+        if default_preset and (default_preset in valid_presets or default_preset.upper() in valid_presets):
+            preset = default_preset
+        elif styles:
+            preset = styles[0].name
+        else:
+            raise HTTPException(status_code=400, detail="No caption styles are installed.")
     preset_normalized = preset if preset in valid_presets else preset.upper()
     if preset_normalized not in valid_presets:
         raise HTTPException(status_code=400, detail=f"Unknown preset {preset!r}.")

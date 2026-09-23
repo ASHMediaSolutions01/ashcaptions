@@ -31,7 +31,8 @@ the whole interface.
 1. Open ASH Captions from the Desktop icon (it is already running in the
    tray) and click **Browse…** for the video. Or drop the file into
    `C:\AshCaptions\in\`, or into `in\<Client>\` to use that client's glossary.
-2. Pick the language and a look, then **Start captioning**.
+2. Pick the language and the client, then **Start captioning**. Several
+   videos can go in at once.
 3. When it finishes the **Studio** opens: the video plays with the captions
    drawn on it, and every look can be tried on the real footage before
    anything is burned.

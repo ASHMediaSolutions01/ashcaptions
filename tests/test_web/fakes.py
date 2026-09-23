@@ -72,8 +72,15 @@ class FakeJobQueue:
         # or None for "clear". Nothing is appended when the keys were omitted.
         self.positions: list[tuple[float, float] | None] = []
 
-    def list_jobs(self) -> list[Job]:
-        return sorted(self._jobs.values(), key=lambda j: (j.created_at, j.id), reverse=True)
+    def list_jobs(
+        self, *, limit: int | None = None, query: str | None = None, offset: int = 0
+    ) -> list[Job]:
+        rows = sorted(self._jobs.values(), key=lambda j: (j.created_at, j.id), reverse=True)
+        if query:
+            needle = query.lower()
+            rows = [j for j in rows if needle in f"{j.input_path or j.filename or ''} {j.options.client or ''}".lower()]
+        rows = rows[offset:]
+        return rows if limit is None else rows[:limit]
 
     def get_job(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
@@ -176,7 +183,7 @@ class FakeJobQueue:
         self._notify()
         return updated
 
-    def submit_burn(self, job_id: str, preset: str) -> Job:
+    def submit_burn(self, job_id: str, preset: str, *, behind_speaker: bool | None = None) -> Job:
         source = self._restylable(job_id, preset)
         now = datetime.now(timezone.utc)
         burn = Job(

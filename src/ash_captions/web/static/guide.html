@@ -189,26 +189,27 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <p class="lede">The app is normally already running in the tray (Part 2). Open the control page from the tray icon, or type <code>http://127.0.0.1:8756</code> in your browser.</p>
 
   <h3>Give it your video</h3>
-  <figure><img src="/static/guide/control-idle.png" alt="The control page: the new-job form on the left with a Browse button, and the queue on the right"><figcaption>The control page. Browse to the file, pick the options, start.</figcaption></figure>
+  <figure><img src="/static/guide/control-idle.png" alt="The Queue: the stream of job cards on the left, each led by a frame of its footage, and the drawer on the right with Browse, language and client"><figcaption>The Queue. The stream of jobs on the left; the drawer that starts new ones on the right.</figcaption></figure>
   <ol>
-    <li>Click <strong>Browse…</strong> and choose the video, the same way you open a file in any Windows program. Pasting a path still works too: in File Explorer hold <kbd>Shift</kbd>, right-click the file, choose <strong>"Copy as path"</strong>, and paste it into <strong>Video file</strong>. The quotes Windows adds are fine.</li>
-    <li>The options switch on. Pick the language, the style and whether to burn the captions in, then click <strong>Start captioning</strong>.</li>
+    <li>Click <strong>Browse…</strong> in the drawer and choose the video, the same way you open a file in any Windows program. You can pick several at once, and click Browse again to add more; each one is listed under the drop zone. Pasting a path works too: in File Explorer hold <kbd>Shift</kbd>, right-click the file, choose <strong>"Copy as path"</strong>, paste it into the path box and press <kbd>Enter</kbd>. The quotes Windows adds are fine.</li>
+    <li>Pick the language, and the client if there is one, then click <strong>Start captioning</strong>. With several videos chosen the button says how many, and they all start with the same language and client, one after another.</li>
   </ol>
-  <p class="note">Why not upload? Your video is already on this computer. The tool reads it where it sits, and your original is never moved, changed or deleted. "Upload a copy" (under Advanced) exists for small files only (2 GB limit).</p>
+  <p class="note">That is all the drawer asks. The look, whether to burn the captions in, the 9:16 reel and captions behind the speaker are chosen in the Studio, once the captions can be seen on the footage (Part 4). Why not upload? Your video is already on this computer. The tool reads it where it sits, and your original is never moved, changed or deleted. Dropping a file onto the drawer copies it first, so it is slower; keep that for small files (2 GB limit).</p>
 
   <h3>Pick your options</h3>
   <table class="plain">
     <tr><th>Setting</th><th>What to choose</th></tr>
     <tr><td><strong>Language</strong></td><td>The language <em>spoken</em> in the video. English, Spanish, Portuguese and 51 others.</td></tr>
     <tr><td><strong>Dialect</strong></td><td>Affects spelling: English (US) gives "color", English (UK) gives "colour". For a US client, pick US.</td></tr>
-    <tr><td><strong>Caption style</strong></td><td>The look. <code>POP</code> for short-form, <code>CLEAN</code> for client-safe, <code>ASH BRAND</code> for our own content. See Part 5.</td></tr>
-    <tr><td><strong>Burn captions into the video</strong></td><td>Tick for a ready-to-post file. Leave off if you're taking the <code>.srt</code> into Premiere.</td></tr>
-    <tr><td><strong>Also translate to English</strong></td><td>Tick for a non-English video where the client wants English subtitles.</td></tr>
+    <tr><td><strong>Client</strong></td><td>Optional. Shown on the job, and picks that client's glossary of names and brands (Part 7).</td></tr>
+    <tr><td><strong>Name who is speaking</strong></td><td>For podcasts and interviews: the <code>.srt</code> gets a name above the line whenever the voice changes (Part 15).</td></tr>
   </table>
+  <p>The look is picked in the Studio (Part 5), where every one can be tried on the real footage. Burning, the 9:16 reel and captions behind the speaker are decided there too, and a non-English video is translated from the Studio's Check tab (Part 8).</p>
 
   <h3>Watch it work</h3>
   <figure><img src="/static/guide/queue-running.png" alt="A running job showing the stage, a percentage, and a running-for clock"><figcaption>Each job shows what it's doing right now, how far along, and how long it has been running. The green dot at the top right means the worker is alive.</figcaption></figure>
-  <p>The stage line reads <strong>Extracting audio → Transcribing → Writing captions → Burning captions in</strong>. The clock on the right keeps ticking while it works. You can queue more videos; they run one at a time.</p>
+  <p>The stage line reads <strong>Extracting audio → Transcribing → Writing captions</strong>, and <strong>Burning captions in</strong> on a burn from the Studio. The clock keeps ticking while it works. You can queue more videos; they run one at a time.</p>
+  <p>The newest and the still-running jobs sit at the top. Everything older folds under <strong>Earlier</strong>, twenty at a time, and the search box above the stream finds any job by its file name or client. Press <kbd>/</kbd> to jump to the search, <kbd>Esc</kbd> to clear it.</p>
   <figure><img src="/static/guide/queue-done.png" alt="A failed job with its error shown inline and a Retry button, above a waiting job"><figcaption>A failed job shows the reason under it, with a Retry button. Finished jobs show how long they took.</figcaption></figure>
 
   <h3>Collect your files</h3>
@@ -372,8 +373,8 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
   <figure><img src="/static/guide/check-captions.png" alt="The transcript panel: Spanish lines with the English underneath, one word underlined in amber, and a chip counting the uncertain words"><figcaption>Spanish above, English below, and the words the model was unsure of underlined. The chip counts them and jumps to the next one.</figcaption></figure>
   <ul>
     <li><strong>Uncertain words</strong> are underlined: amber when the model was unsure, red when it was guessing. The chip above the panel says how many there are; click it to jump to the next one, and the video seeks there so you can listen.</li>
-    <li><strong>Show English.</strong> When the job was translated ("Also translate to English" was ticked), switch it on to see the English line under each source line, in time with the video.</li>
-    <li><strong>Translate to check.</strong> When the job was not translated, this button takes the toggle's place. It runs only the translation, from the transcript the job already has, so it takes seconds rather than a re-listen, and it writes the <code>.en.srt</code> into the output folder.</li>
+    <li><strong>Translate to check.</strong> For a non-English video, this button runs only the translation, from the transcript the job already has, so it takes seconds rather than a re-listen, and it writes the <code>.en.srt</code> into the output folder. This is how a client gets English subtitles.</li>
+    <li><strong>Show English.</strong> Once the job has been translated, the toggle takes the button's place: switch it on to see the English line under each source line, in time with the video.</li>
   </ul>
   <p>When a word is wrong, fix it here: see <a href="#fixing">Part 9</a>. For anything you are unsure about, ask a speaker of the language to check the moments the chip points at.</p>
   <p class="note">Underlines mark doubt, not errors. A rare name, a mumbled word or two people talking at once all lower the model's confidence, and most amber words are right. Red ones are worth a listen.</p>
@@ -450,10 +451,10 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 
 <section id="behind">
   <h2>Part 13 · Captions behind the speaker</h2>
-  <p class="lede">For reels: tick <strong>Captions behind the speaker</strong> when you submit, and the captions are drawn behind the person, so their head and hands pass in front of the words.</p>
+  <p class="lede">For reels: press <strong>Behind speaker</strong> in the Studio's top bar before you burn, and the captions are drawn behind the person, so their head and hands pass in front of the words.</p>
   <p>The tool works out where the person is in every frame by itself (a small matting model that runs on the CPU), then burns the captions and lays the person back on top. The queue shows a <strong>Finding the speaker</strong> stage before the burn.</p>
   <ul>
-    <li>It only applies when <strong>Burn captions into the video</strong> is ticked.</li>
+    <li>It is part of the burn, so it is decided in the Studio, on the footage, and only shows while the original video is still there.</li>
     <li>It costs about the video's own length in extra time: a 60-second reel takes about a minute longer. An hour-long file adds roughly an hour, so keep it for short-form.</li>
     <li>It wants one clear person against the background. Two people, heavy motion blur or a very dark shot give a soft edge; check the result in the Studio's burned output.</li>
     <li>The first use downloads the model once (15 MB); the installed version ships it.</li>
@@ -462,10 +463,10 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 
 <section id="reel-crop">
   <h2>Part 14 · Landscape into a 9:16 reel</h2>
-  <p class="lede">A 1920x1080 interview is the wrong shape for Reels, Shorts and TikTok. Tick <strong>Crop landscape to a 9:16 reel</strong> when you submit, or press <strong>9:16 reel</strong> in the Studio's top bar before you burn, and you get a 1080x1920 video that follows whoever is on screen.</p>
+  <p class="lede">A 1920x1080 interview is the wrong shape for Reels, Shorts and TikTok. Press <strong>9:16 reel</strong> in the Studio's top bar before you burn, and you get a 1080x1920 video that follows whoever is on screen.</p>
   <p>It does not pan around. It decides where to sit <strong>once per shot</strong> and holds there, because that is what the footage actually does: measured on a real interview, a seated subject moves about 30 pixels in a 1920-wide frame over twelve seconds. A crop that chased that would wander for no reason.</p>
   <ul>
-    <li>It only applies when <strong>Burn captions into the video</strong> is ticked. The <code>.srt</code> has no shape, so nothing else changes.</li>
+    <li>It is part of the burn. The <code>.srt</code> has no shape, so nothing else changes. The button only appears for landscape footage.</li>
     <li>The captions are drawn <strong>after</strong> the crop, at the reel's size — they are not shrunk or stretched by it.</li>
     <li>A video that is already vertical is left alone.</li>
     <li>The queue shows a <strong>Framing the reel</strong> stage before the burn. It is quick: a few seconds for a five-minute video, because it looks at a handful of frames per shot rather than all of them.</li>
@@ -486,7 +487,7 @@ git clone https://github.com/ASHMediaSolutions01/ashcaptions.git "ASH Captions"<
 
 <section id="speakers">
   <h2>Part 15 · Naming who is speaking</h2>
-  <p class="lede">For podcasts and two-person interviews: tick <strong>Name who is speaking in the .srt</strong> under <strong>Advanced</strong> when you submit, and the subtitle file gets a name above the line whenever the voice changes.</p>
+  <p class="lede">For podcasts and two-person interviews: tick <strong>Name who is speaking</strong> in the drawer when you submit, and the subtitle file gets a name above the line whenever the voice changes.</p>
   <p>The <code>.srt</code> comes out like this:</p>
   <pre>1
 00:00:06,100 --&gt; 00:00:12,060
@@ -537,7 +538,7 @@ Speaker 2: We were both working nights.</pre>
     <tr><td><code>punch_duration_seconds</code></td><td>How long it holds.</td></tr>
     <tr><td><code>punch_min_spacing_seconds</code></td><td>Never punch more often than this. Without it, fast dialogue zooms constantly.</td></tr>
   </table>
-  <p>For keyword mode add the words worth emphasising: <code>"punch_keywords": ["free", "guarantee", "today"]</code>. Punch-in only applies when <strong>Burn captions into the video</strong> is ticked. It works on hour-long files and costs almost no extra render time.</p>
+  <p>For keyword mode add the words worth emphasising: <code>"punch_keywords": ["free", "guarantee", "today"]</code>. Punch-in only applies to a burn (<strong>Burn this look</strong> in the Studio). It works on hour-long files and costs almost no extra render time.</p>
 </section>
 
 <section id="sound">
@@ -559,7 +560,7 @@ Speaker 2: We were both working nights.</pre>
     <tr><td>Riser</td><td>Points at the word after it. The last line before a punchline, not everywhere.</td></tr>
   </table>
   <p class="note"><strong>Sound belongs to the look, so it follows the look everywhere.</strong> Adding a sound to a built-in look changes every job on this PC that uses it, including old jobs if they are restyled or burned again — the same warning the Styles page shows. If only one client wants sound, <strong>Save as…</strong> a copy and put the sound on that.</p>
-  <p>Sound is only mixed in when <strong>Burn captions into the video</strong> is ticked — an <code>.srt</code> cannot carry a whoosh. The video keeps its original length and its dialogue; the sounds are added underneath, nothing is replaced or ducked.</p>
+  <p>Sound is only mixed in when the captions are burned (<strong>Burn this look</strong> in the Studio) — an <code>.srt</code> cannot carry a whoosh. The video keeps its original length and its dialogue; the sounds are added underneath, nothing is replaced or ducked.</p>
 </section>
 
 <section id="emoji">
@@ -573,7 +574,7 @@ Speaker 2: We were both working nights.</pre>
   </ol>
   <p>They land above the caption band, alternating left and right so two close together never sit on top of each other, and each one drifts upward over the three-quarters of a second it is on screen.</p>
   <p class="note"><strong>Emoji belong to the look, so they follow the look everywhere</strong> — the same warning the Sound tab carries. Putting emoji on a built-in look changes every job on this PC that uses it, including old ones if they are restyled or burned again. If it is for one client, <strong>Save as…</strong> a copy first and put the emoji on that.</p>
-  <p>They are only drawn when <strong>Burn captions into the video</strong> is ticked: an emoji is a picture laid over the frame, and an <code>.srt</code> cannot carry a picture.</p>
+  <p>They are only drawn when the captions are burned (<strong>Burn this look</strong> in the Studio): an emoji is a picture laid over the frame, and an <code>.srt</code> cannot carry a picture.</p>
 </section>
 
 <section id="problems">
@@ -583,9 +584,9 @@ Speaker 2: We were both working nights.</pre>
   <details class="fix"><summary>"ASH Captions is already running"</summary><p>It's already open. Look for the icon near the clock, or another terminal window.</p></details>
   <details class="fix"><summary>The Queue says "Worker: stopped"</summary><p>The part of the app that runs jobs has died but the page is still up. Close the terminal window and start the app again. Send Ghazi the log file (below).</p></details>
   <details class="fix"><summary>A job says FAILED</summary><p>Read the reason under it. Usually the file was moved or renamed after you pasted the path, or the drive is full. Fix the cause, then click <strong>Retry</strong>.</p></details>
-  <details class="fix"><summary>Captions are in the wrong language</summary><p>The <strong>Language</strong> dropdown is the language <em>spoken</em> in the video, not the one you want out. For translation, tick "Also translate to English".</p></details>
+  <details class="fix"><summary>Captions are in the wrong language</summary><p>The <strong>Language</strong> dropdown is the language <em>spoken</em> in the video, not the one you want out. For translation, open the job in the Studio and press <strong>Translate to check</strong> on the Check tab.</p></details>
   <details class="fix"><summary>Names or brands spelled wrong</summary><p>Expected: the speech model doesn't know them. Open <strong>Glossary</strong> under the Client box, add a line <code>wrong =&gt; Right</code>, Save, and run the job again (from the Studio it takes seconds).</p></details>
-  <details class="fix"><summary>"Captions behind the speaker" left a soft or wrong edge</summary><p>The matting works best on one person against a steady background. For that clip, untick the option and burn normally.</p></details>
+  <details class="fix"><summary>"Captions behind the speaker" left a soft or wrong edge</summary><p>The matting works best on one person against a steady background. For that clip, switch <strong>Behind speaker</strong> off in the Studio and burn again.</p></details>
   <details class="fix"><summary>Captions are a plain font, not the style's</summary><p>The fonts didn't all download. Re-run the fonts command in Step 5.</p></details>
   <details class="fix"><summary>The preview says "A preview is already rendering"</summary><p>Only one preview runs at a time. Wait for it, then try again.</p></details>
   <details class="fix"><summary>"Not enough free space" when burning</summary><p>Free up the amount it names on the output drive, or take the <code>.srt</code> into Premiere instead of burning.</p></details>
