@@ -39,15 +39,17 @@
 
   async function resolveStudioLink() {
     const remembered = readLast();
-    if (remembered) { pointStudioAt(remembered); return; }
-    pointStudioAt(null);
+    // The remembered job is a hint, not a fact: it may since have failed
+    // or been removed, and a Studio link to a failed job is a dead end.
+    pointStudioAt(remembered || null);
     try {
       const res = await fetch("/api/jobs", { headers: { "X-ASH-Client": "1" } });
       if (!res.ok) return;
       const jobs = await res.json();
-      const done = jobs.find((j) => j.status === "done");
-      if (done) pointStudioAt(done.id);
-    } catch (err) { /* nav stays disabled; the page itself reports connection loss */ }
+      const still = remembered && jobs.find((j) => String(j.id) === String(remembered) && j.status === "done");
+      const done = still || jobs.find((j) => j.status === "done");
+      pointStudioAt(done ? done.id : null);
+    } catch (err) { /* nav stays as it is; the page itself reports connection loss */ }
   }
 
   resolveStudioLink();

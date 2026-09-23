@@ -230,14 +230,17 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   justify-content: center;
   gap: 0.3em;
   padding: 0 12px;
-  background: #1a1d24;
+  /* The mat the video sits on, not a tinted slab: a look's colour is
+     judged against footage, and the surround must not lean blue. */
+  background: var(--mat);
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
 }
 .look-sample .w { display: inline-block; padding: 2px 4px; border-radius: 4px; }
-.look-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; font-size: 13px; font-weight: 600; }
-.look-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.look-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 10px; font-size: 13px; font-weight: 600; }
+/* A long name wraps to a second line rather than reading "BOTTOM LEFT BO…". */
+.look-name { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
 .look-tag { font-size: 11px; color: var(--muted); font-weight: 500; }
 /* Position glyph: a 9:16 frame with a bar where the caption sits. */
 .look-glyph { position: relative; flex: 0 0 auto; width: 14px; height: 24px; border: 1px solid var(--muted); border-radius: 3px; }

@@ -3,6 +3,7 @@
 .guide-body { display: block; }
 .guide-wrap { max-width: 1180px; margin: 0 auto; padding: 24px 24px 80px; }
 .guide-header { margin-bottom: 24px; }
+.guide-header h1 { line-height: 1.3; }
 .guide-header p { margin-top: 6px; color: var(--muted); max-width: 70ch; }
 .guide-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; align-items: start; }
 @media (max-width: 860px) { .guide-layout { grid-template-columns: 1fr; } .guide-nav { position: static; } }
@@ -16,10 +17,10 @@
 .guide-progress { margin-top: 16px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; color: var(--muted); }
 .guide-progress strong { color: var(--ink); display: block; margin-bottom: 6px; font-weight: 600; }
 .guide-progress .bar { height: 6px; background: var(--raised); border-radius: 3px; overflow: hidden; }
-.guide-progress .bar > span { display: block; height: 100%; background: var(--ok); width: 0; transition: width .2s; }
+.guide-progress .bar > span { display: block; height: 100%; background: var(--ok); width: 0; }
 .guide-progress button { margin-top: 10px; }
 
-.guide-main { max-width: 78ch; }
+.guide-main { max-width: 72ch; }
 .guide-main section { margin-bottom: 44px; scroll-margin-top: 16px; }
 .guide-main h2 { font-size: 20px; margin: 0 0 8px; }
 .guide-main h3 { font-size: 15px; margin: 24px 0 8px; }
@@ -45,7 +46,9 @@
 .cmd button { position: absolute; top: 7px; right: 7px; }
 .cmd button.copied { border-color: var(--ok); color: var(--ok); }
 
-.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin: 12px 0; }
+/* A full hairline in the tint, not a 3px side bar: the bar is the category's
+   default callout and the tint already says what kind of note this is. */
+.note { border: 1px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: var(--radius-sm); margin: 12px 0; }
 .note.warn { border-color: var(--warn); background: var(--warn-soft); }
 .note.stop { border-color: var(--bad); background: var(--bad-soft); }
 

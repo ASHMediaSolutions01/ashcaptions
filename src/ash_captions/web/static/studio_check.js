@@ -183,8 +183,9 @@
       state.cues = cues.length ? cues : cuesFromWords(state.words, FALLBACK_WORDS_PER_ROW);
       state.rows = assignToCues(state.words, state.cues);
       state.enRows = state.en ? assignToCues(state.en, state.cues) : null;
-      els.lang.textContent = (transcript.language || "").toUpperCase();
-      els.lang.hidden = !transcript.language;
+      state.language = transcript.language || "";
+      els.lang.textContent = state.language.toUpperCase();
+      els.lang.hidden = !state.language;
       renderHeader();
       renderRows();
     }
@@ -194,7 +195,8 @@
       els.uncertain.textContent = n === 0 ? "No uncertain words" : `${n} uncertain word${n === 1 ? "" : "s"}`;
       els.uncertain.disabled = n === 0;
       els.uncertain.title = n === 0 ? "" : "Jump to the next uncertain word";
-      const hasEnglish = state.en !== null;
+      // An English job's "English" is the same line twice.
+      const hasEnglish = state.en !== null && state.language !== "en";
       els.toggle.hidden = !hasEnglish;
       els.showEn.checked = state.showEn;
       els.translate.hidden = hasEnglish || !live;

@@ -50,7 +50,16 @@
     } catch (err) { /* the dropdown still offers Other... */ }
     jobsByPath = new Map();
     for (const job of jobs) {
-      if (job.input_path && !jobsByPath.has(job.input_path)) jobsByPath.set(job.input_path, job);
+      // Only footage a finished job read: a failed job's file may not even
+      // be a video, and it was defaulting the picker. An uploaded copy is
+      // deleted once its job succeeds, so it cannot be previewed either --
+      // the API does not say whether a source still exists, and this is
+      // the one case where it certainly does not.
+      if (job.status !== "done") continue;
+      const sep = String.fromCharCode(92); // a backslash, spelled so no build step can eat it
+      const copy = job.input_path && (job.input_path.includes(sep + "web_uploads" + sep) || job.input_path.includes("/web_uploads/"));
+      if (!job.input_path || copy) continue;
+      if (!jobsByPath.has(job.input_path)) jobsByPath.set(job.input_path, job);
     }
     sourceSelect.innerHTML = "";
     for (const [path, job] of jobsByPath) {

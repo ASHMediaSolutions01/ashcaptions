@@ -50,6 +50,6 @@
   height: 40px;
   border-radius: 4px;
   overflow: hidden;
-  background: #1a1d24;
+  background: var(--mat, #242424);
 }
 .ash-look-card--thumb .ash-look-poster { font-size: 13px !important; gap: 0.3em; }

@@ -44,7 +44,8 @@ def test_scope_notice_is_shown_for_every_shipped_look_not_only_customized_ones()
 
 def test_scope_notice_names_the_look_and_says_what_save_does():
     js = _js()
-    assert "Saving changes" in js
-    assert "for every job that uses it on this PC" in js
+    # Reworded in the 2026-09-23 polish: it was "Saving changes "X" for every
+    # job", which is not a sentence. The look is still named and the scope said.
+    assert 'Saving "${style.name}" changes every job on this PC that uses it' in js
     assert "restyled or burned again" in js
     assert "Files already produced keep the captions they have" in js

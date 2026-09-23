@@ -39,7 +39,9 @@
      fill is the brand value darkened until white on it clears 4.5:1. */
   --accent: #f0906a;          /* text/links/outlines on dark */
   --accent-fill: #c24e24;     /* filled buttons, white text (4.76:1) */
-  --accent-fill-hover: #d65b2d;
+  /* Darker on hover, not lighter: no lighter orange keeps white text
+     at 4.5:1 (#d65b2d was 3.9:1); this one holds 5.27:1. */
+  --accent-fill-hover: #b8481f;
   --accent-soft: rgba(194, 78, 36, 0.18);
   --ok: #4ec98a;
   --ok-soft: rgba(78, 201, 138, 0.14);
@@ -330,7 +332,7 @@ details.disclosure > summary:focus-visible { box-shadow: var(--focus); border-ra
 
 /* ---- Progress ---- */
 .progress-track { height: 6px; border-radius: 999px; background: var(--raised); overflow: hidden; }
-.progress-fill { height: 100%; border-radius: 999px; background: var(--run); transition: width .3s ease; }
+.progress-fill { height: 100%; border-radius: 999px; background: var(--run); }
 .progress-fill.done { background: var(--ok); }
 .progress-fill.failed { background: var(--bad); }
 .progress-fill.live {

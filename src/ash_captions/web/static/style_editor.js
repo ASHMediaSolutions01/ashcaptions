@@ -264,7 +264,7 @@
     }
     scopeNotice.hidden = false;
     scopeNoticeText.textContent =
-      `Saving changes "${style.name}" for every job that uses it on this PC, including old jobs ` +
+      `Saving "${style.name}" changes every job on this PC that uses it, including old jobs ` +
       "if they are restyled or burned again. Files already produced keep the captions they have.";
     scopeResetBtn.hidden = !style.customized_locally;
   }
